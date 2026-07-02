@@ -1,6 +1,6 @@
 [
   {
-    "id": "mcp-bridge",
+    "id": "mcp",
     "name": "MCP Bridge",
     "author": "Finch Team",
     "description": "Connect Model Context Protocol servers and expose their tools to the Finch agent.",
