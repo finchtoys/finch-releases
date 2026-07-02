@@ -7,7 +7,9 @@
  * Deploy:
  *   1. Create a Worker in the Cloudflare Dashboard (or via Wrangler).
  *   2. Paste this script.
- *   3. Add a Custom Domain: community.finchwork.app → this Worker.
+ *   3. Add a Secret: Settings → Variables → Secret variables → GITHUB_TOKEN
+ *      (a fine-grained PAT with read-only public repo access is enough)
+ *   4. Add a Custom Domain: community.finchwork.app → this Worker.
  *
  * Routes:
  *   GET /extensions.json   → community/extensions.json (recommended extension list)
@@ -45,15 +47,25 @@ export default {
     let response = await cache.match(cacheKey);
 
     if (!response) {
-      // Cache miss — fetch from GitHub
+      // Cache miss — fetch from GitHub with token to avoid rate limits
+      const headers = { 'User-Agent': 'community.finchwork.app/1.0' };
+      if (env.GITHUB_TOKEN) {
+        headers['Authorization'] = `Bearer ${env.GITHUB_TOKEN}`;
+      }
+
       const githubRes = await fetch(upstream, {
-        headers: { 'User-Agent': 'community.finchwork.app/1.0' },
+        headers,
         cf: { cacheTtl: CACHE_TTL, cacheEverything: true },
       });
 
       if (!githubRes.ok) {
+        // Pass through GitHub's rate-limit headers for debugging
+        const rateLimitInfo = {
+          remaining: githubRes.headers.get('x-ratelimit-remaining'),
+          reset: githubRes.headers.get('x-ratelimit-reset'),
+        };
         return json(
-          { error: 'Upstream fetch failed', status: githubRes.status },
+          { error: 'Upstream fetch failed', status: githubRes.status, rateLimitInfo },
           502,
         );
       }
@@ -68,10 +80,10 @@ export default {
         },
       });
 
-      // Store in edge cache (don't await — fire and forget)
+      // Store in edge cache (fire and forget)
       ctx.waitUntil(cache.put(cacheKey, response.clone()));
     } else {
-      // Cache hit — add hit header
+      // Cache hit
       response = new Response(response.body, response);
       response.headers.set('X-Cache', 'HIT');
       response.headers.set('Access-Control-Allow-Origin', '*');
