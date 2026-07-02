@@ -42,8 +42,7 @@
     "extensionType": "official",
     "autoEnable": true,
     "categories": [
-      "mcp",
-      "developer-tools"
+      "developer"
     ],
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",

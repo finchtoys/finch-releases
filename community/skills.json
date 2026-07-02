@@ -13,6 +13,7 @@
     "author": "Finch Team",
     "description": "Guide for developing, debugging, and testing Finch extensions. Use when creating a new extension, adding custom agent tools or composer buttons, or debugging an existing extension.",
     "repo": "finchtoys/finch-releases",
+    "preferredInstallScope": "global",
     "categories": ["developer", "productivity"]
   },
   {
@@ -45,6 +46,7 @@
     "author": "Finch Team",
     "description": "Create, edit, evaluate, and optimize Finch skills. Includes built-in evals, variance analysis, and tools to benchmark and improve skill trigger accuracy.",
     "repo": "finchtoys/finch-releases",
+    "preferredInstallScope": "global",
     "categories": ["developer-tools", "productivity"]
   },
   {

@@ -7,6 +7,7 @@
     "repo": "finchtoys/finch-releases",
     "npm": "@finch.app/mcp-bridge",
     "extensionType": "official",
+    "communityInstallScope": "global",
     "categories": ["mcp", "developer-tools"]
   }
 ]
