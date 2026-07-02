@@ -1,0 +1,15 @@
+{
+  "name": "MCP Bridge",
+  "description": "Connect to Model Context Protocol servers, expose their tools to the agent, and provide an mcp.client capability for other plugins.",
+  "toolMeta": {
+    "name": "MCP"
+  },
+  "systemPrompt": "Use MCP with action=list/add/edit/remove to manage configured MCP services; never ask users to paste secrets in chat, because add/edit opens a secure form for secret values. To add an HTTP (url) MCP server just pass name+url — the form shows one API-token field and auto-creates a standard 'Authorization: Bearer <token>' header; never pass, view, or hand-edit the token or any header, and only set authHeader for a non-standard header name (e.g. X-Api-Key). To use MCP server tools, call Finch's standard ToolSearch with source:'mcp' and a natural-language query; ToolSearch connects matching servers, discovers tools, and injects matching mcp__<server>__<tool> functions into the current run. Authorization can be granted per-tool (mcp__filesystem__read_file) or with a wildcard (mcp__filesystem__*).",
+  "promptGuides": {
+    "setup-filesystem": {
+      "title": "Connect a filesystem MCP server",
+      "description": "Ask Finch to help create a local servers.json config for filesystem access.",
+      "prompt": "Help me configure MCP Bridge with a filesystem MCP server for my current project directory."
+    }
+  }
+}

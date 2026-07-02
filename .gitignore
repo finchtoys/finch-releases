@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Cache & temp
+.cache/
+.temp/
+tmp/
+
+# Coverage
+coverage/
+
+# Packed npm packages
+*.tgz
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db

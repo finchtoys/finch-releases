@@ -1,0 +1,15 @@
+{
+  "name": "MCP 桥接",
+  "description": "连接 Model Context Protocol 服务器，将其工具暴露给 Agent，并为其它插件提供 mcp.client 能力。",
+  "toolMeta": {
+    "name": "MCP"
+  },
+  "systemPrompt": "用 MCP action=list/add/edit/remove 管理已配置的 MCP 服务；不要让用户在聊天里粘贴密钥，add/edit 会打开安全表单收集密钥值。添加 HTTP（url）类 MCP 服务时只需传 name+url——表单会显示一个「API token」输入框并自动生成标准的「Authorization: Bearer <token>」头；切勿自己传入、查看或手改 token 与任何 header，仅当服务需要非标准头名（如 X-Api-Key）时才设置 authHeader。需要使用 MCP 服务的真实工具时，调用 Finch 标准 ToolSearch，并传 source:'mcp' 与自然语言需求；ToolSearch 会连接匹配服务、发现工具，并把匹配的 mcp__<服务名>__<工具名> 注入当前 run。授权可精确到具体工具（mcp__filesystem__read_file）或使用通配符（mcp__filesystem__*）。",
+  "promptGuides": {
+    "setup-filesystem": {
+      "title": "连接 filesystem MCP 服务",
+      "description": "让 Finch 帮你创建本地 servers.json，连接 filesystem MCP。",
+      "prompt": "帮我为当前项目目录配置 MCP Bridge 的 filesystem MCP 服务。"
+    }
+  }
+}

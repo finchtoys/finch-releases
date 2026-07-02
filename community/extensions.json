@@ -1,0 +1,12 @@
+[
+  {
+    "id": "mcp-bridge",
+    "name": "MCP Bridge",
+    "author": "Finch Team",
+    "description": "Connect Model Context Protocol servers and expose their tools to the Finch agent.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "@finch.app/mcp-bridge",
+    "extensionType": "official",
+    "categories": ["mcp", "developer-tools"]
+  }
+]
