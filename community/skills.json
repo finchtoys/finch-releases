@@ -62,5 +62,13 @@
     "description": "Work with spreadsheet files (.xlsx, .xlsm, .csv, .tsv): read, edit, add columns, compute formulas, format, chart, clean messy data, or create new spreadsheets from scratch.",
     "repo": "finchtoys/finch-releases",
     "categories": ["documents", "productivity"]
+  },
+  {
+    "id": "find-skills",
+    "name": "Find Skills",
+    "author": "Vercel Labs",
+    "description": "This skill helps you discover and install skills from the open agent skills ecosystem.",
+    "repo": "vercel-labs/skills",
+    "categories": ["tools"]
   }
 ]
