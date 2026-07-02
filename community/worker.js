@@ -1,30 +1,30 @@
 /**
  * Cloudflare Worker — community.finchwork.app
  *
- * Proxies static JSON files from the finchtoys/finch-releases GitHub repo
- * with edge caching and CORS headers so the Finch app can fetch them directly.
+ * Serves any JSON file under the `community/` directory of
+ * finchtoys/finch-releases as a public API endpoint with edge caching and CORS.
+ *
+ * File mapping (no code changes needed when adding new files):
+ *   GET /extensions.json  → community/extensions.json
+ *   GET /skills.json      → community/skills.json
+ *   GET /anything.json    → community/anything.json   (auto-discovered)
  *
  * Deploy:
- *   1. Create a Worker in the Cloudflare Dashboard (or via Wrangler).
- *   2. Paste this script.
- *   3. Add a Secret: Settings → Variables → Secret variables → GITHUB_TOKEN
- *      (a fine-grained PAT with read-only public repo access is enough)
- *   4. Add a Custom Domain: community.finchwork.app → this Worker.
- *
- * Routes:
- *   GET /extensions.json   → community/extensions.json (recommended extension list)
- *   GET /health            → {"ok":true}
+ *   1. Cloudflare Dashboard → Workers & Pages → Create → Deploy a Worker → paste this file.
+ *   2. Settings → Variables → Secret variables → add GITHUB_TOKEN
+ *      (fine-grained PAT, finchtoys/finch-releases, Contents: Read-only)
+ *   3. Settings → Triggers → Custom Domains → community.finchwork.app
  */
 
 const GITHUB_RAW_BASE =
   'https://raw.githubusercontent.com/finchtoys/finch-releases/main/community';
 
-/** Cache TTL in seconds. GitHub updates are picked up within this window. */
 const CACHE_TTL = 3600; // 1 hour
 
-const ROUTES = {
-  '/extensions.json': `${GITHUB_RAW_BASE}/extensions.json`,
-};
+/** Only allow JSON files to prevent arbitrary file exposure. */
+function isAllowedPath(pathname) {
+  return /^\/[a-z0-9_-]+\.json$/i.test(pathname);
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -33,13 +33,15 @@ export default {
 
     // Health check
     if (path === '/health') {
-      return json({ ok: true });
+      return json({ ok: true, base: GITHUB_RAW_BASE });
     }
 
-    const upstream = ROUTES[path];
-    if (!upstream) {
-      return json({ error: 'Not found', path }, 404);
+    // Guard: only serve *.json files, block directory traversal
+    if (!isAllowedPath(path)) {
+      return json({ error: 'Not found' }, 404);
     }
+
+    const upstream = `${GITHUB_RAW_BASE}${path}`;
 
     // Try the edge cache first
     const cache = caches.default;
@@ -47,7 +49,6 @@ export default {
     let response = await cache.match(cacheKey);
 
     if (!response) {
-      // Cache miss — fetch from GitHub with token to avoid rate limits
       const headers = { 'User-Agent': 'community.finchwork.app/1.0' };
       if (env.GITHUB_TOKEN) {
         headers['Authorization'] = `Bearer ${env.GITHUB_TOKEN}`;
@@ -59,14 +60,13 @@ export default {
       });
 
       if (!githubRes.ok) {
-        // Pass through GitHub's rate-limit headers for debugging
         const rateLimitInfo = {
           remaining: githubRes.headers.get('x-ratelimit-remaining'),
           reset: githubRes.headers.get('x-ratelimit-reset'),
         };
         return json(
-          { error: 'Upstream fetch failed', status: githubRes.status, rateLimitInfo },
-          502,
+          { error: 'Not found or upstream failed', status: githubRes.status, rateLimitInfo },
+          githubRes.status === 404 ? 404 : 502,
         );
       }
 
@@ -80,10 +80,8 @@ export default {
         },
       });
 
-      // Store in edge cache (fire and forget)
       ctx.waitUntil(cache.put(cacheKey, response.clone()));
     } else {
-      // Cache hit
       response = new Response(response.body, response);
       response.headers.set('X-Cache', 'HIT');
       response.headers.set('Access-Control-Allow-Origin', '*');
