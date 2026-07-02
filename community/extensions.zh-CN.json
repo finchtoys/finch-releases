@@ -1,0 +1,7 @@
+[
+  {
+    "id": "mcp-bridge",
+    "name": "MCP 桥接",
+    "description": "连接 Model Context Protocol 服务，并把它们的工具暴露给 Finch Agent。"
+  }
+]

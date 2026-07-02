@@ -5,9 +5,11 @@
  * finchtoys/finch-releases as a public API endpoint with edge caching and CORS.
  *
  * File mapping (no code changes needed when adding new files):
- *   GET /extensions.json  → community/extensions.json
- *   GET /skills.json      → community/skills.json
- *   GET /anything.json    → community/anything.json   (auto-discovered)
+ *   GET /extensions.json        → community/extensions.json
+ *   GET /extensions.zh-CN.json  → community/extensions.zh-CN.json
+ *   GET /skills.json            → community/skills.json
+ *   GET /skills.zh-CN.json      → community/skills.zh-CN.json
+ *   GET /anything.json          → community/anything.json   (auto-discovered)
  *
  * Deploy:
  *   1. Cloudflare Dashboard → Workers & Pages → Create → Deploy a Worker → paste this file.
@@ -23,7 +25,7 @@ const CACHE_TTL = 3600; // 1 hour
 
 /** Only allow JSON files to prevent arbitrary file exposure. */
 function isAllowedPath(pathname) {
-  return /^\/[a-z0-9_-]+\.json$/i.test(pathname);
+  return /^\/[a-z0-9_-]+(?:\.[a-z]{2}(?:-[a-z]{2})?)?\.json$/i.test(pathname);
 }
 
 export default {

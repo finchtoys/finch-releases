@@ -8,6 +8,6 @@
     "npm": "@finch.app/mcp-bridge",
     "extensionType": "official",
     "installScope": "global",
-    "categories": ["mcp", "developer"]
+    "categories": ["developer", "tools"]
   }
 ]

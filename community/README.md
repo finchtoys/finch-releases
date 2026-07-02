@@ -6,9 +6,11 @@ This directory powers **community.finchwork.app** — the recommended extension 
 
 ```
 finchtoys/finch-releases (GitHub)
-  └── community/extensions.json   ← you edit this
+  └── community/extensions.json        ← English fallback registry
+  └── community/extensions.zh-CN.json  ← optional Chinese overrides
           ↓  (Cloudflare Worker proxies + caches)
-  community.finchwork.app/extensions.json  ← Finch app fetches this
+  community.finchwork.app/extensions.json        ← Finch app fetches this
+  community.finchwork.app/extensions.zh-CN.json  ← Finch app fetches this for zh-CN overrides
 ```
 
 The Cloudflare Worker (`worker.js`) caches the JSON at the edge for 1 hour, so GitHub rate limits are never a concern for end users.
@@ -26,7 +28,7 @@ Each entry in `extensions.json` is an object with these fields:
 | `repo` | string | ✅ | GitHub `owner/repo` (for source / issues link) |
 | `npm` | string | — | npm package name — enables `npx @finch.app/extensions add <npm>` one-click install |
 | `extensionType` | `"official"` \| `"community"` | — | Defaults to `"community"` |
-| `categories` | string[] | — | Used for filtering in the Finch extension marketplace |
+| `categories` | string[] | — | Used for filtering in the Finch extension marketplace. Use the fixed category ids below. |
 
 ### Example
 
@@ -40,7 +42,7 @@ Each entry in `extensions.json` is an object with these fields:
     "repo": "finchtoys/finch-releases",
     "npm": "@finch.app/mcp-bridge",
     "extensionType": "official",
-    "categories": ["mcp", "developer-tools"]
+    "categories": ["developer", "tools"]
   },
   {
     "id": "my-community-ext",
@@ -65,6 +67,45 @@ Each entry in `extensions.json` is an object with these fields:
 - The extension must be published on npm (so users can install via `npx @finch.app/extensions add <npm>`), or have a public GitHub repo with a downloadable zip.
 - `package.json#finch.id` must match the `id` field here.
 - Description must be in English.
+
+## Categories
+
+Finch only shows a fixed set of category filters in the app. Use these ids in `categories`:
+
+| id | zh-CN | en-US |
+|---|---|---|
+| `productivity` | 效率 | Productivity |
+| `developer` | 开发 | Developer |
+| `tools` | 工具 | Tools |
+| `writing` | 写作 | Writing |
+| `research` | 研究 | Research |
+| `lifestyle` | 生活 | Lifestyle |
+
+## Locale overrides
+
+Keep the main registry files in English:
+
+- `extensions.json`
+- `skills.json`
+
+For translated display text, add optional locale override files:
+
+- `extensions.zh-CN.json`
+- `skills.zh-CN.json`
+
+Override entries are matched by `id` and should only include translated user-facing fields:
+
+```json
+[
+  {
+    "id": "mcp-bridge",
+    "name": "MCP 桥接",
+    "description": "连接 Model Context Protocol 服务，并把它们的工具暴露给 Finch Agent。"
+  }
+]
+```
+
+If an override file or field is missing, Finch falls back to the English `name` and `description` in the main registry.
 
 ## Cloudflare Worker setup
 
