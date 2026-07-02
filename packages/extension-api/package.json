@@ -12,7 +12,6 @@
   "keywords": ["finch", "extension", "api"],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/finchtoys/finch-releases.git",
-    "directory": "packages/extension-api"
+    "url": "git+https://github.com/puterjam/finch.git"
   }
 }

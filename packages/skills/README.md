@@ -1,6 +1,6 @@
 # @finch.app/skills
 
-CLI shim for installing [Finch](https://github.com/finchtoys/finch-releases) skills to the correct location — no matter which tool you used to get them.
+CLI shim for installing [Finch](https://github.com/puterjam/finch) skills to the correct location — no matter which tool you used to get them.
 
 ## Why this exists
 
@@ -27,7 +27,13 @@ npx @finch.app/skills add git@github.com:owner/repo.git
 # Local path
 npx @finch.app/skills add ./my-local-skill
 
-# Install to global (~/.finch/skills/) instead of project-level
+# Install to the current project
+npx @finch.app/skills add owner/repo --cwd
+
+# Install to a specific project path
+npx @finch.app/skills add owner/repo --cwd /path/to/project
+
+# Install globally (~/.finch/skills/)
 npx @finch.app/skills add owner/repo --global
 
 # Pick one skill by name when a repo has several
@@ -53,13 +59,15 @@ npx @finch.app/skills where
 
 | Flag | Path | Scope |
 |---|---|---|
-| *(default)* | `<cwd>/.finch/skills/<name>/` | Project / Space session |
+| *(default)* | `<workspace.json#finchHomeDir>/.finch/skills/<name>/` | Current Finch workspace |
+| `--cwd` | `<process.cwd()>/.finch/skills/<name>/` | Current project |
+| `--cwd path` | `<path>/.finch/skills/<name>/` | Specific project |
 | `--global` | `~/.finch/skills/<name>/` | All Finch sessions |
 
-- **Default (no flag):** installs under the current working directory. Finch picks it up automatically when a session or Space is opened in that directory.
+- **Default (no flag):** reads `~/.finch/workspace.json#finchHomeDir` and installs under that workspace home.
+- **`--cwd`:** installs under the current working directory. Finch picks it up automatically when a session or Space is opened in that directory.
+- **`--cwd path`:** installs under the specified project directory.
 - **`--global`:** installs under `~/.finch/skills/`, available across every session regardless of directory.
-
-Set `FINCH_HOME` to override the Finch home directory.
 
 ## What is a skill?
 

@@ -17,17 +17,42 @@ import { createInterface } from "node:readline";
 
 // ── Install directories ───────────────────────────────────────────────────────
 
+function finchRuntimeHome() {
+  return process.env.FINCH_RUNTIME_HOME ?? join(homedir(), ".finch");
+}
+
+function expandHomePath(path) {
+  return path.replace(/^~(?=\/|$)/, homedir());
+}
+
+function readJson(path, fallback) {
+  try { return JSON.parse(readFileSync(path, "utf-8")); } catch { return fallback; }
+}
+
+function configuredAgentHome() {
+  const state = readJson(join(finchRuntimeHome(), "workspace.json"), {});
+  const configured = typeof state.finchHomeDir === "string" && state.finchHomeDir.trim()
+    ? state.finchHomeDir.trim()
+    : join(homedir(), "finchnest");
+  return resolve(expandHomePath(configured));
+}
+
 function globalSkillsDir() {
-  const base = process.env.FINCH_HOME ?? join(homedir(), ".finch");
-  return join(base, "skills");
+  return join(homedir(), ".finch", "skills");
 }
 
-function projectSkillsDir() {
-  return join(process.cwd(), ".finch", "skills");
+function personalSkillsDir() {
+  return join(configuredAgentHome(), ".finch", "skills");
 }
 
-function targetDir(isGlobal) {
-  return isGlobal ? globalSkillsDir() : projectSkillsDir();
+function projectSkillsDir(cwd = process.cwd()) {
+  return join(resolve(expandHomePath(cwd)), ".finch", "skills");
+}
+
+function targetDir(opts) {
+  if (opts.global) return globalSkillsDir();
+  if (opts.cwd !== undefined) return projectSkillsDir(opts.cwd || process.cwd());
+  return personalSkillsDir();
 }
 
 // ── Lock file ─────────────────────────────────────────────────────────────────
@@ -191,9 +216,9 @@ function installAll(skillDirs, destRoot, lockSource) {
 
 // ── Command: add ─────────────────────────────────────────────────────────────
 
-async function cmdAdd(src, { isGlobal, skillFilter }) {
+async function cmdAdd(src, { opts, skillFilter }) {
   const parsed = parseSource(src);
-  const dest = targetDir(isGlobal);
+  const dest = targetDir(opts);
   const tmp = join(tmpdir(), `finch-skill-${randomUUID()}`);
 
   try {
@@ -332,13 +357,15 @@ function prompt(question) {
   });
 }
 
-async function cmdUpdate(names, isGlobal) {
-  const projectDir = projectSkillsDir();
+async function cmdUpdate(names, opts) {
+  const personalDir = personalSkillsDir();
+  const projectDir = projectSkillsDir(opts.cwd || process.cwd());
   const globalDir  = globalSkillsDir();
+  const requestedScope = opts.global ? "global" : opts.cwd !== undefined ? "project" : "personal";
 
   // ── Named update (specific skills) ────────────────────────────────────────
   if (names.length > 0) {
-    const dir = targetDir(isGlobal);
+    const dir = targetDir(opts);
     const lock = readLock(dir);
     let anyFailed = false;
 
@@ -366,49 +393,48 @@ async function cmdUpdate(names, isGlobal) {
   }
 
   // ── No names: determine scope ──────────────────────────────────────────────
+  const personalLock = readLock(personalDir);
   const projectLock = readLock(projectDir);
   const globalLock  = readLock(globalDir);
 
+  const personalUpdatable = listInstalledSkills(personalDir).filter((s) => personalLock[s.dir]);
   const projectUpdatable = listInstalledSkills(projectDir).filter((s) => projectLock[s.dir]);
   const globalUpdatable  = listInstalledSkills(globalDir).filter((s) => globalLock[s.dir]);
 
-  const hasProject = projectUpdatable.length > 0;
-  const hasGlobal  = globalUpdatable.length  > 0;
+  const entries = [
+    { scope: "personal", dir: personalDir, lock: personalLock, list: personalUpdatable },
+    { scope: "project", dir: projectDir, lock: projectLock, list: projectUpdatable },
+    { scope: "global", dir: globalDir, lock: globalLock, list: globalUpdatable },
+  ].filter((entry) => entry.list.length > 0);
 
-  if (!hasProject && !hasGlobal) {
+  if (entries.length === 0) {
     console.log("Nothing to update — no tracked skills found.");
     console.log("(Skills installed without @finch.app/skills can't be auto-updated.)");
     return;
   }
 
-  // If --global flag was passed, skip the prompt
-  let scopes;
-  if (isGlobal) {
-    scopes = ["global"];
-  } else if (!hasProject && hasGlobal) {
-    scopes = ["global"];
-  } else if (hasProject && !hasGlobal) {
-    scopes = ["project"];
-  } else {
-    // Both have skills — ask
+  let selected = entries.filter((entry) => entry.scope === requestedScope);
+  if (selected.length === 0 && requestedScope === "personal" && entries.length === 1) selected = entries;
+  if (selected.length === 0 && requestedScope !== "personal") {
+    console.log(`Nothing to update in ${requestedScope} skills.`);
+    return;
+  }
+  if (requestedScope === "personal" && entries.length > 1) {
     console.log("\nSkills available to update:");
-    if (hasProject) console.log(`  Project (${projectDir}):\n    ${projectUpdatable.map((s) => s.name).join(", ")}`);
-    if (hasGlobal)  console.log(`  Global  (${globalDir}):\n    ${globalUpdatable.map((s) => s.name).join(", ")}`);
-    console.log();
-
-    const answer = await prompt("[1] Project  [2] Global  [3] Both  [q] Cancel\n> ");
+    entries.forEach((entry, index) => {
+      console.log(`  [${index + 1}] ${entry.scope} (${entry.dir}):\n    ${entry.list.map((s) => s.name).join(", ")}`);
+    });
+    console.log(`  [${entries.length + 1}] All`);
+    const answer = await prompt(`Choose scope [1-${entries.length + 1}, q] > `);
     if (answer === "q" || answer === "Q") { console.log("Cancelled."); return; }
-    if (answer === "2") scopes = ["global"];
-    else if (answer === "3") scopes = ["project", "global"];
-    else scopes = ["project"];
+    if (answer === String(entries.length + 1)) selected = entries;
+    else selected = [entries[Math.max(0, Math.min(entries.length - 1, Number(answer || "1") - 1))]];
   }
 
   let anyFailed = false;
 
-  for (const scope of scopes) {
-    const dir   = scope === "global" ? globalDir : projectDir;
-    const lock  = scope === "global" ? globalLock : projectLock;
-    const list  = scope === "global" ? globalUpdatable : projectUpdatable;
+  for (const entry of selected) {
+    const { scope, dir, lock, list } = entry;
     console.log(`\nUpdating ${scope} skills in ${dir}…`);
 
     for (const skill of list) {
@@ -424,8 +450,8 @@ async function cmdUpdate(names, isGlobal) {
 
 // ── Command: list ─────────────────────────────────────────────────────────────
 
-function cmdList(isGlobal) {
-  const dir = targetDir(isGlobal);
+function cmdList(opts) {
+  const dir = targetDir(opts);
   const skills = listInstalledSkills(dir);
   const lock = readLock(dir);
   if (skills.length === 0) { console.log(`No skills installed in ${dir}`); return; }
@@ -441,8 +467,9 @@ function cmdList(isGlobal) {
 
 // ── Command: remove ───────────────────────────────────────────────────────────
 
-function cmdRemove(names, isGlobal) {
-  const dir = targetDir(isGlobal);
+function cmdRemove(names, opts) {
+  const dir = targetDir(opts);
+  const scope = opts.global ? "global" : opts.cwd !== undefined ? "cwd" : "personal";
   const skills = listInstalledSkills(dir);
   let anyFailed = false;
   for (const name of names) {
@@ -453,7 +480,7 @@ function cmdRemove(names, isGlobal) {
     console.log(`✓ Removed "${match.name}"`);
   }
   if (anyFailed) {
-    console.error(`\nRun "npx @finch.app/skills list${isGlobal ? " --global" : ""}" to see installed skills.`);
+    console.error(`\nRun "list --${scope}" to see installed skills.`);
     process.exit(1);
   }
 }
@@ -461,48 +488,66 @@ function cmdRemove(names, isGlobal) {
 // ── Command: where ────────────────────────────────────────────────────────────
 
 function cmdWhere() {
-  console.log("Project skills:", projectSkillsDir());
-  console.log("Global  skills:", globalSkillsDir());
+  console.log("Personal skills:", personalSkillsDir());
+  console.log("Project  skills:", projectSkillsDir());
+  console.log("Global   skills:", globalSkillsDir());
 }
 
 // ── Usage ─────────────────────────────────────────────────────────────────────
 
 function printUsage() {
   console.log(`
-@finch.app/skills — Install Finch skills from anywhere
+npx @finch.app/skills — Install Finch skills from anywhere
 
 Usage:
-  npx @finch.app/skills add owner/repo                                  GitHub shorthand
-  npx @finch.app/skills add https://github.com/owner/repo               Full repo URL
-  npx @finch.app/skills add https://github.com/owner/repo/tree/main/skills/my-skill
-  npx @finch.app/skills add https://gitlab.com/org/repo                 GitLab URL
-  npx @finch.app/skills add git@github.com:owner/repo.git               SSH URL
-  npx @finch.app/skills add ./my-local-skill                            Local path
+  add owner/repo                                  GitHub shorthand
+  add https://github.com/owner/repo               Full repo URL
+  add https://github.com/owner/repo/tree/main/skills/my-skill
+  add https://gitlab.com/org/repo                 GitLab URL
+  add git@github.com:owner/repo.git               SSH URL
+  add ./my-local-skill                            Local path
 
-  npx @finch.app/skills update                              Update all (interactive scope)
-  npx @finch.app/skills update my-skill                    Update one skill
-  npx @finch.app/skills update skill-a skill-b             Update several skills
+  update                              Update all (interactive scope)
+  update my-skill                    Update one skill
+  update skill-a skill-b             Update several skills
 
-  npx @finch.app/skills list [--global]                    List installed skills + sources
-  npx @finch.app/skills remove <name...> [--global]        Remove one or more skills
-  npx @finch.app/skills rm my-skill                        Alias for remove
-  npx @finch.app/skills where                              Show install directories
+  list [--global|--cwd [path]]              List installed skills + sources
+  remove <name...> [--global|--cwd [path]]  Remove one or more skills
+  rm my-skill                        Alias for remove
+  where                              Show install directories
 
 Flags:
-  --global        Operate on ~/.finch/skills/ (default: <cwd>/.finch/skills/)
+  --global        Operate on ~/.finch/skills/
+  --cwd [path]    Operate on process.cwd()/.finch/skills/ or path/.finch/skills/
   --skill <name>  Pick one skill by name when a repo contains several
 
-Environment:
-  FINCH_HOME  Override Finch home directory (default: ~/.finch)
+Default location:
+  workspace.json#finchHomeDir/.finch/skills/
 `.trim());
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-const isGlobal = args.includes("--global");
-const skillFlag = (() => { const i = args.indexOf("--skill"); return i !== -1 ? (args[i + 1] ?? null) : null; })();
-const positional = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--skill");
+const opts = { global: false, cwd: undefined };
+let skillFlag = null;
+const positional = [];
+for (let i = 0; i < args.length; i += 1) {
+  const a = args[i];
+  if (a === "--global") opts.global = true;
+  else if (a === "--cwd") {
+    const next = args[i + 1];
+    if (next && !next.startsWith("-")) {
+      opts.cwd = next;
+      i += 1;
+    } else {
+      opts.cwd = "";
+    }
+  } else if (a === "--skill") {
+    skillFlag = args[i + 1] ?? null;
+    i += 1;
+  } else positional.push(a);
+}
 const [command, ...rest] = positional;
 
 switch (command) {
@@ -510,19 +555,19 @@ switch (command) {
   case "install": {
     const src = rest[0];
     if (!src) { console.error("Error: missing <source>"); printUsage(); process.exit(1); }
-    await cmdAdd(src, { isGlobal, skillFilter: skillFlag });
+    await cmdAdd(src, { opts, skillFilter: skillFlag });
     break;
   }
   case "update":
-    await cmdUpdate(rest, isGlobal);
+    await cmdUpdate(rest, opts);
     break;
   case "list":
-    cmdList(isGlobal);
+    cmdList(opts);
     break;
   case "remove":
   case "rm": {
     if (rest.length === 0) { console.error("Error: missing <skill-name>"); printUsage(); process.exit(1); }
-    cmdRemove(rest, isGlobal);
+    cmdRemove(rest, opts);
     break;
   }
   case "where":

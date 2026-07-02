@@ -15,7 +15,13 @@ npx @finch.app/extensions add ./my-extension
 npx @finch.app/extensions add ./my-extension.zip
 npx @finch.app/extensions add https://github.com/user/repo/archive/refs/heads/main.zip
 
-# Install globally (~/.finch/plugins/)
+# Install to the current project
+npx @finch.app/extensions add @finch/extension-mcp --cwd
+
+# Install to a specific project path
+npx @finch.app/extensions add @finch/extension-mcp --cwd /path/to/project
+
+# Install globally (~/.finch/extensions/)
 npx @finch.app/extensions add @finch/extension-mcp --global
 
 # List installed extensions
@@ -36,10 +42,12 @@ npx @finch.app/extensions doctor ./my-extension
 
 | Flag | Path | Scope |
 |---|---|---|
-| *(default)* | `<cwd>/.finch/plugins/<id>/` | Project / Space session |
-| `--global` | `~/.finch/plugins/<id>/` | All Finch sessions |
+| *(default)* | `<workspace.json#finchHomeDir>/.finch/extensions/<id>/` | Current Finch workspace |
+| `--cwd` | `<process.cwd()>/.finch/extensions/<id>/` | Current project |
+| `--cwd path` | `<path>/.finch/extensions/<id>/` | Specific project |
+| `--global` | `~/.finch/extensions/<id>/` | All Finch sessions |
 
-Set `FINCH_HOME` to override the global Finch data directory.
+The default workspace path is read from `~/.finch/workspace.json#finchHomeDir`.
 
 ## Extension package
 

@@ -1,10 +1,10 @@
 {
   "name": "@finch.app/extensions",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "CLI shim for installing Finch extensions to the correct location.",
   "type": "module",
   "bin": {
-    "finch-extensions": "bin/plugins.mjs"
+    "finch-extensions": "bin/extensions.mjs"
   },
   "files": [
     "bin/",

@@ -1,11 +1,11 @@
 {
   "name": "@finch.app/skills",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "CLI shim to install Finch skills from any tool or directory",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "skills": "./bin/skills.mjs"
+    "finch-skills": "./bin/skills.mjs"
   },
   "files": [
     "bin/",
@@ -22,7 +22,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/finchtoys/finch-releases.git",
-    "directory": "packages/skills"
+    "url": "git+https://github.com/puterjam/finch.git"
   }
 }

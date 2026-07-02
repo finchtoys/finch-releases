@@ -16,20 +16,38 @@ import { randomUUID } from 'node:crypto';
 
 const LOCK_FILE = '.plugins-lock.json';
 
-function finchHome() {
-  return process.env.FINCH_HOME ?? join(homedir(), '.finch');
+function finchRuntimeHome() {
+  return process.env.FINCH_RUNTIME_HOME ?? join(homedir(), '.finch');
+}
+function expandHomePath(path) {
+  return path.replace(/^~(?=\/|$)/, homedir());
+}
+function workspaceStatePath() {
+  return join(finchRuntimeHome(), 'workspace.json');
+}
+function configuredAgentHome() {
+  const state = readJson(workspaceStatePath(), {});
+  const configured = typeof state.finchHomeDir === 'string' && state.finchHomeDir.trim()
+    ? state.finchHomeDir.trim()
+    : join(homedir(), 'finchnest');
+  return resolve(expandHomePath(configured));
 }
 function globalPluginsDir() {
-  return join(finchHome(), 'extensions');
+  return join(homedir(), '.finch', 'extensions');
 }
-function projectPluginsDir() {
-  return join(process.cwd(), '.finch', 'extensions');
+function personalPluginsDir() {
+  return join(configuredAgentHome(), '.finch', 'extensions');
 }
-function targetDir(isGlobal) {
-  return isGlobal ? globalPluginsDir() : projectPluginsDir();
+function projectPluginsDir(cwd = process.cwd()) {
+  return join(resolve(expandHomePath(cwd)), '.finch', 'extensions');
+}
+function targetDir(opts) {
+  if (opts.global) return globalPluginsDir();
+  if (opts.cwd !== undefined) return projectPluginsDir(opts.cwd || process.cwd());
+  return personalPluginsDir();
 }
 function pluginsStatePath() {
-  return join(finchHome(), 'plugins.json');
+  return join(finchRuntimeHome(), 'extensions.json');
 }
 function lockPath(dir) {
   return join(dir, LOCK_FILE);
@@ -205,7 +223,7 @@ async function installFromZip(src, dest, isUrl) {
 }
 
 async function cmdAdd(src, opts) {
-  const dest = targetDir(opts.global);
+  const dest = targetDir(opts);
 
   // --- zip URL (e.g. https://github.com/.../archive/main.zip) ---
   if (isZipUrl(src)) {
@@ -259,7 +277,7 @@ function listInstalled(dir) {
 }
 
 function cmdList(opts) {
-  const dir = targetDir(opts.global);
+  const dir = targetDir(opts);
   const plugins = listInstalled(dir);
   if (plugins.length === 0) {
     console.log(`No extensions installed in ${dir}`);
@@ -271,7 +289,7 @@ function cmdList(opts) {
 }
 
 function cmdRemove(id, opts) {
-  const dir = targetDir(opts.global);
+  const dir = targetDir(opts);
   const target = join(dir, id);
   if (!existsSync(target)) throw new Error(`extension not found: ${id}`);
   rmSync(target, { recursive: true, force: true });
@@ -316,9 +334,10 @@ function cmdEnable(id, enabled) {
 }
 
 function cmdWhere() {
-  console.log(`Project: ${projectPluginsDir()}`);
-  console.log(`Global:  ${globalPluginsDir()}`);
-  console.log(`State:   ${pluginsStatePath()}`);
+  console.log(`Personal: ${personalPluginsDir()}`);
+  console.log(`Project:  ${projectPluginsDir()}`);
+  console.log(`Global:   ${globalPluginsDir()}`);
+  console.log(`State:    ${pluginsStatePath()}`);
 }
 
 /** Collect JS/MJS/TS source files under a plugin dir (excludes node_modules/.git). */
@@ -408,7 +427,7 @@ function cmdDoctor(src = '.') {
 }
 
 async function cmdUpdate(id, opts) {
-  const dir = targetDir(opts.global);
+  const dir = targetDir(opts);
   const target = join(dir, id);
   if (!existsSync(target)) throw new Error(`extension not found: ${id}`);
   const source = readLock(dir)[id];
@@ -460,17 +479,26 @@ async function cmdUpdate(id, opts) {
 function parseArgs(argv) {
   const args = [...argv];
   const cmd = args.shift();
-  const opts = { global: false };
+  const opts = { global: false, cwd: undefined };
   const rest = [];
-  for (const a of args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
     if (a === '--global' || a === '-g') opts.global = true;
-    else rest.push(a);
+    else if (a === '--cwd') {
+      const next = args[i + 1];
+      if (next && !next.startsWith('-')) {
+        opts.cwd = next;
+        i += 1;
+      } else {
+        opts.cwd = '';
+      }
+    } else rest.push(a);
   }
   return { cmd, rest, opts };
 }
 
 function help() {
-  console.log(`@finch.app/extensions\n\nUsage:\n  finch-extensions add <npm-package|local-path|url.zip> [--global]\n  finch-extensions update <id> [--global]\n  finch-extensions list [--global]\n  finch-extensions remove <id> [--global]\n  finch-extensions enable <id>\n  finch-extensions disable <id>\n  finch-extensions where\n  finch-extensions doctor [path]\n`);
+  console.log(`npx @finch.app/extensions\n\nUsage:\n  add <npm-package|local-path|url.zip> [--global|--cwd [path]]\n  update <id> [--global|--cwd [path]]\n  list [--global|--cwd [path]]\n  remove <id> [--global|--cwd [path]]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/\n  --cwd      process.cwd()/.finch/extensions/\n  --cwd path path/.finch/extensions/\n  --global   ~/.finch/extensions/\n`);
 }
 
 (async () => {

@@ -25,16 +25,16 @@ for pkg_dir in packages/*; do
   fi
 
   echo "[check] $name@$version ..."
-  if npm view "$name@$version" version >/dev/null 2>&1; then
+  if npm view "$name@$version" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
     echo "[skip] $name@$version already published"
     continue
   fi
 
   echo "[publish] $name@$version ..."
   if [ -n "$DRY_RUN" ]; then
-    npm publish "$pkg_dir" --access public --dry-run
+    npm publish "$pkg_dir" --access public --dry-run --registry https://registry.npmjs.org
   else
-    npm publish "$pkg_dir" --access public
+    npm publish "$pkg_dir" --access public --registry https://registry.npmjs.org
   fi
   echo "[done] $name@$version"
 done
