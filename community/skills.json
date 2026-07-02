@@ -1,7 +1,7 @@
 [
   {
     "id": "docx",
-    "name": "DOCX",
+    "name": "Document",
     "author": "Finch Team",
     "description": "Create, read, edit, and manipulate Word documents. Use for any .docx task: reports, memos, letters, templates, tracked changes, or converting content into a polished Word document.",
     "repo": "finchtoys/finch-releases",
@@ -13,7 +13,7 @@
     "author": "Finch Team",
     "description": "Guide for developing, debugging, and testing Finch extensions. Use when creating a new extension, adding custom agent tools or composer buttons, or debugging an existing extension.",
     "repo": "finchtoys/finch-releases",
-    "categories": ["developer-tools"]
+    "categories": ["developer", "productivity"]
   },
   {
     "id": "frontend-design",
@@ -33,7 +33,7 @@
   },
   {
     "id": "pptx",
-    "name": "PPTX",
+    "name": "Presentation",
     "author": "Finch Team",
     "description": "Work with PowerPoint files: create slide decks, pitch decks, and presentations; read, edit, combine, or split .pptx files; work with templates, layouts, and speaker notes.",
     "repo": "finchtoys/finch-releases",
@@ -57,7 +57,7 @@
   },
   {
     "id": "xlsx",
-    "name": "XLSX",
+    "name": "Spreadsheet",
     "author": "Finch Team",
     "description": "Work with spreadsheet files (.xlsx, .xlsm, .csv, .tsv): read, edit, add columns, compute formulas, format, chart, clean messy data, or create new spreadsheets from scratch.",
     "repo": "finchtoys/finch-releases",
