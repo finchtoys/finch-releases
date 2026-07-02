@@ -77,9 +77,9 @@ Finch only shows a fixed set of category filters in the app. Use these ids in `c
 | `productivity` | 效率 | Productivity |
 | `developer` | 开发 | Developer |
 | `tools` | 工具 | Tools |
-| `writing` | 写作 | Writing |
+| `creative` | 创意 | Creative |
 | `research` | 研究 | Research |
-| `lifestyle` | 生活 | Lifestyle |
+| `automation` | 自动化 | Automation |
 
 ## Locale overrides
 
