@@ -47,7 +47,7 @@
     "description": "Create, edit, evaluate, and optimize Finch skills. Includes built-in evals, variance analysis, and tools to benchmark and improve skill trigger accuracy.",
     "repo": "finchtoys/finch-releases",
     "installScope": "global",
-    "categories": ["developer-tools", "productivity"]
+    "categories": ["tools", "productivity"]
   },
   {
     "id": "theme-factory",
