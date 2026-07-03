@@ -36,6 +36,7 @@ description: >
   "description": "一句话描述",               // 英文描述
   "repo": "finchtoys/finch-releases",       // GitHub owner/repo
   "npm": "@finch.app/mcp-bridge",           // (可选) npm 包名，支持一键安装
+  "version": "1.1.8",                        // (可选) npm 最新版本，由 sync_npm_versions.py 自动更新
   "extensionType": "official",              // (可选) "official" | "community"，默认 "community"
   "installScope": "global",                 // (可选) "global" | "local"
   "categories": ["developer"],               // 分类标签
@@ -100,7 +101,7 @@ cd ../../..  # finch-releases 仓库根目录
 | **弃用** | 「把 xx 标记为不再推荐」「下架 xx」 | `manage_registry.py deprecate` |
 | **恢复** | 「取消弃用 xx」 | `manage_registry.py undeprecate` |
 | **校验** | 「检查一下配置文件有没有问题」 | `validate.py` |
-| **同步 i18n** | 「把中文覆盖同步一下」 | 交互式操作 |
+| **版本同步** | 「更新一下 npm 版本」「检查一下扩展版本」 | `sync_npm_versions.py` |
 
 > **为什么用脚本而不是直接 Edit JSON？** JSON 数组的 Edit 操作容易破坏格式（尾逗号、缩进不对、字母序错乱）。用 Python 脚本保证写入格式一致，自动排序。查看和展示变更摘要时用 Read 工具即可。
 
@@ -220,8 +221,24 @@ python3 .finch/skills/community-manager/scripts/validate.py
 7. **中文覆盖完整** — 每个英文条目有对应 zh-CN 条目
 8. **中文覆盖无多余** — zh-CN 中无已移除的条目
 9. **扩展 id 一致性** — 检查 id 是否与 `extensions/<id>/package.json#finch.id` 匹配
+10. **npm 版本** — 有 `npm` 字段的条目是否都有 `version` 字段
 
-### 操作 6：同步中文覆盖（交互式）
+### 操作 6：同步 npm 版本（使用脚本）
+
+从 npm registry 拉取所有扩展的最新版本，写入 `version` 字段，供客户端做版本更新提醒。
+
+```bash
+cd ../../..
+python3 .finch/skills/community-manager/scripts/sync_npm_versions.py
+```
+
+带 `--dry-run` 预览不写文件：
+
+```bash
+python3 .finch/skills/community-manager/scripts/sync_npm_versions.py --dry-run
+```
+
+### 操作 7：同步中文覆盖（交互式）
 
 当英文文件新增了条目但 zh-CN 还没跟随时执行：
 
