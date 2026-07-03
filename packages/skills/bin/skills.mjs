@@ -172,13 +172,50 @@ function parseSource(src) {
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
 
+/**
+ * Look for an executable on PATH (via `which`/`where`), falling back to a
+ * handful of common install locations that don't always make it onto the
+ * PATH inherited by a GUI-launched app (Homebrew, Xcode Command Line Tools,
+ * Windows installer). Returns the resolved path, or null if not found.
+ */
+function findExecutable(name) {
+  const finder = process.platform === "win32" ? "where" : "which";
+  const found = spawnSync(finder, [name], { stdio: ["ignore", "pipe", "ignore"], encoding: "utf-8" });
+  if (found.status === 0) {
+    const first = found.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+    if (first) return first;
+  }
+  const candidateDirs = process.platform === "win32"
+    ? [join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "cmd")]
+    : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
+  const exeName = process.platform === "win32" ? `${name}.exe` : name;
+  for (const dir of candidateDirs) {
+    const candidate = join(dir, exeName);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+const GIT_INSTALL_HINT = process.platform === "darwin"
+  ? 'Install Git by running "xcode-select --install", or download it from https://git-scm.com/downloads.'
+  : "Install Git from https://git-scm.com/downloads, then try again.";
+
 function gitClone(url, dest, { branch, depth = 1 } = {}) {
+  const gitPath = findExecutable("git");
+  if (!gitPath) {
+    console.error(`  No "git" executable found on this machine. ${GIT_INSTALL_HINT}`);
+    return false;
+  }
   const args = ["clone", `--depth=${depth}`];
   if (branch) args.push("--branch", branch);
   args.push(url, dest);
-  const r = spawnSync("git", args, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
+  const r = spawnSync(gitPath, args, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
+  if (r.error) {
+    console.error(`  Failed to run git (${gitPath}): ${r.error.message}`);
+    return false;
+  }
   if (r.status !== 0) {
-    console.error(`  git clone failed:\n  ${r.stderr.trim()}`);
+    console.error(`  git clone failed:\n  ${(r.stderr || r.stdout || `exit code ${r.status}`).trim()}`);
     return false;
   }
   return true;

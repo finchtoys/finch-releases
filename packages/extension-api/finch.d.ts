@@ -305,17 +305,6 @@ declare module 'finch' {
     readonly projectPath: string | undefined;
   }
 
-  /**
-   * 监听 session 变化（例如用户切换到不同 Space）。
-   * 将返回的 Disposable 推入 `ctx.subscriptions`。
-   */
-  export namespace session {
-    export const onDidChangeSession: Event<SessionInfo>;
-    export const onDidChangeCwd: Event<string | undefined>;
-    /** 获取当前 session 快照（同步）。 */
-    export function getInfo(): SessionInfo;
-  }
-
   // ════════════════════════════════════════════════════════════════════════════
   // § 3  finch.tools — Agent 工具
   // ════════════════════════════════════════════════════════════════════════════
@@ -542,25 +531,6 @@ declare module 'finch' {
     execute(input: TInput, ctx: ToolExecutionContext): Promise<ToolResult>;
   }
 
-  /**
-   * Agent 工具注册表（`finch.tools`）。
-   *
-   * 注册后，模型可在对话中调用该工具；用户在「工具箱」中可管理启用状态。
-   */
-  export namespace tools {
-    /**
-     * 注册一个 Agent 工具。
-     * @returns Disposable — 注销此工具。将其推入 `ctx.subscriptions` 可自动管理。
-     */
-    function register(definition: ToolDefinition): Disposable;
-
-    /**
-     * 注册一个动态工具搜索 provider，供 Finch 标准 ToolSearch 调用。
-     * Provider 可在 search 内按需发现/注册 `exposure: 'dynamic'` 工具。
-     */
-    function registerSearchProvider(provider: ToolSearchProvider): Disposable;
-  }
-
   // ════════════════════════════════════════════════════════════════════════════
   // § 4  finch.composerActions — Composer 工具栏扩展
   // ════════════════════════════════════════════════════════════════════════════
@@ -632,49 +602,12 @@ declare module 'finch' {
     execute(ctx: ComposerActionContext, itemId: string): Promise<void>;
   }
 
-  /**
-   * Composer 工具栏扩展注册表（`finch.composerActions`）。
-   *
-   * manifest 的 `contributes.composerActions[]` 是**静态声明**（icon / tooltip），
-   * `register()` 是**动态数据绑定**。两者通过 `id` 匹配。
-   * Finch 负责所有 UI 渲染，插件无需接触任何 UI 库。
-   */
-  export namespace composerActions {
-    /**
-     * 将 `actionId` 对应的数据处理器注册到 Finch。
-     * `actionId` 必须与 manifest `contributes.composerActions[].id` 对应。
-     *
-     * @returns Disposable — 注销此 provider，按钮从工具栏消失。
-     */
-    function register(actionId: string, provider: ComposerActionProvider): Disposable;
-  }
-
   // ════════════════════════════════════════════════════════════════════════════
   // § 5  finch.commands — 命令系统（reserved）
   // ════════════════════════════════════════════════════════════════════════════
 
-  /**
-   * 命令注册与执行。
-   *
-   * 命令可绑定到快捷键、菜单项，也可以被其他插件调用。
-   * （Phase 2 能力，当前版本 API 预留，不保证运行时可用）
-   *
-   * @example
-   * finch.commands.register('myextension.helloWorld', () => {
-   *   finch.ui.showMessage('Hello!');
-   * });
-   */
-  export namespace commands {
-    /**
-     * 注册一个命令。命令 id 应带扩展前缀（`extensionId.commandName`）。
-     * @returns Disposable
-     */
-    function register(commandId: string, handler: (...args: unknown[]) => unknown): Disposable;
-    /** 以编程方式执行命令。 */
-    function execute(commandId: string, ...args: unknown[]): Promise<unknown>;
-    /** 获取当前所有已注册命令的 id 列表。 */
-    function getAll(): Promise<string[]>;
-  }
+  // `ctx.commands` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
+  // "尚未实现" 错误。命令类型不再暴露全局 namespace，实现后会补齐。
 
   // ════════════════════════════════════════════════════════════════════════════
   // § 6  finch.ui — UI 扩展（reserved）
@@ -712,37 +645,8 @@ declare module 'finch' {
     readonly onDidDispose: Event<void>;
   }
 
-  /**
-   * UI 扩展能力。
-   *
-   * Webview Panel 是插件复杂 UI 的逃生舱：插件提供 HTML，Finch 渲染 iframe。
-   * 插件不需要也不应该向宿主注入 React 组件。
-   * （Phase 2 能力，API 预留）
-   *
-   * @example
-   * const panel = finch.ui.createWebviewPanel({
-   *   title: '我的插件面板',
-   *   iconName: 'BarChart',
-   *   html: `<html><body><h1>Hello Finch</h1></body></html>`,
-   * });
-   * panel.postMessage({ type: 'init', data });
-   * panel.onDidReceiveMessage(msg => { ... });
-   * ctx.subscriptions.push(panel);
-   */
-  export namespace ui {
-    /**
-     * 创建一个 Webview Panel。Panel 浮现在 Finch 侧边或弹层区域。
-     * @returns WebviewPanel 句柄
-     */
-    function createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
-
-    /**
-     * 在 Finch 界面显示一条短暂通知。
-     * @param message 通知正文（纯文本）
-     * @param type    通知类型，影响图标与颜色
-     */
-    function showMessage(message: string, type?: 'info' | 'warning' | 'error'): void;
-  }
+  // `ctx.ui.createWebviewPanel` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
+  // "尚未实现" 错误。`ctx.ui.showMessage` 为尽力而为的日志降级。全局 namespace 不再暴露。
 
   // ════════════════════════════════════════════════════════════════════════════
   // § 6.5  Capabilities — 插件间能力协作
@@ -754,14 +658,31 @@ declare module 'finch' {
    */
   export type CapabilityImpl = Record<string, (...args: never[]) => unknown>;
 
+  /** `ctx.capabilities.provide` 的可选元信息。 */
+  export interface CapabilityProvideOptions {
+    /**
+     * 能力的 semver 版本号（如 `'1.2.0'`）。消费方可用 `getVersion()` 读取并做兼容判断，
+     * 避免因能力接口演进而在无版本协商下出现静默不兼容。省略则视为无版本声明。
+     */
+    readonly version?: string;
+  }
+
   /** `ctx.capabilities` 的接口。 */
   export interface Capabilities {
-    /** 提供一个能力。仅允许 manifest `provides.capabilities` 中声明的名字。 */
-    provide(name: string, implementation: CapabilityImpl): Disposable;
+    /**
+     * 提供一个能力。仅允许 manifest `provides.capabilities` 中声明的名字。
+     * 建议通过 `options.version` 声明 semver 版本，便于消费方协商兼容性。
+     */
+    provide(name: string, implementation: CapabilityImpl, options?: CapabilityProvideOptions): Disposable;
     /** 获取一个能力代理。仅允许 manifest `requires.capabilities` 中声明的名字。 */
     get<T = Record<string, (...args: never[]) => Promise<unknown>>>(name: string): T;
     /** 当前是否有插件提供该能力。 */
     has(name: string): boolean;
+    /**
+     * 读取当前 provider 声明的能力版本（semver 字符串）。无 provider 或未声明版本时为 undefined。
+     * 消费方可据此判断是否满足所需最低版本。
+     */
+    getVersion(name: string): Promise<string | undefined>;
   }
 
   export interface ExtensionContribution<T = unknown> {
@@ -787,8 +708,8 @@ declare module 'finch' {
    * 不要在此存储密钥或敏感数据，请用 {@link Secrets}。
    *
    * @example
-   * await finch.storage.set('lastRun', Date.now());
-   * const t = await finch.storage.get<number>('lastRun');
+   * await ctx.storage.set('lastRun', Date.now());
+   * const t = await ctx.storage.get<number>('lastRun');
    */
   export interface Storage {
     get<T = unknown>(key: string): Promise<T | undefined>;
@@ -798,15 +719,6 @@ declare module 'finch' {
     clear(): Promise<void>;
     /** 返回当前所有 key。 */
     keys(): Promise<string[]>;
-  }
-
-  export namespace storage {
-    function get<T = unknown>(key: string): Promise<T | undefined>;
-    function set<T = unknown>(key: string, value: T): Promise<void>;
-    /** 删除指定 key。等价于 Storage 接口的 `delete()` 方法。 */
-    function remove(key: string): Promise<void>;
-    function clear(): Promise<void>;
-    function keys(): Promise<string[]>;
   }
 
   /**
@@ -836,14 +748,10 @@ declare module 'finch' {
    *
    * @example
    * // package.json → finch.permissions.secrets: ["OPENAI_API_KEY"]
-   * const key = await finch.secrets.get('OPENAI_API_KEY');
+   * const key = await ctx.secrets.get('OPENAI_API_KEY');
    */
   export interface Secrets {
     get(key: string): Promise<string | undefined>;
-  }
-
-  export namespace secrets {
-    function get(key: string): Promise<string | undefined>;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -860,13 +768,6 @@ declare module 'finch' {
     info(...args: unknown[]): void;
     warn(...args: unknown[]): void;
     error(...args: unknown[]): void;
-  }
-
-  export namespace logger {
-    function debug(...args: unknown[]): void;
-    function info(...args: unknown[]): void;
-    function warn(...args: unknown[]): void;
-    function error(...args: unknown[]): void;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -1017,11 +918,14 @@ declare module 'finch' {
     readonly requires?: ExtensionCapabilitySpec;
   }
 
-  /** 控制插件激活时机。 */
-  export type ActivationEvent =
-    | 'onStartup'             // 应用启动时激活
-    | 'onCommand'             // 首次调用插件命令时激活
-    | `onSpace:${string}`;    // 进入特定 Space 时激活
+  /**
+   * 控制插件激活时机。
+   *
+   * ⚠️ 当前 Finch 版本只实现了 `onStartup`：所有已启用扩展在应用启动 / 扩展启用时
+   * 立即激活。惰性激活事件（onCommand / onSpace）尚未实现，为避免误导暂不在类型中暴露；
+   * 后续实现后会重新加入。
+   */
+  export type ActivationEvent = 'onStartup';
 
   /** Composer 工具栏按钮的静态声明（写在 manifest 里）。 */
   export interface ComposerActionDeclaration {

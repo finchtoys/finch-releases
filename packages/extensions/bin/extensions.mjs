@@ -137,14 +137,58 @@ function installExtensionDir(srcDir, destRoot, lockSource) {
   return info.id;
 }
 
+/**
+ * Look for an executable on PATH (via `which`/`where`), falling back to a
+ * handful of common install locations that don't always make it onto the
+ * PATH inherited by a GUI-launched app (Homebrew, nvm, Volta, Windows
+ * installer). Returns the resolved path, or null if not found anywhere.
+ */
+function findExecutable(name) {
+  const finder = process.platform === 'win32' ? 'where' : 'which';
+  const found = spawnSync(finder, [name], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf-8' });
+  if (found.status === 0) {
+    const first = found.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+    if (first) return first;
+  }
+
+  const candidateDirs = process.platform === 'win32'
+    ? [
+        join(process.env.ProgramFiles ?? 'C:\\Program Files', 'nodejs'),
+        join(process.env.APPDATA ?? '', 'npm'),
+      ]
+    : (() => {
+        const dirs = ['/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.volta', 'bin')];
+        const nvmRoot = join(homedir(), '.nvm', 'versions', 'node');
+        try {
+          for (const version of readdirSync(nvmRoot)) dirs.push(join(nvmRoot, version, 'bin'));
+        } catch { /* nvm not installed */ }
+        return dirs;
+      })();
+  const exeName = process.platform === 'win32' ? `${name}.cmd` : name;
+  for (const dir of candidateDirs) {
+    const candidate = join(dir, exeName);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+const NODEJS_INSTALL_HINT = 'Install Node.js (which bundles npm) from https://nodejs.org, then try again.';
+
 function npmInstallToTemp(spec, tmp) {
+  const npmPath = findExecutable('npm');
+  if (!npmPath) {
+    throw new Error(`This extension is an npm package, but no "npm" executable was found on this machine.\n${NODEJS_INSTALL_HINT}`);
+  }
   mkdirSync(tmp, { recursive: true });
-  const r = spawnSync('npm', ['install', '--ignore-scripts', '--omit=dev', '--prefix', tmp, spec], {
+  const r = spawnSync(npmPath, ['install', '--ignore-scripts', '--omit=dev', '--prefix', tmp, spec], {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf-8',
   });
+  if (r.error) {
+    throw new Error(`Failed to run npm (${npmPath}): ${r.error.message}\n${NODEJS_INSTALL_HINT}`);
+  }
   if (r.status !== 0) {
-    throw new Error(`npm install failed:\n${r.stderr || r.stdout}`);
+    throw new Error(`npm install failed:\n${r.stderr || r.stdout || `exit code ${r.status}`}`);
   }
 }
 
@@ -187,7 +231,10 @@ function extractZip(zipPath, destDir) {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf-8',
   });
-  if (r.status !== 0) throw new Error(`unzip failed:\n${r.stderr || r.stdout}`);
+  if (r.error) {
+    throw new Error(`No "unzip" command found on this machine: ${r.error.message}`);
+  }
+  if (r.status !== 0) throw new Error(`unzip failed:\n${r.stderr || r.stdout || `exit code ${r.status}`}`);
 }
 
 /**

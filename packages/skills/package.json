@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/skills",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "CLI shim to install Finch skills from any tool or directory",
   "license": "MIT",
   "type": "module",
