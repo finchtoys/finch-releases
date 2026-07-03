@@ -91,13 +91,16 @@ function pluginInfo(dir) {
   if (!id) return { error: 'package.json#finch 缺少 id' };
   const main = String(manifest.main ?? pkg.main ?? 'dist/index.js');
   if (!existsSync(join(dir, main))) return { error: `入口文件不存在: ${main}（请先构建插件）`, id };
+  // `name` is the current preferred manifest field; `displayName` is kept only
+  // for backward compatibility with older extensions.
+  const nameField = manifest.name ?? manifest.displayName;
   return {
     id,
     name: pkg.name ?? id,
     version: pkg.version ?? '0.0.0',
-    displayName: typeof manifest.displayName === 'string'
-      ? manifest.displayName
-      : manifest.displayName?.default ?? manifest.displayName?.['en-US'] ?? manifest.displayName?.['zh-CN'] ?? id,
+    displayName: typeof nameField === 'string'
+      ? nameField
+      : nameField?.default ?? nameField?.['en-US'] ?? nameField?.['zh-CN'] ?? id,
     main,
   };
 }
@@ -451,7 +454,7 @@ function cmdDoctor(src = '.') {
   const pkg = readPackageJson(abs);
   const manifest = pkg?.finch ?? {};
   // Surface recommended manifest metadata that's missing (non-fatal).
-  const recommended = ['displayName', 'description', 'pluginType'];
+  const recommended = ['name', 'description', 'extensionType'];
   const missing = recommended.filter((k) => manifest[k] == null);
   if (missing.length) console.log(`  hint: manifest 建议补充字段: ${missing.join(', ')}`);
   if (manifest.permissions) {

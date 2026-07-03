@@ -17,7 +17,7 @@
  * ```
  *
  * `import type` 在编译时完全擦除，无需运行时解析 `finch` 模块。
- * 完整文档：https://finch.app/docs/extensions
+ * 完整文档：https://finchwork.app/docs/extensions
  */
 declare module 'finch' {
 
@@ -333,7 +333,7 @@ declare module 'finch' {
     readonly description?: string;
     readonly submitLabel?: string;
     readonly cancelLabel?: string;
-    readonly fields: PluginFormField[];
+    readonly fields: ExtensionFormField[];
     /**
      * 可选自动取消超时（毫秒）。超时未提交则 resolve 为
      * `{ submitted: false, reason: 'timeout' }`。省略则一直等待用户提交/取消或 session 结束。

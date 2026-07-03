@@ -1,13 +1,15 @@
 ---
 name: finch-extension-creator
 description: >
-  Guide for developing, debugging, and testing Finch extensions.
+  Guide for developing, debugging, installing, and publishing Finch extensions.
   Invoke this skill whenever the user wants to create a new Finch extension,
   extend Finch with custom Agent tools or Composer toolbar buttons, understand
-  the finch.d.ts API, debug an existing extension, or ask how to install or
-  reload an extension during development. Trigger on phrases like "write a finch
+  the finch.d.ts API, debug an existing extension, install/deploy/update/remove
+  an extension with the official `npx @finch.app/extensions` CLI, or publish an
+  extension to npm/the community catalog. Trigger on phrases like "write a finch
   extension", "create a finch extension", "add a tool to finch", "debug my
-  extension", "extension not loading", "how do I make a composer button", etc.
+  extension", "extension not loading", "how do I make a composer button",
+  "install this finch extension", "deploy/publish a finch extension", etc.
 ---
 
 # Finch Extension Developer Guide
@@ -22,21 +24,78 @@ single `ExtensionContext` (`ctx`) object passed to the `activate()` function.
 ## 0  Where Extensions Live (read first)
 
 Decide the install location **before** scaffolding. Finch discovers extensions
-from three tiers (project > personal > global):
+from two supported tiers, checked in this precedence order (personal overrides
+global on id collision):
 
 | Tier | Path | Use when |
 |---|---|---|
-| Project | `<cwd>/.finch/extensions/<id>/` | The extension is specific to the current project / repo. |
-| Personal | `<finchHome>/.finch/extensions/<id>/` (default `~/finchnest/.finch/extensions/`) | A personal extension you use across projects. |
-| Global | `~/.finch/extensions/<id>/` (dev: `~/.finch-dev/extensions/`) | Available in every session. |
+| Personal | `<finchHome>/.finch/extensions/<id>/` (default `~/finchnest/.finch/extensions/`) | **Default choice.** A personal extension you use across projects/sessions. |
+| Global | `~/.finch/extensions/<id>/` (dev: `~/.finch-dev/extensions/`) | Official/bundled extensions, or something you want in every Finch install on the machine. |
 
-Default to **personal** (`<finchHome>/.finch/extensions/<id>/`) unless the user
-asks otherwise. Scaffold the extension source directly in the chosen install
-directory so Finch can discover it after `npm run build`. Confirm the target
+Default to **personal** unless the user asks otherwise. Confirm the target
 path with the user if it is ambiguous.
+
+> **Project-level `<cwd>/.finch/extensions/<id>/` is not a supported install
+> target for new extensions.** Do not scaffold or install extensions there.
+> Older Finch builds treated it as a lowest-precedence dev-only fallback
+> (never overriding an already-installed same-id extension), but the current
+> recommended workflow is personal or global only — always install through
+> the CLI (§0.1) so extensions show up consistently across every Space.
 
 > The extension **id** (`finch.id` in package.json) and the **directory name**
 > should match to avoid confusion. The id is what appears in `~/.finch/extensions.json`.
+
+---
+
+## 0.1  Install and Manage Extensions with the Official CLI
+
+**Always prefer `npx @finch.app/extensions` over manually `cp`-ing directories
+around.** It resolves the correct install path (reading
+`~/.finch/workspace.json#finchHomeDir` for the personal tier), copies the
+extension, and records an install-source lock file so `update` can pull fresh
+copies later. This is the same tool end users are told to use, so testing with
+it also exercises the real install path.
+
+```bash
+# Install to the personal tier (default — <finchHome>/.finch/extensions/<id>/)
+npx @finch.app/extensions add ./my-extension
+
+# Install globally (~/.finch/extensions/<id>/ — available in every session)
+npx @finch.app/extensions add ./my-extension --global
+
+# Install from npm or a zip (local path or URL) — same flags apply
+npx @finch.app/extensions add @scope/finch-extension-example
+npx @finch.app/extensions add https://github.com/user/repo/archive/refs/heads/main.zip
+
+# Validate a manifest + lint the source before installing (no side effects)
+npx @finch.app/extensions doctor ./my-extension
+
+# List / update / remove / enable / disable
+npx @finch.app/extensions list [--global]
+npx @finch.app/extensions update <id> [--global]
+npx @finch.app/extensions remove <id> [--global]
+npx @finch.app/extensions enable <id>
+npx @finch.app/extensions disable <id>
+
+# Print resolved install paths for this machine
+npx @finch.app/extensions where
+```
+
+Key behaviors to know:
+
+- `add` only installs the files — it never grants permissions or enables the
+  extension. The user still reviews and enables it in Finch → Toolcase →
+  Extensions.
+- `doctor` runs a static lint over the extension's source (flags runtime
+  `import ... from 'finch'` instead of `import type`, references to the
+  removed `FinchPluginAPI`, direct `electron` imports, and imports reaching
+  into Finch's own `src/main|renderer|shared`). Run it before every install
+  during development — it catches the most common mistakes instantly.
+- `update <id>` re-pulls from the recorded install source (local path, npm
+  package, or zip URL) — use it instead of re-running `add` when iterating on
+  a local extension you already installed.
+- There is **no `--cwd` / project-scope flag documented here** — project-tier
+  install is legacy and not the recommended path (see §0).
 
 ---
 
@@ -294,6 +353,8 @@ with JSDoc and examples. Key sections:
 | `§ 4` `ctx.composerActions` | `ComposerActionProvider`, `ComposerActionMenuItem` |
 | `§ 5` `ctx.commands` | _(Phase 2, reserved)_ |
 | `§ 6` `ctx.ui` | _(Phase 2, reserved)_ |
+| `§ 6.5` `ctx.capabilities` | Extension-to-extension provide/get (§5.5 below) |
+| `§ 6.5` `ctx.extensions` | Read other enabled extensions' manifest contribution snapshots (`listContributions`) |
 | `§ 7` `ctx.storage` | Persistent KV store |
 | `§ 7b` `ctx.settings` | Read-only user settings (manifest `settings` schema) |
 | `§ 8` `ctx.secrets` | Read-only secrets declared in manifest |
@@ -309,17 +370,25 @@ ctx.storagePath       // ~/.finch/extension-data/<id>/  (for raw file writes)
 
 // Registration APIs
 ctx.tools.register(def)                         // → Disposable
+ctx.tools.registerSearchProvider(provider)      // → Disposable — dynamic tool discovery
 ctx.composerActions.register(id, provider)      // → Disposable
-ctx.commands.register(id, handler)              // → Disposable (Phase 2)
+ctx.commands.register(id, handler)              // → Disposable (Phase 2, reserved)
 
 // Services
 ctx.storage           // { get, set, delete, clear, keys }  — KV store
 ctx.settings          // { get, all }          — user settings (manifest `settings` schema; reload on save)
 ctx.secrets           // { get }               — read-only secrets
 ctx.logger            // { debug, info, warn, error }
-ctx.session           // { id, title, spaceId, cwd, model }  — live, tracks active session
-ctx.workspace         // { spaceId, spaceName, directoryPath, projectPath }  — live, tracks active space
+ctx.capabilities      // { provide, get, has, getVersion } — cross-extension collaboration (§5.5)
+ctx.extensions        // { listContributions(point) } — read other extensions' manifest contributions (§5.6)
+ctx.session           // { id, title, spaceId, cwd, model } — read-only snapshot of the active session
+ctx.workspace         // { spaceId, spaceName, directoryPath, projectPath } — read-only snapshot of the active Space/workspace
 ```
+
+> `ctx.session` / `ctx.workspace` are **snapshots**, not live-updating event
+> emitters — there is no `onDidChangeSession`/`onDidChangeCwd` API. If your
+> `getBadge`/`getMenu`/`execute` need the *current* cwd, read it from the
+> `ComposerActionContext` argument passed to each call, not from a cached `ctx.session`.
 
 ---
 
@@ -659,10 +728,15 @@ connects each server and exposes its tools to the agent. No code needed in your
 
 ### First install
 
-1. `npm run build` in your extension directory.
-2. Finch → Toolbox → Extensions → **Install Extension** → pick your extension folder.
-3. The extension appears in the list as **disabled**. Toggle it to **enable**.
-4. Finch starts a dedicated ExtensionHost child process and calls your extension's `activate(ctx)` there.
+1. `npm run build` in your extension directory (produces `dist/index.js`).
+2. `npx @finch.app/extensions doctor .` — catch manifest/lint issues before installing.
+3. `npx @finch.app/extensions add .` (personal tier) or `add . --global` — installs
+   the built extension to the correct Finch-discoverable path. Prefer this over
+   Finch's GUI "Install Extension" file picker: it is scriptable, it is the same
+   path real users take, and `doctor`/`update` only work on CLI-tracked installs.
+4. Finch → Toolcase → Extensions → find it in the list (still **disabled**) →
+   review the requested permissions → **enable**.
+5. Finch starts a dedicated ExtensionHost child process and calls your extension's `activate(ctx)` there.
 
 ### After code changes
 
@@ -676,21 +750,56 @@ npm run dev          # tsc --watch
 
 # Terminal 2 — after making code changes:
 # 1. Save the file (tsc rebuilds dist/index.js automatically)
-# 2. Disable and re-enable the extension in Finch Toolbox
+# 2a. If you only changed src/ logic: disable and re-enable the extension in
+#     Finch Toolcase — it reimports the freshly rebuilt dist/index.js.
+# 2b. If you also want the CLI-tracked install dir refreshed with the latest
+#     dist/ (e.g. before testing an actual reinstall flow), re-run:
+npx @finch.app/extensions update <id>
 ```
 
-If you changed manifest fields, install paths, or bundled extension files copied by Finch at startup, restart Finch.
+If you changed manifest fields (`package.json#finch`), install paths, or
+bundled extension files copied by Finch at startup, restart Finch — manifest
+changes are read once at scan time, not hot-reloaded.
 
 ### Checking activation errors
 
-If the extension fails to activate, the Toolbox Extension list shows a red error
+If the extension fails to activate, the Toolcase Extension list shows a red error
 badge. Hover to read the error message. Common causes:
 
 - **Syntax / runtime error in activate()** — fix the code and restart Finch.
 - **`activate` not a named export** — must be `export function activate(ctx)`,
   not `export default`.
-- **Missing dist/index.js** — run `npm run build` first.
+- **Missing dist/index.js** — run `npm run build` first. `doctor` also catches
+  this (`entry file does not exist`).
 - **Manifest `id` already taken** — pick a different `finch.id` in `package.json`.
+- **Unsupported `manifestVersion`** — Finch rejects manifests declaring a
+  `manifestVersion` newer than it supports instead of half-loading them; check
+  the error text for the currently supported version and adjust the manifest.
+
+---
+
+## 6.5  Publishing an Extension
+
+To make an extension installable by anyone via
+`npx @finch.app/extensions add <name>`, publish it as a normal npm package:
+
+1. Make sure `package.json#finch` is complete: `id`, `main`, `description`,
+   `contributes`, `permissions`. Run `npx @finch.app/extensions doctor .` one
+   more time — it is the same validation a user's install will implicitly rely on.
+2. Set `private` to `false` (or omit it) and pick a public, scoped package name
+   (e.g. `@you/finch-extension-foo`) so it doesn't collide with someone else's
+   `finch.id`.
+3. `npm publish` as you would any npm package. Do **not** publish `node_modules/`
+   or `src/` if you can avoid it — only `dist/`, `package.json`, `i18n/`, and
+   `skills/` are actually needed at runtime; use `"files"` in `package.json` to
+   control what gets packed.
+4. Tell users to install with `npx @finch.app/extensions add <your-package-name>`.
+   They still have to review permissions and enable it manually in Finch — no
+   install flow auto-enables a freshly-added extension.
+5. For **official/community** extensions distributed through the Finch
+   community catalog, coordinate with the `finch-releases` repo — the catalog
+   is a separate index (`community/extensions.json`) that references your npm
+   package by name; publishing to npm alone does not add you to the catalog.
 
 ---
 
@@ -752,14 +861,18 @@ Current isolation level:
 | Composer button shows but menu is empty | `getMenu()` returning `[]`? Log the cwd inside `getMenu()`. |
 | Storage reads returning `undefined` | Check `ctx.storagePath` exists. Storage is per-extension and reset if the extension id changes. |
 | Secret returns `undefined` | Key must be declared in `permissions.secrets` AND the user must have set a value in Settings. |
+| Installed extension doesn't show up in Toolcase | Did you install to `<cwd>/.finch/extensions/`? That tier is not scanned for new extensions (§0) — reinstall to personal/global with `npx @finch.app/extensions add .` (no `--cwd`). |
+| Extension shadowed by another install with the same id | `npx @finch.app/extensions list` and `list --global` to see both tiers; personal overrides global on id collision — remove or rename one. |
+| Not sure if the manifest/source will pass Finch's checks | Run `npx @finch.app/extensions doctor <path>` before installing — it lints for legacy `FinchPluginAPI`, runtime `import ... from 'finch'`, and disallowed `electron`/Finch-internal imports. |
 
 ---
 
-## 10  Example: Full Git Branch Extension
+## 10  Example: hello-finch
 
-See `<finch-repo>/examples/extensions/hello-finch/` for a complete working
-example that demonstrates both `ctx.tools.register()` and
-`ctx.composerActions.register()`.
+See `<finch-repo>/examples/extensions/hello-finch/` for a complete, buildable
+example that demonstrates all three common extension points in ~60 lines:
+`ctx.tools.register()`, `ctx.composerActions.register()`, and a bundled skill
+(`skills/hello-guide/SKILL.md`, gated by `contributes.skills: true`).
 
 To use it as a starting point:
 ```bash
@@ -769,6 +882,12 @@ cd my-extension
 # Edit src/index.ts: replace hello logic with your own
 npm install
 npm run build
+npx @finch.app/extensions doctor .     # validate before installing
+npx @finch.app/extensions add .        # install to the personal tier
 ```
 
-Then install the copied directory in Finch's Extension panel.
+Then open Finch → Toolcase → Extensions, review permissions, and enable it.
+
+For a real-world Composer-action-only example (no Agent tools), the official
+`git-branch` extension (published from the `finch-releases` repo) shows the
+`getBadge`/`getMenu`/`execute` pattern end-to-end against a live `git` repo.
