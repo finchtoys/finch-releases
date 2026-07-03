@@ -1,7 +1,7 @@
 {
   "name": "@finch.app/mcp-bridge",
-  "version": "1.1.8",
-  "description": "Bridge Model Context Protocol (MCP) servers into Finch.",
+  "version": "1.1.10",
+  "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
@@ -9,7 +9,7 @@
   "homepage": "https://finchwork.app",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "url": "git+https://github.com/puterjam/finch.git",
     "directory": "extensions/mcp"
   },
   "license": "MIT",
@@ -21,8 +21,8 @@
   "finch": {
     "manifestVersion": 1,
     "id": "mcp",
-    "name": "MCP Bridge",
-    "description": "Connect to Model Context Protocol servers, expose their tools to the agent, and provide an mcp.client capability for other extensions.",
+    "name": "MCP Client",
+    "description": "Connect to Model Context Protocol servers, expose their tools to the Finch, and provide an mcp.client capability for other extensions.",
     "toolMeta": {
       "name": "MCP"
     },
@@ -32,7 +32,7 @@
         "id": "setup-filesystem",
         "title": "Connect a filesystem MCP server",
         "description": "Ask Finch to help create a local servers.json config for filesystem access.",
-        "prompt": "Help me configure MCP Bridge with a filesystem MCP server for my current project directory."
+        "prompt": "Help me configure MCP Client with a filesystem MCP server for my current project directory."
       }
     ],
     "main": "dist/index.js",
@@ -42,7 +42,8 @@
     "extensionType": "official",
     "autoEnable": true,
     "categories": [
-      "developer"
+      "mcp",
+      "developer-tools"
     ],
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",

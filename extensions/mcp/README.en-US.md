@@ -1,20 +1,20 @@
-# MCP Bridge
+# MCP Client
 
-MCP Bridge is Finch's official built-in plugin for connecting Model Context Protocol (MCP) servers to Finch.
+MCP Client is Finch's official built-in plugin for connecting Model Context Protocol (MCP) servers to Finch.
 
 It does three things:
 
 1. Connects MCP servers, caches each service's tool list, and activates MCP tools on demand through Finch's standard `ToolSearch`.
 2. Provides the `mcp.client` capability so other Finch plugins can call MCP servers without implementing their own MCP client.
-3. Reads MCP servers contributed by other extensions through `ctx.extensions.listContributions('mcpServers')` and connects them through bridge-owned policy.
+3. Reads MCP servers contributed by other extensions through `ctx.extensions.listContributions('mcpServers')` and connects them through Client-owned policy.
 
 ## Dynamic tool loading
 
-To avoid flattening every MCP tool into the model context at once (which gets expensive with many servers/tools), MCP Bridge integrates with Finch's standard `ToolSearch`. The initial context only carries `ToolSearch` plus a few management tools; when the model needs MCP capabilities, it calls `ToolSearch({ source: "mcp", query })` to discover and activate matching tools on demand.
+To avoid flattening every MCP tool into the model context at once (which gets expensive with many servers/tools), MCP Client integrates with Finch's standard `ToolSearch`. The initial context only carries `ToolSearch` plus a few management tools; when the model needs MCP capabilities, it calls `ToolSearch({ source: "mcp", query })` to discover and activate matching tools on demand.
 
 | Entry | Purpose |
 |---|---|
-| `ToolSearch` | Finch's standard dynamic-tool search; with `source: "mcp"`, MCP Bridge connects servers, discovers tools, and injects matches into the current run |
+| `ToolSearch` | Finch's standard dynamic-tool search; with `source: "mcp"`, MCP Client connects servers, discovers tools, and injects matches into the current run |
 | `MCP action=list` | List configured MCP services and their connection/tool-count status |
 | `mcp__<server>__<tool>` | Real MCP tools injected after ToolSearch matches them; callable directly |
 
@@ -22,7 +22,7 @@ The typical model flow is: optionally call `MCP({ action: "list" })` to inspect 
 
 ## Managing MCP servers
 
-MCP Bridge also exposes one dispatcher management tool to the AI, so the user can add, edit, or remove MCP servers through natural language:
+MCP Client also exposes one dispatcher management tool to the AI, so the user can add, edit, or remove MCP servers through natural language:
 
 | Tool | Purpose |
 |---|---|
@@ -34,7 +34,7 @@ These tools only manage servers in the local `servers.json`; MCP servers injecte
 
 ## Supported transports
 
-MCP Bridge supports two transport types.
+MCP Client supports two transport types.
 
 ### 1. stdio / stdout subprocess
 
@@ -84,7 +84,7 @@ Use this for remote MCP services or MCP endpoints exposed through a gateway. Fin
 
 ## Config files
 
-This version intentionally does not expose a MCP configuration UI yet. MCP Bridge reads these configuration sources:
+This version intentionally does not expose a MCP configuration UI yet. MCP Client reads these configuration sources:
 
 | Source | Purpose |
 |---|---|
@@ -103,7 +103,7 @@ In dev mode the root is `~/.finch-dev/`. Developers can hand-write `servers.json
 
 ## For plugin authors
 
-MCP Bridge provides the `mcp.client` capability. Other plugins can declare the dependency in their manifest:
+MCP Client provides the `mcp.client` capability. Other plugins can declare the dependency in their manifest:
 
 ```json
 {

@@ -1,6 +1,6 @@
 {
-  "name": "MCP 桥接",
-  "description": "连接 Model Context Protocol 服务器，将其工具暴露给 Agent，并为其它插件提供 mcp.client 能力。",
+  "name": "MCP 客户端",
+  "description": "连接 Model Context Protocol 服务器，将其工具暴露给 Finch，并为其它扩展提供 mcp.client 能力。",
   "toolMeta": {
     "name": "MCP"
   },
@@ -9,7 +9,7 @@
     "setup-filesystem": {
       "title": "连接 filesystem MCP 服务",
       "description": "让 Finch 帮你创建本地 servers.json，连接 filesystem MCP。",
-      "prompt": "帮我为当前项目目录配置 MCP Bridge 的 filesystem MCP 服务。"
+      "prompt": "帮我为当前项目目录配置 MCP Client 的 filesystem MCP 服务。"
     }
   }
 }

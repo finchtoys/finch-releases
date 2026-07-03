@@ -1,6 +1,6 @@
 {
-  "name": "MCP Bridge",
-  "description": "Connect to Model Context Protocol servers, expose their tools to the agent, and provide an mcp.client capability for other plugins.",
+  "name": "MCP Client",
+  "description": "Connect to Model Context Protocol servers, expose their tools to the Finch, and provide an mcp.client capability for other extensions.",
   "toolMeta": {
     "name": "MCP"
   },
@@ -9,7 +9,7 @@
     "setup-filesystem": {
       "title": "Connect a filesystem MCP server",
       "description": "Ask Finch to help create a local servers.json config for filesystem access.",
-      "prompt": "Help me configure MCP Bridge with a filesystem MCP server for my current project directory."
+      "prompt": "Help me configure MCP Client with a filesystem MCP server for my current project directory."
     }
   }
 }
