@@ -1,0 +1,28 @@
+{
+  "skill_name": "community-manager",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我想在社区推荐里加一个新的扩展。这个扩展叫 'GitHub Copilot Chat'，id 是 github-copilot-chat，作者是 'Finch Team'，描述是 'Integrate GitHub Copilot Chat into Finch for AI-powered code assistance.'，中文名是 'GitHub Copilot Chat 扩展'，中文描述是 '将 GitHub Copilot Chat 集成到 Finch 中，提供 AI 辅助编码能力。'，仓库是 'finchtoys/finch-releases'，npm 包名是 '@finch.app/github-copilot-chat'，类型是官方扩展，分类是 developer 和 tools。帮我加到 community/extensions.json 和对应的中文文件里。",
+      "expected_output": "一个新扩展条目被成功添加到 community/extensions.json 和 community/extensions.zh-CN.json，保持字母序，并在对话中展示变更摘要。",
+      "files": [
+        "community/extensions.json",
+        "community/extensions.zh-CN.json"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "帮我更新一下 community/skills.json 里的 'find-skills' 技能，它的 description 太短了，改成 'Discover and install skills from the open agent skills ecosystem on GitHub. Searches community repositories and provides one-click installation commands for verified skills.'，分类改成 ['developer', 'tools', 'research']。",
+      "expected_output": "find-skills 技能的 description 和 categories 被更新，保持字母序，展示变更摘要。",
+      "files": [
+        "community/skills.json"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "帮我跑一下 community/ 目录下所有 JSON 文件的校验，看看有没有格式或一致性问题。",
+      "expected_output": "输出标准格式的校验报告，包含 ✅ 通过项和 ❌ 问题（如有），覆盖 schema 合规、id 唯一性、分类合规、中英文覆盖一致性、字母序等检查项。",
+      "files": []
+    }
+  ]
+}

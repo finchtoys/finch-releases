@@ -57,3 +57,75 @@ finch-releases/
 - 本仓库也不存放扩展的完整源码，扩展源码由各自仓库维护；这里只保存发布所需的配置和索引。
 - `packages/` 使用 npm workspaces 管理，发布脚本位于 `scripts/publish-all.sh`，CI 配置位于 `.github/workflows/publish.yml`。
 - 如需调整空间规则，请修改本文件并同步更新 `README.md`。
+
+---
+
+## 社区推荐管理
+
+### 数据文件
+
+`community/` 目录下 4 个 JSON 文件是 Finch App 扩展市场和社区网站的数据源：
+
+| 文件 | 内容 |
+|---|---|
+| `community/extensions.json` | 扩展推荐索引（英文） |
+| `community/skills.json` | 技能推荐索引（英文） |
+| `community/extensions.zh-CN.json` | 扩展中文覆盖 |
+| `community/skills.zh-CN.json` | 技能中文覆盖 |
+
+这些文件通过 Cloudflare Worker 发布到 `community.finchwork.app`，修改后约 1 小时生效。
+
+### 分类体系
+
+| id | 含义 | 适用场景 |
+|---|---|---|
+| `productivity` | 效率 | 办公文档、日常事务 |
+| `developer` | 开发 | 编码、扩展开发、API 集成 |
+| `creative` | 创意 | 设计、主题、内容创作 |
+| `research` | 研究 | 数据分析、信息提取、搜索 |
+| `finance` | 金融 | 财务、记账、报表、投资 |
+| `commerce` | 电商 | 在线商店、商品管理、订单处理 |
+| `education` | 教育 | 课件、学习、教学辅导 |
+
+### 管理方式
+
+通过对话管理，使用 `.finch/skills/community-manager/` 下的 community-manager skill：
+
+```bash
+cd ../../..
+
+# 新增扩展（中英文同时）
+python3 .finch/skills/community-manager/scripts/manage_registry.py add extension '{
+  "id": "my-ext",
+  "name": "My Extension",
+  "author": "Me",
+  "description": "Does something.",
+  "repo": "me/my-repo",
+  "name_zh": "我的扩展",
+  "description_zh": "做了些事。"
+}'
+
+# 新增技能
+python3 .finch/skills/community-manager/scripts/manage_registry.py add skill '{...}'
+
+# 更新条目
+python3 .finch/skills/community-manager/scripts/manage_registry.py update skill find-skills '{"description": "New desc."}'
+
+# 删除条目（Finch 暂未支持 deprecated 过滤，直接删）
+python3 .finch/skills/community-manager/scripts/manage_registry.py remove skill theme-factory
+
+# 全量校验
+python3 .finch/skills/community-manager/scripts/validate.py
+```
+
+### 格式规则
+
+- 2 空格缩进，条目按 `id` 字母序排列
+- 英文文件保留完整字段，中文覆盖只含 `id`/`name`/`description`
+- 新增条目时**必须同时提供中英文 name 和 description**
+- `extensionType` 默认 `"community"`，官方扩展设为 `"official"`
+- 永远不要直接删除条目后不更新 zh-CN 覆盖
+
+### 校验
+
+每次修改后运行 `validate.py` 自我校验，检查项包括：JSON 合法性、必填字段、id 格式/唯一性、分类合规、字母序、中英文覆盖完整性。`

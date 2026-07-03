@@ -42,7 +42,7 @@ Each entry in `extensions.json` is an object with these fields:
     "repo": "finchtoys/finch-releases",
     "npm": "@finch.app/mcp-bridge",
     "extensionType": "official",
-    "categories": ["developer", "tools"]
+    "categories": ["developer"]
   },
   {
     "id": "my-community-ext",
@@ -72,14 +72,15 @@ Each entry in `extensions.json` is an object with these fields:
 
 Finch only shows a fixed set of category filters in the app. Use these ids in `categories`:
 
-| id | zh-CN | en-US |
-|---|---|---|
-| `productivity` | 效率 | Productivity |
-| `developer` | 开发 | Developer |
-| `tools` | 工具 | Tools |
-| `creative` | 创意 | Creative |
-| `research` | 研究 | Research |
-| `automation` | 自动化 | Automation |
+| id | zh-CN | en-US | Scope |
+|---|---|---|---|
+| `productivity` | 效率 | Productivity | 办公文档、日常效率 |
+| `developer` | 开发 | Developer | 编码、扩展开发、API |
+| `creative` | 创意 | Creative | 设计、主题、内容创作 |
+| `research` | 研究 | Research | 数据分析、信息提取 |
+| `finance` | 财务 | Finance | 财务、记账、报表 |
+| `commerce` | 电商 | Commerce | 电商、商品、订单 |
+| `education` | 教育 | Education | 学习、课件、教学辅导 |
 
 ## Locale overrides
 

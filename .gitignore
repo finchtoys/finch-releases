@@ -37,3 +37,4 @@ coverage/
 
 # OS files
 Thumbs.db
+.finch/skills/community-manager/scripts/__pycache__/

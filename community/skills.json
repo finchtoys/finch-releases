@@ -5,7 +5,11 @@
     "author": "Finch Team",
     "description": "Create, read, edit, and manipulate Word documents. Use for any .docx task: reports, memos, letters, templates, tracked changes, or converting content into a polished Word document.",
     "repo": "finchtoys/finch-releases",
-    "categories": ["productivity", "creative"]
+    "categories": [
+      "productivity",
+      "creative",
+      "education"
+    ]
   },
   {
     "id": "finch-extension-creator",
@@ -14,7 +18,20 @@
     "description": "Guide for developing, debugging, and testing Finch extensions. Use when creating a new extension, adding custom agent tools or composer buttons, or debugging an existing extension.",
     "repo": "finchtoys/finch-releases",
     "installScope": "global",
-    "categories": ["developer"]
+    "categories": [
+      "developer"
+    ]
+  },
+  {
+    "id": "find-skills",
+    "name": "Find Skills",
+    "author": "Vercel Labs",
+    "description": "This skill helps you discover and install skills from the open agent skills ecosystem.",
+    "repo": "vercel-labs/skills",
+    "categories": [
+      "productivity",
+      "research"
+    ]
   },
   {
     "id": "frontend-design",
@@ -22,7 +39,10 @@
     "author": "Finch Team",
     "description": "Create distinctive, production-grade frontend interfaces with high design quality — websites, landing pages, dashboards, React components, HTML/CSS layouts.",
     "repo": "finchtoys/finch-releases",
-    "categories": ["developer", "creative"]
+    "categories": [
+      "developer",
+      "creative"
+    ]
   },
   {
     "id": "pdf",
@@ -30,7 +50,10 @@
     "author": "Finch Team",
     "description": "Work with PDF files: read, extract text/tables, merge, split, rotate pages, add watermarks, fill forms, encrypt/decrypt, extract images, and OCR scanned PDFs.",
     "repo": "finchtoys/finch-releases",
-    "categories": ["productivity", "research"]
+    "categories": [
+      "productivity",
+      "research"
+    ]
   },
   {
     "id": "pptx",
@@ -38,7 +61,10 @@
     "author": "Finch Team",
     "description": "Work with PowerPoint files: create slide decks, pitch decks, and presentations; read, edit, combine, or split .pptx files; work with templates, layouts, and speaker notes.",
     "repo": "finchtoys/finch-releases",
-    "categories": ["productivity", "creative"]
+    "categories": [
+      "creative",
+      "education"
+    ]
   },
   {
     "id": "skill-creator",
@@ -47,15 +73,9 @@
     "description": "Create, edit, evaluate, and optimize Finch skills. Includes built-in evals, variance analysis, and tools to benchmark and improve skill trigger accuracy.",
     "repo": "finchtoys/finch-releases",
     "installScope": "global",
-    "categories": ["developer", "tools"]
-  },
-  {
-    "id": "theme-factory",
-    "name": "Theme Factory",
-    "author": "Finch Team",
-    "description": "Style artifacts with a theme — slides, docs, reports, HTML landing pages. Choose from 10 pre-set themes with colors and fonts, or generate a custom theme on-the-fly.",
-    "repo": "finchtoys/finch-releases",
-    "categories": ["productivity", "creative"]
+    "categories": [
+      "developer"
+    ]
   },
   {
     "id": "xlsx",
@@ -63,14 +83,10 @@
     "author": "Finch Team",
     "description": "Work with spreadsheet files (.xlsx, .xlsm, .csv, .tsv): read, edit, add columns, compute formulas, format, chart, clean messy data, or create new spreadsheets from scratch.",
     "repo": "finchtoys/finch-releases",
-    "categories": ["productivity", "research"]
-  },
-  {
-    "id": "find-skills",
-    "name": "Find Skills",
-    "author": "Vercel Labs",
-    "description": "This skill helps you discover and install skills from the open agent skills ecosystem.",
-    "repo": "vercel-labs/skills",
-    "categories": ["productivity", "tools"]
+    "categories": [
+      "productivity",
+      "research",
+      "finance"
+    ]
   }
 ]

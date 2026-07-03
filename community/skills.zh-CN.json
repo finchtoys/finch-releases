@@ -10,6 +10,11 @@
     "description": "用于开发、调试和测试 Finch 扩展。适合创建新扩展、添加 Agent 工具或 Composer 按钮、排查已有扩展。"
   },
   {
+    "id": "find-skills",
+    "name": "查找 Skills",
+    "description": "帮助你从开放的 Agent skills 生态中发现和安装 skills。"
+  },
+  {
     "id": "frontend-design",
     "name": "前端设计",
     "description": "创建有辨识度、接近生产级的高质量前端界面，包括网站、落地页、仪表盘、React 组件和 HTML/CSS 布局。"
@@ -30,18 +35,8 @@
     "description": "创建、编辑、评估和优化 Finch skills，包含内置评测、方差分析，以及触发准确率优化工具。"
   },
   {
-    "id": "theme-factory",
-    "name": "主题工厂",
-    "description": "为幻灯片、文档、报告和 HTML 落地页等内容应用主题。可使用预设主题，或即时生成自定义主题。"
-  },
-  {
     "id": "xlsx",
     "name": "电子表格",
     "description": "处理电子表格文件（.xlsx、.xlsm、.csv、.tsv）：读取、编辑、添加列、计算公式、格式化、制图、清洗数据或新建表格。"
-  },
-  {
-    "id": "find-skills",
-    "name": "查找 Skills",
-    "description": "帮助你从开放的 Agent skills 生态中发现和安装 skills。"
   }
 ]
