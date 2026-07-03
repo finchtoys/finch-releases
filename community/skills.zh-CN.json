@@ -31,7 +31,7 @@
   },
   {
     "id": "skill-creator",
-    "name": "Skill 创建器",
+    "name": "创建 Skill",
     "description": "创建、编辑、评估和优化 Finch skills，包含内置评测、方差分析，以及触发准确率优化工具。"
   },
   {

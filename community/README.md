@@ -28,7 +28,8 @@ Each entry in `extensions.json` is an object with these fields:
 | `repo` | string | ✅ | GitHub `owner/repo` (for source / issues link) |
 | `npm` | string | — | npm package name — enables `npx @finch.app/extensions add <npm>` one-click install |
 | `extensionType` | `"official"` \| `"community"` | — | Defaults to `"community"` |
-| `categories` | string[] | — | Used for filtering in the Finch extension marketplace. Use the fixed category ids below. |
+| `featured` | boolean | — | When `true`, the item appears under Featured. Defaults to `false`. |
+| `categories` | string[] | — | Used for category filters in the Finch marketplace. Use the fixed category ids below. |
 
 ### Example
 
@@ -42,6 +43,7 @@ Each entry in `extensions.json` is an object with these fields:
     "repo": "finchtoys/finch-releases",
     "npm": "@finch.app/mcp-bridge",
     "extensionType": "official",
+    "featured": true,
     "categories": ["developer"]
   },
   {
@@ -52,6 +54,7 @@ Each entry in `extensions.json` is an object with these fields:
     "repo": "yourname/my-finch-extension",
     "npm": "@yourname/finch-extension-my",
     "extensionType": "community",
+    "featured": false,
     "categories": ["productivity"]
   }
 ]
@@ -67,6 +70,14 @@ Each entry in `extensions.json` is an object with these fields:
 - The extension must be published on npm (so users can install via `npx @finch.app/extensions add <npm>`), or have a public GitHub repo with a downloadable zip.
 - `package.json#finch.id` must match the `id` field here.
 - Description must be in English.
+- Use `featured: true` only for curated items that should appear in Featured.
+- Every community item should have at least one `categories` entry so it can be discovered through category filters.
+
+## Featured and Categories
+
+- Featured shows only items with `featured: true`.
+- Category filters show all items in that category, whether or not they are featured.
+- Items without `categories` do not appear under any category. Finch does not auto-assign a fallback category.
 
 ## Categories
 

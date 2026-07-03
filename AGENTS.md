@@ -124,6 +124,7 @@ python3 .finch/skills/community-manager/scripts/validate.py
 - 英文文件保留完整字段，中文覆盖只含 `id`/`name`/`description`
 - 新增条目时**必须同时提供中英文 name 和 description**
 - `extensionType` 默认 `"community"`，官方扩展设为 `"official"`
+- `featured: true` 标记为精选推荐，客户端会以此过滤；所有官方推荐默认为 `true`
 - 永远不要直接删除条目后不更新 zh-CN 覆盖
 
 ### 校验

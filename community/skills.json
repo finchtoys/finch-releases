@@ -9,7 +9,8 @@
       "productivity",
       "creative",
       "education"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "finch-extension-creator",
@@ -20,7 +21,8 @@
     "installScope": "global",
     "categories": [
       "developer"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "find-skills",
@@ -31,7 +33,8 @@
     "categories": [
       "productivity",
       "research"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "frontend-design",
@@ -42,7 +45,8 @@
     "categories": [
       "developer",
       "creative"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "pdf",
@@ -53,7 +57,8 @@
     "categories": [
       "productivity",
       "research"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "pptx",
@@ -64,7 +69,8 @@
     "categories": [
       "creative",
       "education"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "skill-creator",
@@ -75,7 +81,8 @@
     "installScope": "global",
     "categories": [
       "developer"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "xlsx",
@@ -87,6 +94,7 @@
       "productivity",
       "research",
       "finance"
-    ]
+    ],
+    "featured": true
   }
 ]

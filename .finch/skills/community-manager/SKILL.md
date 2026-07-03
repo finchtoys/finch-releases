@@ -38,8 +38,9 @@ description: >
   "npm": "@finch.app/mcp-bridge",           // (可选) npm 包名，支持一键安装
   "extensionType": "official",              // (可选) "official" | "community"，默认 "community"
   "installScope": "global",                 // (可选) "global" | "local"
-  "categories": ["developer"], // 分类标签
-  "deprecated": true                        // (可选) 标记已弃用
+  "categories": ["developer"],               // 分类标签
+  "featured": true,                          // (可选) true 则成为客户端精选推荐
+  "deprecated": true                         // (可选) 标记已弃用
 }
 ```
 
@@ -53,8 +54,9 @@ description: >
   "description": "一句话描述",               // 英文描述
   "repo": "finchtoys/finch-releases",       // GitHub owner/repo
   "installScope": "global",                 // (可选) "global" | "local"
-  "categories": ["productivity", "creative"],// 分类标签
-  "deprecated": true                        // (可选) 标记已弃用
+  "categories": ["productivity", "creative"], // 分类标签
+  "featured": true,                            // (可选) true 则成为客户端精选推荐
+  "deprecated": true                           // (可选) 标记已弃用
 }
 ```
 
@@ -188,7 +190,7 @@ python3 .finch/skills/community-manager/scripts/manage_registry.py update extens
 ```
 
 支持的更新字段：
-- 英文：`name`, `author`, `description`, `repo`, `npm`, `extensionType`, `installScope`, `categories`
+- 英文：`name`, `author`, `description`, `repo`, `npm`, `extensionType`, `installScope`, `categories`, `featured`
 - 中文：`name_zh`, `description_zh`（传入这两个字段会自动更新或创建 zh-CN 条目）
 
 ### 操作 4：删除（使用脚本）

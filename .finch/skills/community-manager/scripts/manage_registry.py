@@ -109,7 +109,7 @@ def cmd_add(reg_type, args):
 
     # Build EN entry
     en_entry = {}
-    for field in ["id", "name", "author", "description", "repo", "npm", "extensionType", "installScope", "categories"]:
+    for field in ["id", "name", "author", "description", "repo", "npm", "extensionType", "installScope", "categories", "featured"]:
         if field in args:
             en_entry[field] = args[field]
     if "deprecated" in args:
@@ -145,7 +145,7 @@ def cmd_update(reg_type, eid, args):
         sys.exit(1)
 
     # Update EN fields
-    en_fields = ["name", "author", "description", "repo", "npm", "extensionType", "installScope"]
+    en_fields = ["name", "author", "description", "repo", "npm", "extensionType", "installScope", "featured"]
     for field in en_fields:
         if field in args:
             en_entry[field] = args[field]
