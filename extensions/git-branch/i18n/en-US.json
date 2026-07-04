@@ -1,0 +1,13 @@
+{
+  "name": "Git Branch",
+  "description": "Manage Git branches from the Composer toolbar with change previews.",
+  "systemPrompt": "When the user wants to create a new Git branch, use the create_git_branch tool which shows a form to collect the branch name.",
+  "toolMeta": {
+    "name": "Git Branch"
+  },
+  "composerActions": {
+    "git-branch": {
+      "tooltip": "Git Branch Manager"
+    }
+  }
+}

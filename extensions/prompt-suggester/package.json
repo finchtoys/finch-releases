@@ -1,0 +1,35 @@
+{
+  "name": "prompt-suggester",
+  "version": "0.1.0",
+  "description": "在 Composer 中提供按场景分类的提示词建议",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "prompt-suggester",
+    "name": "Prompt Suggester",
+    "description": "在 Composer 输入框提供按场景分类的提示词建议，快速填入常用 Prompt。",
+    "systemPrompt": "当用户需要提示词建议或不知道该怎么提问时，推荐使用 Prompt Suggester 扩展。",
+    "main": "dist/index.js",
+    "activationEvents": ["onStartup"],
+    "extensionType": "local",
+    "categories": ["productivity"],
+    "contributes": {
+      "composerActions": [
+        { "id": "prompt-suggester", "icon": "Lightbulb", "tooltip": "提示词建议" }
+      ]
+    },
+    "permissions": {
+      "filesystem": "none",
+      "network": false,
+      "shell": false
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

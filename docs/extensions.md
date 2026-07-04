@@ -387,7 +387,7 @@ Composer 扩展分两步：
 ```
 
 - `id`：与 `ctx.composerActions.register(id, ...)` 对应
-- `icon`：Lucide 图标名（如 `"GitBranch"`、`"Star"`、`"Hash"`）
+- `icon`：IconRef。可用 Finch 内置图标名（固定集合，如 `"GitBranch"`、`"Star"`），或通过 `contributes.iconPacks` 声明图标包并在代码里 `ctx.icons.register()` 注册 SVG 后引用 `ext:<iconId>` / `ext:<packId>/<iconId>`
 - `tooltip`：悬停提示文字
 
 **Step 2 — activate() 动态数据绑定**：
@@ -809,24 +809,6 @@ export function deactivate() {}
 2. 更新 `src/index.ts` 的工具/按钮逻辑
 3. 运行 `npm install && npm run build`
 4. 安装到 `~/.finch/extensions/<id>/` 并在 Finch 工具箱中启用
-
----
-
-## 当前限制 & 路线图
-
-| 能力 | 状态 |
-|---|---|
-| Agent 工具注册 | ✅ 已实现 |
-| Composer 工具栏按钮 | ✅ 已实现 |
-| 私有 KV 存储 | ✅ 已实现 |
-| 密钥访问 | ✅ 已实现 |
-| 命令系统 | 🔜 Phase 2 |
-| Webview Panel | 🔜 Phase 2 |
-| 状态栏项 | 🔜 Phase 3 |
-| 右侧 Panel 视图 | 🔜 Phase 3 |
-| PluginHost 子进程隔离 | ✅ 已实现第一版 |
-| 扩展市场 | 🔜 后续 |
-| 热更新 | 🔜 后续 |
 
 ---
 

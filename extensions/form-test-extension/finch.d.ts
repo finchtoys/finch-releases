@@ -240,17 +240,6 @@ declare module 'finch' {
     readonly capabilities: Capabilities;
 
     /**
-     * 运行时图标包注册。manifest 只声明 `contributes.iconPacks` 的包名，实际图标
-     * 在代码里注册为 SVG 字符串。主进程会先消毒 SVG，再交给渲染层使用。
-     *
-     * @example
-     * ctx.subscriptions.push(ctx.icons.register('git-branch', {
-     *   plus: { svg: '<svg viewBox="0 0 24 24">...</svg>' },
-     * }));
-     */
-    readonly icons: Icons;
-
-    /**
      * 扩展 manifest contribution 快照。Host 只按 extension point 名称透传原始值，
      * 具体语义由消费扩展自行定义。
      */
@@ -564,9 +553,6 @@ declare module 'finch' {
   // § 4  finch.composerActions — Composer 工具栏扩展
   // ════════════════════════════════════════════════════════════════════════════
 
-  /** Composer 按钮所在界面位置。 */
-  export type ComposerSurface = 'home' | 'session';
-
   /**
    * Composer 扩展点上下文，每次调用时传入。
    */
@@ -575,18 +561,6 @@ declare module 'finch' {
     readonly cwd: string | undefined;
     readonly sessionId: string | undefined;
     readonly spaceId: string | undefined;
-    /**
-     * Composer 所在界面：`'home'` = 首页/新对话（尚无进行中的 session），
-     * `'session'` = 已打开的对话内。可据此对不同界面做差异化的按钮可见性判断。
-     *
-     * @example
-     * // 只在会话内显示，首页隐藏
-     * async getBadge({ surface }) {
-     *   if (surface === 'home') throw new Error('hidden on home');
-     *   return 'ready';
-     * }
-     */
-    readonly surface: ComposerSurface;
   }
 
   /** 填充 Composer 输入框的模式。 */
@@ -601,12 +575,10 @@ declare module 'finch' {
   /** Composer Action 执行期间可用的 UI 动作。 */
   export interface ComposerActionActions {
     /**
-     * 向当前激活的 Composer 输入框填入文字。
-     * `/skill` 指令和 `@[path]` 文件引用会渲染为富文本 token。
+     * 向当前 session 的 Composer 输入框填入文字。
      *
      * @example
      * await actions.fillComposer('帮我总结这段内容');
-     * await actions.fillComposer('/pdf 请总结 @[docs/report.pdf]');
      * await actions.fillComposer('\n补充一句', { mode: 'append' });
      */
     fillComposer(text: string, options?: ComposerFillOptions): Promise<void>;
@@ -623,7 +595,7 @@ declare module 'finch' {
     readonly separator?: boolean;
     /** 右侧的辅助文字（如快捷键、状态描述）。 */
     readonly description?: string;
-    /** 菜单项左侧小图标，一个 {@link IconRef}（内置 Lucide 名或 `ext:<packId>/<iconId>`）。 */
+    /** 菜单项左侧小图标，一个 {@link IconRef}（内置 Lucide 名或 `ext:<id>/<icon>`）。 */
     readonly iconName?: IconRef;
     /**
      * 分组 key。相邻且 `group` 相同的项归拢到一个分组区块，区块顶部显示 `groupLabel`
@@ -691,7 +663,7 @@ declare module 'finch' {
     getBadge?(ctx: ComposerActionContext): Promise<string | undefined>;
     /**
      * 返回按钮图标的 {@link IconRef}：内置 Lucide 名（如 `'settings'`、`'timer'`、
-     * `'log-in'`、`'list'`），或本扩展运行时图标包里的 icon id / `ext:<packId>/<iconId>`。
+     * `'log-in'`、`'list'`），或本扩展 `contributes.icons` 贡献的图标 id / `ext:<id>/<icon>`。
      * - 返回字符串 → 覆盖 manifest 中静态声明的 `icon`
      * - 返回 `undefined` → 使用 manifest 中的 `icon`
      * - 抛出错误 → 按钮隐藏（与 `getBadge` 保持一致）
@@ -838,20 +810,6 @@ declare module 'finch' {
   }
 
   /** `ctx.capabilities` 的接口。 */
-  export interface IconDefinition {
-    /** 原始 SVG 字符串。Finch 主进程会先消毒，再交给 renderer 内联显示。 */
-    readonly svg: string;
-    readonly description?: string;
-  }
-
-  export interface Icons {
-    /**
-     * 注册一个运行时 SVG 图标包。`packId` 必须在 manifest `contributes.iconPacks` 声明。
-     * 图标可通过 `ext:<packId>/<iconId>` 引用；在同一扩展内部也可用裸 `iconId` 或 `ext:<iconId>` 简写。
-     */
-    register(packId: string, icons: Record<string, IconDefinition>): Disposable;
-  }
-
   export interface Capabilities {
     /**
      * 提供一个能力。仅允许 manifest `provides.capabilities` 中声明的名字。
@@ -1077,13 +1035,9 @@ declare module 'finch' {
       /** 贡献的 Composer 工具栏按钮（静态声明）。 */
       readonly composerActions?: ComposerActionDeclaration[];
       /**
-       * 运行时图标包命名空间声明。实际 SVG 在代码里通过 `ctx.icons.register(packId, icons)` 注册。
-       * @example
-       * "iconPacks": [{ "id": "my-icons", "label": "My Icons" }]
-       */
-      readonly iconPacks?: readonly IconPackContribution[];
-      /**
-       * 兼容旧的静态 SVG 文件路径声明。新扩展优先使用 `iconPacks` + `ctx.icons.register()`。
+       * 贡献自定义图标，按 icon id 索引。声明后即可在任何接受 IconRef 的位置
+       * 引用（Composer 按钮 `icon` / `getIcon()` 返回值 / 菜单 `iconName`）：
+       * 直接写裸 id（本扩展的 id 优先于内置 Lucide 名），或写 `ext:<extId>/<iconId>`。
        * @example
        * "icons": { "rocket": { "description": "发射", "svg": "./icons/rocket.svg" } }
        */
@@ -1126,22 +1080,14 @@ declare module 'finch' {
   /**
    * 一个图标引用。Finch 里所有「带图标的入口」都接受同一种字符串引用（对齐
    * VS Code 的 ThemeIcon 思路），渲染时由中央图标注册表解析：
-   * - `'settings'` / `'git-branch'` —— Finch 打包内置的 Lucide 图标名（kebab-case，亦兼容
-   *   PascalCase 如 `'Settings'`）。这是固定集合，不随扩展动态增加。
-   * - `'ext:<packId>/<iconId>'` —— 引用某个运行时图标包里的 SVG 图标。
-   * - `'ext:<iconId>'` / 裸 iconId —— 在本扩展内部引用自己注册的图标，Finch 会自动补全为
-   *   `ext:<当前图标包id>/<iconId>`。
+   * - `'settings'` / `'git-branch'` —— 内置 Lucide 图标名（kebab-case，亦兼容
+   *   PascalCase 如 `'Settings'`）。
+   * - `'ext:<extId>/<iconId>'` —— 引用某扩展通过 `contributes.icons` 贡献的图标；
+   *   在本扩展内部也可直接写裸 iconId，Finch 会自动补全为本扩展的引用。
    */
   export type IconRef = string;
 
-  /** 扩展静态声明的一个运行时图标包命名空间。 */
-  export interface IconPackContribution {
-    readonly id: string;
-    readonly label?: LocalizedString;
-    readonly description?: LocalizedString;
-  }
-
-  /** 扩展贡献的一个自定义图标（兼容旧的 `contributes.icons` 文件路径声明）。 */
+  /** 扩展贡献的一个自定义图标（写在 `contributes.icons` 里）。 */
   export interface IconContribution {
     /** 图标用途说明（可选，便于他人复用）。 */
     readonly description?: string;
@@ -1155,7 +1101,7 @@ declare module 'finch' {
     readonly id: string;
     /**
      * 按钮默认图标，一个 {@link IconRef}：内置 Lucide 名（如 `'git-branch'`、
-     * `'settings'`）或本扩展运行时图标包里的 icon id / `ext:<packId>/<iconId>`。
+     * `'settings'`）或本扩展 `contributes.icons` 里贡献的图标 id / `ext:<id>/<icon>`。
      */
     readonly icon?: IconRef;
     readonly tooltip?: string;

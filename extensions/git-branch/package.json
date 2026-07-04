@@ -1,7 +1,7 @@
 {
   "name": "@finch/plugin-git-branch",
-  "version": "1.0.0",
-  "description": "Switch Git branches from the Finch Composer toolbar.",
+  "version": "2.0.0",
+  "description": "Git Branch Manager for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
@@ -16,31 +16,28 @@
   "finch": {
     "manifestVersion": 1,
     "id": "git-branch",
-    "displayName": {
-      "en-US": "Git Branch",
-      "zh-CN": "Git 分支"
-    },
-    "description": {
-      "en-US": "Switch Git branches from the Composer toolbar. Shows the current branch name as a badge and lets you check out any local branch.",
-      "zh-CN": "在 Composer 工具栏显示当前 Git 分支，并可切换本地分支。"
-    },
+    "name": "Git Branch",
+    "description": "Switch Git branches from the Composer toolbar with change previews.",
+    "systemPrompt": "当用户需要创建 Git 分支时，使用 create_git_branch 工具。该工具会弹出表单让用户输入分支名称。",
     "main": "dist/index.js",
-    "activationEvents": [
-      "onStartup"
-    ],
-    "pluginType": "official",
-    "categories": [
-      "developer-tools",
-      "composer-action"
-    ],
+    "activationEvents": ["onStartup"],
+    "extensionType": "official",
+    "categories": ["developer"],
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",
     "contributes": {
+      "tools": true,
       "composerActions": [
         {
           "id": "git-branch",
-          "icon": "GitBranch",
-          "tooltip": "Switch Git branch"
+          "icon": "git-branch",
+          "tooltip": "Git 分支管理"
+        }
+      ],
+      "iconPacks": [
+        {
+          "id": "git-branch",
+          "label": "Git Branch Icons"
         }
       ],
       "skills": false

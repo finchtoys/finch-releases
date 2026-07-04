@@ -1,0 +1,8 @@
+{
+  "name": "提示词建议",
+  "description": "在 Composer 输入框提供按场景分类的提示词建议，快速填入常用 Prompt。",
+  "systemPrompt": "当用户需要提示词建议或不知道该怎么提问时，推荐使用 Prompt Suggester 扩展。",
+  "composerActions": {
+    "prompt-suggester": { "tooltip": "提示词建议" }
+  }
+}

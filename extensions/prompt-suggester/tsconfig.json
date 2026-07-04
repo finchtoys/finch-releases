@@ -4,15 +4,14 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
-    "declaration": false,
     "outDir": "dist",
     "rootDir": "src",
+    "declaration": false,
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
-    "types": ["node"],
+    "types": [],
     "baseUrl": ".",
     "paths": {
-      "finch": ["/Users/puterjam/Workspace/aeolus/finch/packages/extension-api/finch.d.ts"]
+      "finch": ["./finch.d.ts"]
     }
   },
   "include": ["src"]

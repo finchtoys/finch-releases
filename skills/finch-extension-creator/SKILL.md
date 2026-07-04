@@ -35,12 +35,15 @@ global on id collision):
 Default to **personal** unless the user asks otherwise. Confirm the target
 path with the user if it is ambiguous.
 
-> **Project-level `<cwd>/.finch/extensions/<id>/` is not a supported install
-> target for new extensions.** Do not scaffold or install extensions there.
-> Older Finch builds treated it as a lowest-precedence dev-only fallback
-> (never overriding an already-installed same-id extension), but the current
-> recommended workflow is personal or global only — always install through
-> the CLI (§0.1) so extensions show up consistently across every Space.
+> **Project-level `<cwd>/.finch/extensions/<id>/` has been removed entirely
+> — it is not a tier at all anymore.** Do not scaffold or install extensions
+> there; nothing scans that path. Older Finch builds treated it as a
+> lowest-precedence dev-only fallback, but it turned out to be effectively
+> dead code even then (it read a stale global "last project" pointer, not
+> the active Space's directory) — so it was deleted from the scanner,
+> service, CLI, and UI rather than kept around. Extensions only ever
+> install to personal or global — always install through the CLI (§0.1) so
+> extensions show up consistently across every Space.
 
 > The extension **id** (`finch.id` in package.json) and the **directory name**
 > should match to avoid confusion. The id is what appears in `~/.finch/extensions.json`.
@@ -94,8 +97,10 @@ Key behaviors to know:
 - `update <id>` re-pulls from the recorded install source (local path, npm
   package, or zip URL) — use it instead of re-running `add` when iterating on
   a local extension you already installed.
-- There is **no `--cwd` / project-scope flag documented here** — project-tier
-  install is legacy and not the recommended path (see §0).
+- There is **no `--cwd` / project-scope flag** — project-tier install has been
+  **removed entirely** from Finch (scanner, service, CLI, and UI no longer
+  support it). Passing `--cwd` to the CLI throws and exits non-zero. Extensions
+  only ever install to the personal (default) or `--global` tier (see §0).
 
 ---
 
@@ -350,9 +355,9 @@ with JSDoc and examples. Key sections:
 | `§ 1` Lifecycle | `ExtensionContext` — the single entry point for all APIs |
 | `§ 2` Session & Workspace | Read-only `SessionInfo`, `WorkspaceInfo` |
 | `§ 3` `ctx.tools` | `ToolDefinition`, `ToolExecutionContext`, `ToolResult` |
-| `§ 4` `ctx.composerActions` | `ComposerActionProvider`, `ComposerActionMenuItem` |
+| `§ 4` `ctx.composerActions` | `ComposerActionProvider`, `ComposerActionMenuItem`, `actions.fillComposer()` |
 | `§ 5` `ctx.commands` | _(Phase 2, reserved)_ |
-| `§ 6` `ctx.ui` | _(Phase 2, reserved)_ |
+| `§ 6` `ctx.ui` | Toast notifications (`showToast`); Webview Panel is reserved |
 | `§ 6.5` `ctx.capabilities` | Extension-to-extension provide/get (§5.5 below) |
 | `§ 6.5` `ctx.extensions` | Read other enabled extensions' manifest contribution snapshots (`listContributions`) |
 | `§ 7` `ctx.storage` | Persistent KV store |
@@ -373,6 +378,12 @@ ctx.tools.register(def)                         // → Disposable
 ctx.tools.registerSearchProvider(provider)      // → Disposable — dynamic tool discovery
 ctx.composerActions.register(id, provider)      // → Disposable
 ctx.commands.register(id, handler)              // → Disposable (Phase 2, reserved)
+
+// UI
+ctx.ui.showToast({ title, description, variant, position, action }) // → Promise<{ action }>; position TL/TC/TR/BL/BC/BR, default TC
+ctx.ui.showConfirmDialog({ title, description, confirmLabel, cancelLabel, variant }) // → Promise<{ confirmed }>
+ctx.ui.showModalDialog({ title, description, actions }) // → Promise<{ action }>
+ctx.ui.showMessage(message, type)              // compatibility helper; maps to Toast
 
 // Services
 ctx.storage           // { get, set, delete, clear, keys }  — KV store
@@ -445,7 +456,9 @@ exec.ui            // ToolUi — interactive forms during execution
 **Collecting user input / secrets with `exec.ui.requestForm`:**
 When a tool needs the user to enter values — especially API keys / tokens —
 call `exec.ui.requestForm(spec)`. It pops a form in the waiting area (same outer
-frame as AskUserQuestion cards) and resolves once the user submits/cancels.
+frame as AskUserQuestion cards) and resolves once the user submits/cancels. If
+`timeoutMs` is set, Finch auto-cancels at the deadline and shows a countdown in
+the card's bottom-left corner.
 
 ```ts
 const r = await exec.ui.requestForm({
@@ -453,7 +466,11 @@ const r = await exec.ui.requestForm({
   description: 'Secrets stay on this machine and are never sent to the model.',
   fields: [
     { key: 'name', label: 'Name', type: 'text', required: true },
+    // Mixed-width row on a 6-track grid: 2/3 + 1/3 fills one row.
+    { key: 'host', label: 'Host', type: 'text', width: '2/3' },
+    { key: 'port', label: 'Port', type: 'number', width: '1/3' },
     { key: 'apiKey', label: 'API Key', type: 'password', secret: true },
+    { key: 'note', label: 'Note', type: 'textarea' }, // always full-width
   ],
   timeoutMs: 120_000, // optional auto-cancel; omit to wait indefinitely
 });
@@ -463,8 +480,11 @@ if (!r.submitted) return { content: [{ type: 'text', text: `Cancelled (${r.reaso
 ```
 
 - Field types: `text` / `password` / `textarea` / `number` / `select` / `boolean`.
+- Controls reuse Finch's own primitives (Input / TextArea / DropdownSelect / CheckBox), so extension forms match the app look.
 - `secret: true` → password input; the value is user-entered, the model never sees it.
+- **Side-by-side layout** — `width: '1/2' | '1/3' | '2/3' | 'full'` places fields on a 6-track grid that auto-wraps. Fields flow left-to-right in declaration order and a row fills when the fractions add up (e.g. `'2/3'+'1/3'`, `'1/2'+'1/2'`, `'1/3'×3`); anything that doesn't fit drops to the next row. Omit for full width. `textarea` always spans a full row.
 - Non-submit results carry `reason`: `'cancelled' | 'timeout' | 'session-ended'`.
+- `timeoutMs` shows a visible countdown and resolves with `reason: 'timeout'` when elapsed.
 - The official **MCP Bridge** `MCP action=add/edit` dispatcher is a working reference.
 
 **Writing good descriptions:**
@@ -477,19 +497,23 @@ expect in the output.
 ## 4  Registering Composer Toolbar Buttons (ComposerActions)
 
 Composer actions add buttons to the left side of the Composer input bar. Each
-button can show a dynamic badge and a dropdown menu.
+button can show a Lucide icon, a dynamic badge, and a dropdown menu.
 
 ### Step 1 — Declare the slot in `package.json`
 
 ```json
 "contributes": {
   "composerActions": [
-    { "id": "my-btn", "icon": "Star", "tooltip": "My Button" }
+    { "id": "my-btn", "icon": "star", "tooltip": "My Button" }
   ]
 }
 ```
 
-`icon` is a [Lucide](https://lucide.dev/icons/) icon name (PascalCase).
+`icon` is an **IconRef** (see §4.1). The simplest form is a Finch built-in
+[Lucide](https://lucide.dev/icons/) name (kebab-case like `git-branch`, or
+PascalCase like `GitBranch` — both resolve). The built-in set is fixed at app
+build time. For anything outside that set, declare an `iconPacks` namespace in
+manifest and register actual SVGs from code via `ctx.icons.register()` (§4.1).
 
 ### Step 2 — Bind a provider in `activate()`
 
@@ -502,18 +526,44 @@ ctx.subscriptions.push(
       return cwd ? 'active' : undefined;
     },
 
+    // Optional dynamic toolbar icon (an IconRef). Return undefined to keep the manifest icon.
+    async getIcon() {
+      const last = await ctx.storage.get<string>('lastAction');
+      return last === 'action-b' ? 'settings' : 'my-rocket'; // built-in name OR your own registered icon
+    },
+
     // Dropdown menu items shown when the user clicks the button.
+    // `iconName` is also an IconRef. Items support grouping + submenus (below).
     async getMenu({ cwd }) {
       return [
-        { id: 'action-a', label: 'Do A', iconName: 'Zap' },
-        { id: 'action-b', label: 'Do B', separator: true },
-        { id: 'action-c', label: 'Disabled', disabled: true },
+        // A titled, scrollable group: adjacent items sharing `group` render under
+        // `groupLabel`; `groupMaxVisible` caps visible rows (rest scroll).
+        { id: 'a', label: 'Do A', iconName: 'zap', group: 'actions', groupLabel: 'Actions', groupMaxVisible: 6 },
+        { id: 'b', label: 'Do B', group: 'actions' },
+        // Second group → separated + its own heading.
+        { id: 'mode', label: 'Mode', group: 'settings', groupLabel: 'Settings',
+          children: [ // hover to expand a submenu; clicking a child calls execute(childId)
+            { id: 'mode-fast', label: 'Fast', current: true },
+            { id: 'mode-think', label: 'Think' },
+          ] },
+        { id: 'c', label: 'Disabled', group: 'settings', disabled: true },
       ];
     },
 
     // Called when the user selects a menu item.
-    async execute({ cwd }, itemId) {
+    // `actions.fillComposer()` writes text into the visible Home or Session Composer.
+    // `/skill` directives and `@[path]` file mentions become rich tokens.
+    async execute({ cwd }, itemId, actions) {
       if (itemId === 'action-a') await doA(cwd);
+      if (itemId === 'action-b') {
+        await actions.fillComposer('Draft inserted by my extension');
+      }
+      if (itemId === 'action-c') {
+        await actions.fillComposer('/pdf 请总结 @[docs/report.pdf]');
+      }
+      if (itemId === 'action-d') {
+        await actions.fillComposer('\nExtra line', { mode: 'append' });
+      }
     },
   }),
 );
@@ -526,16 +576,120 @@ ctx.subscriptions.push(
 | `id` | `string` | Passed back to `execute()` |
 | `label` | `string` | Displayed text |
 | `description` | `string?` | Secondary text on the right |
-| `iconName` | `string?` | Lucide icon name |
+| `iconName` | `string?` | IconRef (built-in name or runtime icon pack / `ext:<packId>/<iconId>`) |
 | `current` | `boolean?` | Shows a checkmark |
 | `disabled` | `boolean?` | Greys out the item |
 | `separator` | `boolean?` | Inserts a divider before this item |
+| `group` | `string?` | Group key. Adjacent items sharing it render as one titled block |
+| `groupLabel` | `string?` | Small heading for the group (from the group's first item) |
+| `groupMaxVisible` | `number?` | Max rows before the group scrolls (from the group's first item) |
+| `children` | `ComposerActionMenuItem[]?` | Hover-expanded submenu. The parent doesn't `execute`; clicking a child calls `execute(childId)` |
+
+**Grouping & submenus:** Adjacent items with the same `group` are collected into
+one block; the block shows `groupLabel` as a small heading and a separator above
+it (like the model picker's 「模型」/「对话方式」 sections). Set `groupMaxVisible`
+on the group's first item to cap its height — extra rows scroll inside a
+ScrollArea. An item with a non-empty `children` array becomes a submenu trigger:
+hovering opens the nested menu, and only a child selection reaches `execute` (by
+the child's `id`). Keep same-`group` items contiguous in the array.
+
+**Icons:** Every icon field (`icon` / `getIcon()` / `iconName`) is an **IconRef**
+resolved by Finch's central icon registry (§4.1). The manifest `icon` is the
+default toolbar icon; `getIcon(ctx)` can override it dynamically. Unresolvable
+refs fall back to the default icon.
+
+**Ordering & layout (no manual control):** Buttons are ordered deterministically
+by `(extensionId, manifest declaration order)` — stable across restarts,
+independent of activation timing. There is no per-button priority field. When the
+Composer runs out of width, buttons automatically collapse to icon-only (the
+badge label is hidden but stays in the tooltip), so keep icons meaningful on their
+own. The toolbar also hot-updates: buttons appear/disappear as extensions
+activate / are enabled / disabled, without needing a session switch.
 
 **Visibility:** The button is queried with the effective `cwd`, which may be an
 empty string in plain chat or a Space channel without a bound directory. If your
-button does not need a working directory, return a badge (or `undefined`) so it
-stays visible everywhere. Only **throw** from `getBadge` when the button is truly
-not applicable (e.g. git-branch throwing when `cwd` is not a git repo).
+button does not need a working directory, return a badge / icon (or `undefined`)
+so it stays visible everywhere. Throw from `getBadge` or `getIcon` only when the
+button is truly not applicable (e.g. git-branch throwing when `cwd` is not a git
+repo).
+
+**Surface (Home vs Session):** Every `ComposerActionContext` carries
+`surface: 'home' | 'session'` — `'home'` is the Home / new-chat screen (no live
+session yet) and `'session'` is inside an open conversation. `getBadge`,
+`getIcon`, `getMenu` and `execute` all receive it, so you can vary visibility or
+menu contents per surface. Example — only show a button once a conversation is
+open:
+
+```ts
+async getBadge({ cwd, surface }) {
+  if (surface === 'home') throw new Error('hidden on home'); // hide on the Home screen
+  return await currentStatus(cwd);
+}
+```
+
+---
+
+## 4.1  Icons & Custom Icon Contributions (IconRef)
+
+Every place Finch shows an extension icon takes the same string type — an
+**`IconRef`** — resolved by one central icon registry (same idea as VS Code's
+`ThemeIcon`). Finch's built-in Lucide set is fixed at app build time. Extension
+icons should be registered from code as a runtime SVG icon pack.
+
+| Form | Example | Meaning |
+|---|---|---|
+| Built-in name | `"git-branch"` / `"GitBranch"` | Finch's bundled Lucide set (kebab or PascalCase both resolve) |
+| Pack icon id | `"my-rocket"` | An icon registered by this extension's own icon pack |
+| Current-pack ext ref | `"ext:my-rocket"` | Shorthand for this extension's own registered icon |
+| Explicit ext ref | `"ext:my-icons/my-rocket"` | Fully-qualified reference to an icon pack |
+
+**Recommended: register an icon pack from code**
+
+Manifest only declares the icon pack namespace:
+
+```json
+"contributes": {
+  "iconPacks": [
+    { "id": "my-icons", "label": "My Icons" }
+  ]
+}
+```
+
+Then register actual SVGs in `activate()`:
+
+```ts
+import { readFileSync } from 'node:fs';
+
+function icon(name: string) {
+  return readFileSync(new URL(`../icons/${name}.svg`, import.meta.url), 'utf-8');
+}
+
+export function activate(ctx: finch.ExtensionContext) {
+  ctx.subscriptions.push(ctx.icons.register('my-icons', {
+    'my-rocket': { svg: icon('rocket'), description: 'Launch' },
+  }));
+}
+```
+
+Now reference `"my-rocket"`, `"ext:my-rocket"`, or the fully-qualified
+`"ext:my-icons/my-rocket"` from any icon field (`composerActions[].icon`,
+`getIcon()`, menu `iconName`). This also lets you build an iconlab in code:
+import from an SVG library, normalize names, and register the final SVG strings.
+
+**Compatibility:** older static `contributes.icons` file-path declarations still
+work, but new extensions should prefer `iconPacks` + `ctx.icons.register()`.
+
+**SVG rules (enforced by Finch's main-process sanitizer):**
+- Register SVG strings only. The main process strips `<script>`, `<foreignObject>`,
+  event handlers (`on*`), and external references (`http(s):`, protocol-relative,
+  `file:`); only in-document `#id` refs survive.
+- Explicit `stroke` / `fill` colors are normalized to `currentColor` so the icon
+  inherits the surrounding text color (keep `fill="none"` for outline icons).
+  Design a single-color, ~24×24 `viewBox` icon for best results.
+
+> Icons are extensible everywhere: as Finch opens new icon entry points
+> (sidebar entries, Space icons, …) they accept the same `IconRef`, so a
+> registered icon works across all of them without further changes.
 
 ---
 
@@ -558,6 +712,56 @@ my-extension/
 Declare `contributes.skills: true` in the manifest. Bundled skills are shown in
 the extension detail panel and are searchable in the Composer skill picker for
 every session — they are NOT copied into the global `~/.finch/skills/`.
+
+---
+
+## 4.7  UI Toast Notifications
+
+Use `ctx.ui.showToast()` for lightweight, non-blocking user feedback from activation code, tools, or composer actions.
+
+```ts
+const result = await ctx.ui.showToast({
+  title: 'Saved',
+  description: 'The extension settings were updated.',
+  variant: 'success',       // 'default' | 'success' | 'info' | 'warning' | 'error' | 'promise'
+  position: 'TC',           // TL | TC | TR | BL | BC | BR; default TC
+  action: { label: 'Undo' }, // optional right-side button
+});
+if (result.action === 'action') {
+  await undoLastChange();
+}
+```
+
+Do not implement custom notification UI inside extensions for simple status messages. Let Finch manage Toast duration, stacking, and theme styling. If `action` is provided, `showToast()` resolves with `{ action: 'action' }` when the user clicks it, otherwise `{ action: 'dismissed' }`. `ctx.ui.showMessage(message, type)` is kept for compatibility and maps to Toast (`type` supports `info` / `warning` / `error`).
+
+Use `ctx.ui.showConfirmDialog()` when a plugin needs an explicit yes/no decision. Use `description` for simple plain text, or `message` for Finch's lightweight structured text:
+
+```ts
+const { confirmed } = await ctx.ui.showConfirmDialog({
+  title: 'Switch branch?',
+  message: `The following files would be overwritten:\n\n\`packages/extension-api/finch.d.ts\` {+40}\\g {-0}\\r\n\`src/shared/types.ts\` {+18}\\g {-0}\\r\n\n> Commit or stash changes before continuing`,
+  confirmLabel: 'Switch Branch…',
+  cancelLabel: 'Cancel',
+  variant: 'danger',
+});
+if (!confirmed) return;
+```
+
+Use `ctx.ui.showModalDialog()` for a short text dialog with custom actions:
+
+```ts
+const result = await ctx.ui.showModalDialog({
+  title: 'Choose export format',
+  message: `Pick the format to generate:\n\n\`report.json\` {+12}\\g {-0}\\r\n! Existing files may be overwritten`,
+  actions: [
+    { id: 'json', label: 'JSON', variant: 'primary' },
+    { id: 'csv', label: 'CSV', variant: 'secondary' },
+  ],
+});
+if (result.action === 'json') await exportJson();
+```
+
+Dialog content is text only; do not pass HTML. `message` supports only a tiny safe token set: blank lines for spacing, backticks for inline code, `{text}\\g` green, `{text}\\r` red, `{text}\\y` yellow, `{text}\\m` muted, `{text}\\a` accent, `{text}\\b` bold, `{text}\\i` italic, `> muted line`, and `! warning line`. Color tokens do not imply bold; use `\\b` explicitly when needed. `ctx.ui.createWebviewPanel()` is still reserved and throws in the current Finch version.
 
 ---
 
@@ -857,8 +1061,15 @@ Current isolation level:
 |---|---|
 | Tool not appearing in model context | Extension enabled? Activation error? `contributes.tools: true` in manifest? |
 | Tool called but does nothing | Check logs for errors inside `execute()`. Return `{ isError: true }` on failure to signal the model. |
-| Composer button not showing | `getBadge()` must not throw for the current cwd. Check for unhandled promise rejections. |
+| Composer button not showing | `getBadge()` / `getIcon()` must not throw for the current cwd. Check for unhandled promise rejections. |
+| Composer icon falls back to default | The IconRef didn't resolve. Use a built-in Lucide name, or declare `contributes.iconPacks` and register SVGs with `ctx.icons.register()` (§4.1). |
+| Registered SVG icon renders empty | The registered SVG string failed sanitization (script/external refs). Use a clean single-color 24×24 SVG. |
 | Composer button shows but menu is empty | `getMenu()` returning `[]`? Log the cwd inside `getMenu()`. |
+| `actions.fillComposer()` does nothing | The action must run from a visible Composer on Home or Session view; pass text as a string and use `mode: "replace"` or `"append"`. `/skill` and `@[path]` are parsed into rich tokens. |
+| Form times out unexpectedly | Check `timeoutMs`; Finch displays the countdown and returns `reason: "timeout"` when it elapses. |
+| Toast not showing | Use `ctx.ui.showToast({ title: '...', position: 'TC' })`; position must be `TL`/`TC`/`TR`/`BL`/`BC`/`BR`. Check extension host logs for bridge errors. |
+| Toast action not firing | Await `ctx.ui.showToast({ ..., action: { label: 'Undo' } })` and handle `result.action === 'action'`. |
+| Dialog not resolving | Await `ctx.ui.showConfirmDialog()` / `showModalDialog()` and ensure the renderer window is open; closing returns `confirmed:false` or `action:'dismissed'`. |
 | Storage reads returning `undefined` | Check `ctx.storagePath` exists. Storage is per-extension and reset if the extension id changes. |
 | Secret returns `undefined` | Key must be declared in `permissions.secrets` AND the user must have set a value in Settings. |
 | Installed extension doesn't show up in Toolcase | Did you install to `<cwd>/.finch/extensions/`? That tier is not scanned for new extensions (§0) — reinstall to personal/global with `npx @finch.app/extensions add .` (no `--cwd`). |
@@ -866,25 +1077,6 @@ Current isolation level:
 | Not sure if the manifest/source will pass Finch's checks | Run `npx @finch.app/extensions doctor <path>` before installing — it lints for legacy `FinchPluginAPI`, runtime `import ... from 'finch'`, and disallowed `electron`/Finch-internal imports. |
 
 ---
-
-## 10  Example: hello-finch
-
-See `<finch-repo>/examples/extensions/hello-finch/` for a complete, buildable
-example that demonstrates all three common extension points in ~60 lines:
-`ctx.tools.register()`, `ctx.composerActions.register()`, and a bundled skill
-(`skills/hello-guide/SKILL.md`, gated by `contributes.skills: true`).
-
-To use it as a starting point:
-```bash
-cp -r <finch-repo>/examples/extensions/hello-finch my-extension
-cd my-extension
-# Edit package.json: change finch.id, finch.name
-# Edit src/index.ts: replace hello logic with your own
-npm install
-npm run build
-npx @finch.app/extensions doctor .     # validate before installing
-npx @finch.app/extensions add .        # install to the personal tier
-```
 
 Then open Finch → Toolcase → Extensions, review permissions, and enable it.
 

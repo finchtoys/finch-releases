@@ -198,13 +198,16 @@ declare module 'finch' {
     };
 
     /**
-     * UI 扩展能力（Phase 2，预留）。
+     * UI 扩展能力。
+     * `showToast()` 可用于展示轻量、非阻塞通知；Webview Panel 仍为预留 API。
      * @example
-     * const panel = ctx.ui.createWebviewPanel({ title: 'My Panel', html: '<h1>Hello</h1>' });
-     * ctx.subscriptions.push(panel);
+     * ctx.ui.showToast({ title: 'Saved', variant: 'success', position: 'TC' });
      */
     readonly ui: {
       createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
+      showToast(options: ToastOptions): Promise<ToastResult>;
+      showConfirmDialog(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
+      showModalDialog(options: ModalDialogOptions): Promise<ModalDialogResult>;
       showMessage(message: string, type?: 'info' | 'warning' | 'error'): void;
     };
 
@@ -235,6 +238,17 @@ declare module 'finch' {
      * const tools = await mcp.listTools('filesystem');
      */
     readonly capabilities: Capabilities;
+
+    /**
+     * 运行时图标包注册。manifest 只声明 `contributes.iconPacks` 的包名，实际图标
+     * 在代码里注册为 SVG 字符串。主进程会先消毒 SVG，再交给渲染层使用。
+     *
+     * @example
+     * ctx.subscriptions.push(ctx.icons.register('git-branch', {
+     *   plus: { svg: '<svg viewBox="0 0 24 24">...</svg>' },
+     * }));
+     */
+    readonly icons: Icons;
 
     /**
      * 扩展 manifest contribution 快照。Host 只按 extension point 名称透传原始值，
@@ -325,6 +339,21 @@ declare module 'finch' {
      * 标记敏感字段。UI 会渲染密码框，且插件作者**绝不可**把它的值写回模型可见的 ToolResult。
      */
     readonly secret?: boolean;
+    /**
+     * 字段宽度占比，基于每行 6 格栅格自动排布：`full`（整行）/ `'1/2'` / `'1/3'` / `'2/3'`。
+     * 字段按声明顺序从左到右填入，一行占满后自动换行；放不下的字段落到下一行。
+     * 省略视为 `full`。`textarea` 始终独占整行。
+     *
+     * @example
+     * fields: [
+     *   { key: 'host', label: '主机', width: '2/3' },
+     *   { key: 'port', label: '端口', width: '1/3', type: 'number' }, // 与 host 同一行（2/3 + 1/3）
+     *   { key: 'a', label: 'A', width: '1/2' },
+     *   { key: 'b', label: 'B', width: '1/2' },                       // 各占半行
+     *   { key: 'note', label: '备注', type: 'textarea' },            // 独占整行
+     * ]
+     */
+    readonly width?: 'full' | '1/2' | '1/3' | '2/3';
   }
 
   /** `ctx.ui.requestForm` 的表单描述 —— 用户在工具调用期间填写。 */
@@ -535,6 +564,9 @@ declare module 'finch' {
   // § 4  finch.composerActions — Composer 工具栏扩展
   // ════════════════════════════════════════════════════════════════════════════
 
+  /** Composer 按钮所在界面位置。 */
+  export type ComposerSurface = 'home' | 'session';
+
   /**
    * Composer 扩展点上下文，每次调用时传入。
    */
@@ -543,6 +575,41 @@ declare module 'finch' {
     readonly cwd: string | undefined;
     readonly sessionId: string | undefined;
     readonly spaceId: string | undefined;
+    /**
+     * Composer 所在界面：`'home'` = 首页/新对话（尚无进行中的 session），
+     * `'session'` = 已打开的对话内。可据此对不同界面做差异化的按钮可见性判断。
+     *
+     * @example
+     * // 只在会话内显示，首页隐藏
+     * async getBadge({ surface }) {
+     *   if (surface === 'home') throw new Error('hidden on home');
+     *   return 'ready';
+     * }
+     */
+    readonly surface: ComposerSurface;
+  }
+
+  /** 填充 Composer 输入框的模式。 */
+  export type ComposerFillMode = 'replace' | 'append';
+
+  /** 填充 Composer 输入框的选项。 */
+  export interface ComposerFillOptions {
+    /** replace（默认）覆盖当前输入；append 追加到当前输入后面。 */
+    readonly mode?: ComposerFillMode;
+  }
+
+  /** Composer Action 执行期间可用的 UI 动作。 */
+  export interface ComposerActionActions {
+    /**
+     * 向当前激活的 Composer 输入框填入文字。
+     * `/skill` 指令和 `@[path]` 文件引用会渲染为富文本 token。
+     *
+     * @example
+     * await actions.fillComposer('帮我总结这段内容');
+     * await actions.fillComposer('/pdf 请总结 @[docs/report.pdf]');
+     * await actions.fillComposer('\n补充一句', { mode: 'append' });
+     */
+    fillComposer(text: string, options?: ComposerFillOptions): Promise<void>;
   }
 
   /** Composer 按钮下拉菜单中的一项。 */
@@ -556,8 +623,36 @@ declare module 'finch' {
     readonly separator?: boolean;
     /** 右侧的辅助文字（如快捷键、状态描述）。 */
     readonly description?: string;
-    /** Lucide 图标名，用于菜单项左侧小图标。 */
-    readonly iconName?: string;
+    /** 菜单项左侧小图标，一个 {@link IconRef}（内置 Lucide 名或 `ext:<packId>/<iconId>`）。 */
+    readonly iconName?: IconRef;
+    /**
+     * 分组 key。相邻且 `group` 相同的项归拢到一个分组区块，区块顶部显示 `groupLabel`
+     * 小标题（取该组第一个项的 groupLabel）。未设置 `group` 的项属于无标题默认组。
+     */
+    readonly group?: string;
+    /** 该项所在分组的小标题；取每组第一个带该字段的项作为标题。 */
+    readonly groupLabel?: string;
+    /**
+     * 该分组最多展示的项数，超出部分放进内部 ScrollArea 滚动。仅在分组第一个项上生效。
+     */
+    readonly groupMaxVisible?: number;
+    /**
+     * 二级子菜单项。存在时该项 hover 展开子菜单，点击自身不触发 `execute`，
+     * 只有点击子项才会以子项 id 调用 `execute`。
+     *
+     * @example
+     * async getMenu() {
+     *   return [
+     *     { id: 'quick', label: '快速' },
+     *     { id: 'think', label: '想一想', current: true },
+     *     { id: 'model', label: 'GPT-5.5', children: [
+     *       { id: 'gpt-5.5', label: 'GPT-5.5' },
+     *       { id: 'opus-4.8', label: 'Opus 4.8' },
+     *     ] },
+     *   ];
+     * }
+     */
+    readonly children?: ComposerActionMenuItem[];
   }
 
   /**
@@ -574,11 +669,15 @@ declare module 'finch' {
    *   async getBadge({ cwd }) {
    *     return cwd ? getCurrentBranch(cwd) : undefined;
    *   },
-   *   async getMenu({ cwd }) {
-   *     return listBranches(cwd).map(b => ({ id: b, label: b }));
+   *   async getIcon({ cwd }) {
+   *     return cwd ? 'GitBranch' : 'MessageCircle';
    *   },
-   *   async execute({ cwd }, branchName) {
+   *   async getMenu({ cwd }) {
+   *     return listBranches(cwd).map(b => ({ id: b, label: b, iconName: 'GitBranch' }));
+   *   },
+   *   async execute({ cwd }, branchName, actions) {
    *     await checkout(cwd, branchName);
+   *     await actions.fillComposer(`已切换到 ${branchName}`);
    *   },
    * });
    */
@@ -591,6 +690,14 @@ declare module 'finch' {
      */
     getBadge?(ctx: ComposerActionContext): Promise<string | undefined>;
     /**
+     * 返回按钮图标的 {@link IconRef}：内置 Lucide 名（如 `'settings'`、`'timer'`、
+     * `'log-in'`、`'list'`），或本扩展运行时图标包里的 icon id / `ext:<packId>/<iconId>`。
+     * - 返回字符串 → 覆盖 manifest 中静态声明的 `icon`
+     * - 返回 `undefined` → 使用 manifest 中的 `icon`
+     * - 抛出错误 → 按钮隐藏（与 `getBadge` 保持一致）
+     */
+    getIcon?(ctx: ComposerActionContext): Promise<IconRef | undefined>;
+    /**
      * 用户点击按钮后拉取的下拉菜单。
      * 返回空数组则显示空菜单；抛出错误则显示错误提示项。
      */
@@ -599,7 +706,7 @@ declare module 'finch' {
      * 用户选中某个菜单项时执行。
      * @param itemId 对应 {@link ComposerActionMenuItem.id}
      */
-    execute(ctx: ComposerActionContext, itemId: string): Promise<void>;
+    execute(ctx: ComposerActionContext, itemId: string, actions: ComposerActionActions): Promise<void>;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -612,6 +719,69 @@ declare module 'finch' {
   // ════════════════════════════════════════════════════════════════════════════
   // § 6  finch.ui — UI 扩展（reserved）
   // ════════════════════════════════════════════════════════════════════════════
+
+  /** Toast 类型。 */
+  export type ToastVariant = 'default' | 'success' | 'info' | 'warning' | 'error' | 'promise';
+
+  /** Toast 出现位置：TL/TC/TR/BL/BC/BR，默认 TC。 */
+  export type ToastPosition = 'TL' | 'TC' | 'TR' | 'BL' | 'BC' | 'BR';
+
+  /** Toast 右侧动作按钮。点击后 `showToast()` resolve 为 `{ action: 'action' }`。 */
+  export interface ToastActionOptions {
+    readonly label: string;
+  }
+
+  /** 轻量、非阻塞通知。生命周期由 Finch 管理。 */
+  export interface ToastOptions {
+    /** 主标题。 */
+    readonly title: string;
+    /** 可选补充说明。 */
+    readonly description?: string;
+    /** 通知状态。默认 `default`。 */
+    readonly variant?: ToastVariant;
+    /** 出现位置。默认 `TC`。 */
+    readonly position?: ToastPosition;
+    /** 可选右侧动作按钮，例如 Undo。 */
+    readonly action?: ToastActionOptions;
+  }
+
+  export interface ToastResult {
+    readonly action: 'action' | 'dismissed';
+  }
+
+  export type DialogButtonVariant = 'primary' | 'secondary' | 'danger';
+
+  export interface ConfirmDialogOptions {
+    readonly title: string;
+    readonly description?: string;
+    /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, and ! warning lines. */
+    readonly message?: string;
+    readonly confirmLabel?: string;
+    readonly cancelLabel?: string;
+    readonly variant?: 'primary' | 'danger';
+  }
+
+  export interface ConfirmDialogResult {
+    readonly confirmed: boolean;
+  }
+
+  export interface ModalDialogActionOptions {
+    readonly id: string;
+    readonly label: string;
+    readonly variant?: DialogButtonVariant;
+  }
+
+  export interface ModalDialogOptions {
+    readonly title: string;
+    readonly description?: string;
+    /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, and ! warning lines. */
+    readonly message?: string;
+    readonly actions?: readonly ModalDialogActionOptions[];
+  }
+
+  export interface ModalDialogResult {
+    readonly action: string | 'dismissed';
+  }
 
   /**
    * Webview Panel 选项。
@@ -646,7 +816,7 @@ declare module 'finch' {
   }
 
   // `ctx.ui.createWebviewPanel` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
-  // "尚未实现" 错误。`ctx.ui.showMessage` 为尽力而为的日志降级。全局 namespace 不再暴露。
+  // "尚未实现" 错误。`ctx.ui.showToast` 会显示原生 Toast；`ctx.ui.showMessage` 映射为 Toast。全局 namespace 不再暴露。
 
   // ════════════════════════════════════════════════════════════════════════════
   // § 6.5  Capabilities — 插件间能力协作
@@ -668,6 +838,20 @@ declare module 'finch' {
   }
 
   /** `ctx.capabilities` 的接口。 */
+  export interface IconDefinition {
+    /** 原始 SVG 字符串。Finch 主进程会先消毒，再交给 renderer 内联显示。 */
+    readonly svg: string;
+    readonly description?: string;
+  }
+
+  export interface Icons {
+    /**
+     * 注册一个运行时 SVG 图标包。`packId` 必须在 manifest `contributes.iconPacks` 声明。
+     * 图标可通过 `ext:<packId>/<iconId>` 引用；在同一扩展内部也可用裸 `iconId` 或 `ext:<iconId>` 简写。
+     */
+    register(packId: string, icons: Record<string, IconDefinition>): Disposable;
+  }
+
   export interface Capabilities {
     /**
      * 提供一个能力。仅允许 manifest `provides.capabilities` 中声明的名字。
@@ -892,6 +1076,18 @@ declare module 'finch' {
       readonly tools?: boolean;
       /** 贡献的 Composer 工具栏按钮（静态声明）。 */
       readonly composerActions?: ComposerActionDeclaration[];
+      /**
+       * 运行时图标包命名空间声明。实际 SVG 在代码里通过 `ctx.icons.register(packId, icons)` 注册。
+       * @example
+       * "iconPacks": [{ "id": "my-icons", "label": "My Icons" }]
+       */
+      readonly iconPacks?: readonly IconPackContribution[];
+      /**
+       * 兼容旧的静态 SVG 文件路径声明。新扩展优先使用 `iconPacks` + `ctx.icons.register()`。
+       * @example
+       * "icons": { "rocket": { "description": "发射", "svg": "./icons/rocket.svg" } }
+       */
+      readonly icons?: Record<string, IconContribution>;
       /** 是否携带内置 Skills（扫描 ./skills/）。 */
       readonly skills?: boolean;
       /**
@@ -927,12 +1123,41 @@ declare module 'finch' {
    */
   export type ActivationEvent = 'onStartup';
 
+  /**
+   * 一个图标引用。Finch 里所有「带图标的入口」都接受同一种字符串引用（对齐
+   * VS Code 的 ThemeIcon 思路），渲染时由中央图标注册表解析：
+   * - `'settings'` / `'git-branch'` —— Finch 打包内置的 Lucide 图标名（kebab-case，亦兼容
+   *   PascalCase 如 `'Settings'`）。这是固定集合，不随扩展动态增加。
+   * - `'ext:<packId>/<iconId>'` —— 引用某个运行时图标包里的 SVG 图标。
+   * - `'ext:<iconId>'` / 裸 iconId —— 在本扩展内部引用自己注册的图标，Finch 会自动补全为
+   *   `ext:<当前图标包id>/<iconId>`。
+   */
+  export type IconRef = string;
+
+  /** 扩展静态声明的一个运行时图标包命名空间。 */
+  export interface IconPackContribution {
+    readonly id: string;
+    readonly label?: LocalizedString;
+    readonly description?: LocalizedString;
+  }
+
+  /** 扩展贡献的一个自定义图标（兼容旧的 `contributes.icons` 文件路径声明）。 */
+  export interface IconContribution {
+    /** 图标用途说明（可选，便于他人复用）。 */
+    readonly description?: string;
+    /** SVG 文件相对扩展根目录的路径，如 `'./icons/rocket.svg'`。 */
+    readonly svg: string;
+  }
+
   /** Composer 工具栏按钮的静态声明（写在 manifest 里）。 */
   export interface ComposerActionDeclaration {
     /** 与 `finch.composerActions.register(id, ...)` 的 id 对应。 */
     readonly id: string;
-    /** Lucide 图标名（如 `'GitBranch'`、`'Star'`、`'Hash'`）。 */
-    readonly icon?: string;
+    /**
+     * 按钮默认图标，一个 {@link IconRef}：内置 Lucide 名（如 `'git-branch'`、
+     * `'settings'`）或本扩展运行时图标包里的 icon id / `ext:<packId>/<iconId>`。
+     */
+    readonly icon?: IconRef;
     readonly tooltip?: string;
   }
 

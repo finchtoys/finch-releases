@@ -38,13 +38,11 @@ function globalPluginsDir() {
 function personalPluginsDir() {
   return join(configuredAgentHome(), '.finch', 'extensions');
 }
-function projectPluginsDir(cwd = process.cwd()) {
-  return join(resolve(expandHomePath(cwd)), '.finch', 'extensions');
-}
+// Extensions only ever install to the personal (default) or global tier —
+// there is intentionally no project/--cwd scope. (Skills still support a
+// project tier via the separate @finch.app/skills CLI; that's unrelated.)
 function targetDir(opts) {
-  if (opts.global) return globalPluginsDir();
-  if (opts.cwd !== undefined) return projectPluginsDir(opts.cwd || process.cwd());
-  return personalPluginsDir();
+  return opts.global ? globalPluginsDir() : personalPluginsDir();
 }
 function pluginsStatePath() {
   return join(finchRuntimeHome(), 'extensions.json');
@@ -385,7 +383,6 @@ function cmdEnable(id, enabled) {
 
 function cmdWhere() {
   console.log(`Personal: ${personalPluginsDir()}`);
-  console.log(`Project:  ${projectPluginsDir()}`);
   console.log(`Global:   ${globalPluginsDir()}`);
   console.log(`State:    ${pluginsStatePath()}`);
 }
@@ -529,26 +526,23 @@ async function cmdUpdate(id, opts) {
 function parseArgs(argv) {
   const args = [...argv];
   const cmd = args.shift();
-  const opts = { global: false, cwd: undefined };
+  const opts = { global: false };
   const rest = [];
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
     if (a === '--global' || a === '-g') opts.global = true;
     else if (a === '--cwd') {
-      const next = args[i + 1];
-      if (next && !next.startsWith('-')) {
-        opts.cwd = next;
-        i += 1;
-      } else {
-        opts.cwd = '';
-      }
+      // Removed: extensions no longer support project/--cwd scope. Consume any
+      // following path argument so old invocations fail loudly instead of
+      // silently being parsed as the install source.
+      throw new Error('--cwd is no longer supported for extensions — install to the personal (default) or --global tier only.');
     } else rest.push(a);
   }
   return { cmd, rest, opts };
 }
 
 function help() {
-  console.log(`npx @finch.app/extensions\n\nUsage:\n  add <npm-package|local-path|url.zip> [--global|--cwd [path]]\n  update <id> [--global|--cwd [path]]\n  list [--global|--cwd [path]]\n  remove <id> [--global|--cwd [path]]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/\n  --cwd      process.cwd()/.finch/extensions/\n  --cwd path path/.finch/extensions/\n  --global   ~/.finch/extensions/\n`);
+  console.log(`npx @finch.app/extensions\n\nUsage:\n  add <npm-package|local-path|url.zip> [--global]\n  update <id> [--global]\n  list [--global]\n  remove <id> [--global]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/  (personal — default)\n  --global   ~/.finch/extensions/                              (global)\n\nThere is no project/--cwd scope — extensions only install to personal or global.\n`);
 }
 
 (async () => {

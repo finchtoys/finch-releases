@@ -1,0 +1,13 @@
+{
+  "name": "Git 分支",
+  "description": "在 Composer 工具栏管理 Git 分支，预览文件改动并一键切换。",
+  "systemPrompt": "当用户需要创建 Git 分支时，使用 create_git_branch 工具。该工具会弹出表单让用户输入分支名称。",
+  "toolMeta": {
+    "name": "Git 分支"
+  },
+  "composerActions": {
+    "git-branch": {
+      "tooltip": "Git 分支管理"
+    }
+  }
+}
