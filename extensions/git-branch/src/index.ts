@@ -15,6 +15,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const CURRENT_BRANCH_KEY = 'currentBranch';
 
 function readIconSvg(name: string): string {
   return readFileSync(new URL(`../icons/${name}.svg`, import.meta.url), 'utf-8');
@@ -159,8 +160,14 @@ export function activate(ctx: finch.ExtensionContext): void {
     ctx.composerActions.register('git-branch', {
       async getBadge({ cwd }): Promise<string | undefined> {
         if (!cwd || !isGitRepo(cwd)) throw new Error('not a git repo');
+        // 工具/菜单分支变更会写入 storage；getBadge 每次同步真实 git 状态。
+        // 不删除缓存，避免一次内部查询提前消费，导致入口文案仍停留在旧值。
         const branch = await git(cwd, ['branch', '--show-current']);
-        return branch || undefined;
+        if (branch) {
+          await ctx.storage.set(CURRENT_BRANCH_KEY, branch);
+          return branch;
+        }
+        return await ctx.storage.get<string>(CURRENT_BRANCH_KEY);
       },
 
       async getMenu({ cwd }): Promise<finch.ComposerActionMenuItem[]> {
@@ -284,8 +291,8 @@ export function activate(ctx: finch.ExtensionContext): void {
               description: ctx.i18n.t('git.branch.switch.desc', { branch: itemId }),
               message,
               actions: [
-                { id: 'cancel', label: ctx.i18n.t('git.branch.switch.cancel') },
-                { id: 'commit', label: ctx.i18n.t('git.branch.switch.commit') },
+                { id: 'cancel', label: ctx.i18n.t('git.branch.switch.cancel'), variant: 'secondary' },
+                { id: 'commit', label: ctx.i18n.t('git.branch.switch.commit'), variant: 'primary' },
               ],
             });
 
@@ -301,6 +308,7 @@ export function activate(ctx: finch.ExtensionContext): void {
           }
 
           await git(cwd, ['checkout', itemId], 10_000);
+          await ctx.storage.set(CURRENT_BRANCH_KEY, itemId);
         } catch (err) {
           ctx.logger.error('checkout failed', err);
           ctx.ui.showMessage(ctx.i18n.t('git.branch.switch.fail'), 'error');
@@ -369,6 +377,7 @@ export function activate(ctx: finch.ExtensionContext): void {
         }
 
         await git(cwd, ['checkout', '-b', branchName], 10_000);
+        await ctx.storage.set(CURRENT_BRANCH_KEY, branchName);
 
         let msg = ctx.i18n.t('git.branch.create.success', { name: branchName });
         if (status) {
