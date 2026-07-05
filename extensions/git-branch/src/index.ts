@@ -70,78 +70,71 @@ function renderAheadBehindDesc(diff: { ahead: number; behind: number }): string 
   return parts.join(' ');
 }
 
+function normalizeGitPath(path: string): string {
+  return path
+    .trim()
+    .replace(/^"|"$/g, '')
+    .replace(/\\t/g, '\t')
+    .replace(/\\n/g, '\n')
+    .replace(/\\"/g, '"');
+}
+
 /**
  * Build a structured message for the ModalDialog showing uncommitted changes.
  * Format: warning line, blank, each file with +/- counts, blank, total.
  */
 async function buildDiffMessage(cwd: string, i18n: finch.ExtensionI18n): Promise<string> {
-  const numstat = await git(cwd, ['diff', '--numstat']).catch(() => '');
+  // Use one primary source of truth for tracked changes. `git diff --numstat HEAD`
+  // covers staged + unstaged tracked files, avoiding mismatches/duplicates between
+  // `status --porcelain` and `diff --numstat` path parsing.
+  const numstat = await git(cwd, ['diff', '--numstat', 'HEAD', '--']).catch(() => '');
   const status = await git(cwd, ['status', '--porcelain']).catch(() => '');
 
   const lines: string[] = [];
   lines.push(i18n.t('git.branch.diff.title'));
   lines.push('');
 
-  const numstatFiles = new Map<string, { add: number; del: number }>();
+  const seen = new Set<string>();
+  let totalAdd = 0;
+  let totalDel = 0;
+
   if (numstat) {
     for (const line of numstat.split('\n').filter(Boolean)) {
       const parts = line.split('\t');
       if (parts.length < 3) continue;
-      const [add, del, ...nameParts] = parts;
-      numstatFiles.set(nameParts.join('\t'), {
-        add: parseInt(add || '0'),
-        del: parseInt(del || '0'),
-      });
+      const [addRaw, delRaw, ...nameParts] = parts;
+      const file = normalizeGitPath(nameParts.join('\t'));
+      if (!file || seen.has(file)) continue;
+
+      const add = parseInt(addRaw || '0', 10) || 0;
+      const del = parseInt(delRaw || '0', 10) || 0;
+      lines.push(`${file}   {+${add}}\\g  {-${del}}\\r`);
+      totalAdd += add;
+      totalDel += del;
+      seen.add(file);
     }
   }
 
-  const statusFiles = new Map<string, string>();
-  let totalAdd = 0;
-  let totalDel = 0;
+  // Only append untracked files from status; tracked files are already covered by numstat.
   if (status) {
     for (const line of status.split('\n').filter(Boolean)) {
       const state = line.slice(0, 2);
-      const file = line.slice(3).trim();
-      if (!file) continue;
+      if (state !== '??') continue;
 
-      if (state === '??') {
-        statusFiles.set(file, 'new');
-      } else if (state.startsWith('R')) {
-        const parts = file.split('\t');
-        statusFiles.set(parts[parts.length - 1], 'renamed');
-      } else {
-        statusFiles.set(file, state.trim() || 'M');
-      }
-    }
-  }
+      const file = normalizeGitPath(line.slice(3));
+      if (!file || seen.has(file)) continue;
 
-  for (const [file, st] of statusFiles) {
-    const ns = numstatFiles.get(file);
-    if (ns) {
-      lines.push(`${file}   +${ns.add}  -${ns.del}`);
-      totalAdd += ns.add;
-      totalDel += ns.del;
-    } else if (st === 'new') {
-      lines.push(`${file}   ${i18n.t('git.branch.diff.new')}`);
+      lines.push(`${file}   {${i18n.t('git.branch.diff.new')}}\\g`);
       totalAdd += 1;
-    } else {
-      lines.push(`${file}`);
-    }
-  }
-
-  for (const [file, ns] of numstatFiles) {
-    if (!statusFiles.has(file)) {
-      lines.push(`${file}   +${ns.add}  -${ns.del}`);
-      totalAdd += ns.add;
-      totalDel += ns.del;
+      seen.add(file);
     }
   }
 
   lines.push('');
   lines.push(i18n.t('git.branch.diff.total', {
-    files: String(statusFiles.size + (numstatFiles.size - statusFiles.size)),
-    add: String(totalAdd),
-    del: String(totalDel),
+    files: String(seen.size),
+    add: `{+${totalAdd}}\\g`,
+    del: `{-${totalDel}}\\r`,
   }));
   return lines.join('\n');
 }
@@ -237,11 +230,14 @@ export function activate(ctx: finch.ExtensionContext): void {
             );
 
             const children: finch.ComposerActionMenuItem[] = otherBranches.map(
-              (b) => ({
+              (b, index) => ({
                 id: b,
                 label: b,
                 description: otherDiffs.get(b) || undefined,
                 iconName: 'git-branch',
+                group: 'branches',
+                groupLabel: index === 0 ? ctx.i18n.t('git.branch.more.group') : undefined,
+                groupMaxVisible: index === 0 ? 6 : undefined,
               }),
             );
 
@@ -282,7 +278,10 @@ export function activate(ctx: finch.ExtensionContext): void {
 
         // ── Branch switch ──────────────────────────────────────────────
         try {
+          const fromBranch = await git(cwd, ['branch', '--show-current']).catch(() => '');
           const status = await git(cwd, ['status', '--porcelain']);
+          let checkpointCommit: string | undefined;
+
           if (status) {
             const message = await buildDiffMessage(cwd, ctx.i18n);
 
@@ -305,10 +304,24 @@ export function activate(ctx: finch.ExtensionContext): void {
               'commit', '-m',
               ctx.i18n.t('git.branch.switch.commit.msg', { branch: itemId }),
             ]);
+            checkpointCommit = await git(cwd, ['rev-parse', '--short', 'HEAD']).catch(() => undefined);
           }
 
           await git(cwd, ['checkout', itemId], 10_000);
           await ctx.storage.set(CURRENT_BRANCH_KEY, itemId);
+
+          if (checkpointCommit) {
+            await ctx.ui.showToast({
+              title: ctx.i18n.t('git.branch.switch.toast.title'),
+              description: ctx.i18n.t('git.branch.switch.toast.desc', {
+                from: fromBranch || 'HEAD',
+                to: itemId,
+                commit: checkpointCommit,
+              }),
+              variant: 'success',
+              position: 'TC',
+            });
+          }
         } catch (err) {
           ctx.logger.error('checkout failed', err);
           ctx.ui.showMessage(ctx.i18n.t('git.branch.switch.fail'), 'error');
