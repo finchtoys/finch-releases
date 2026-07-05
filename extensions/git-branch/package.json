@@ -1,6 +1,6 @@
 {
-  "name": "@finch/plugin-git-branch",
-  "version": "2.0.0",
+  "name": "@finch.app/ext-git-branch",
+  "version": "0.2.0",
   "description": "Git Branch Manager for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",

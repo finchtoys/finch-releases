@@ -1,5 +1,20 @@
 [
   {
+    "id": "git-branch",
+    "name": "Git Branch",
+    "author": "Finch Team",
+    "description": "Manage Git branches from the Composer toolbar with change previews and checkpoint commits.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "@finch.app/ext-git-branch",
+    "extensionType": "official",
+    "installScope": "global",
+    "categories": [
+      "developer"
+    ],
+    "featured": true,
+    "version": "0.2.0"
+  },
+  {
     "id": "mcp",
     "name": "MCP Client",
     "author": "Finch Team",
