@@ -1,30 +1,29 @@
 # Git Branch
 
-A Finch extension for managing Git branches directly from the Composer toolbar.
+A handy Git branch widget right inside your chat dialog.
 
-## Features
+## What it does
 
-- Show the current Git branch as a Composer toolbar badge.
-- List common branches such as `main` and `master` at the top.
-- Put additional branches in a grouped submenu with a limited visible count.
-- Preview uncommitted file changes before switching branches.
-- Highlight added and deleted line counts in the confirmation dialog.
-- Commit current workspace changes as a checkpoint before switching branches.
-- Show a toast after a checkpoint commit and successful branch switch.
-- Create and checkout a new branch through the Finch agent tool.
-- Follow Finch app language via runtime i18n.
+- Shows which branch you're currently on, right in the top bar of your chat.
+- Puts main branches like `main` and `master` at the top.
+- Puts other branches inside a grouped menu, showing up to 6 at a time.
+- Before switching branches, it checks if you have unsaved changes and shows you what's been modified.
+- Highlights added and deleted lines in green and red.
+- If you have unsaved changes, it can save a checkpoint commit first, then switch.
+- After switching, it tells you which commit was saved and which branch you're now on.
+- You can also ask the Agent to create a new branch for you.
 
-## Usage
+## How to use
 
-1. Open a Finch session inside a Git repository.
-2. Click the Git Branch action in the Composer toolbar.
-3. Select a branch to switch to.
-4. If the workspace has uncommitted changes, confirm whether to create a checkpoint commit before switching.
-5. Use **Create and checkout branch...** to start the branch creation flow.
+1. Open a Finch chat inside a Git project folder.
+2. Click the Git branch button on the top bar of the chat.
+3. Pick a branch to switch to.
+4. If there are unsaved changes, the dialog asks: save a checkpoint first, or cancel.
+5. Click **Create and checkout branch...** to let the Agent help you name a new branch.
 
 ## Permissions
 
-This extension requires shell permission because it runs local `git` commands. It does not require network access.
+This tool needs shell permission because it runs `git` commands locally. No network access needed.
 
 ## Development
 
@@ -33,7 +32,7 @@ npm install
 npm run build
 ```
 
-Install or update locally with the Finch extensions CLI:
+Install or update locally:
 
 ```bash
 npx @finch.app/extensions update git-branch

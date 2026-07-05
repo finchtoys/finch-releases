@@ -2,7 +2,7 @@
   {
     "id": "git-branch",
     "name": "Git 分支",
-    "description": "在 Composer 工具栏管理 Git 分支，支持改动预览和 checkpoint 提交。"
+    "description": "在对话框里管理 Git 分支的小工具。"
   },
   {
     "id": "mcp",
