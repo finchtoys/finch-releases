@@ -441,8 +441,8 @@ declare module 'finch' {
     readonly spaceId: string | undefined;
     /** 当前有效工作目录。 */
     readonly cwd: string | undefined;
-    /** 用户或超时触发中止时有信号。 */
-    readonly token: CancellationToken;
+    /** 用户或超时触发中止时进入 aborted 状态；未中止或宿主未提供时为 undefined。 */
+    readonly signal?: AbortSignal;
     readonly logger: Logger;
     readonly storage: Storage;
     readonly secrets: Secrets;
