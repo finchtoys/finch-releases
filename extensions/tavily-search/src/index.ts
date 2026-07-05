@@ -119,8 +119,8 @@ function buildTavilyUrl(apiKey: string): string {
 }
 
 function parseMode(value: unknown): TavilyMode {
-  if (value === 'remote' || value === 'http' || value === 'local') return value;
-  return 'local';
+  if (value === 'local' || value === 'http') return value;
+  return 'remote';
 }
 
 function normalizeDefaultParameters(value: unknown): string {
@@ -196,21 +196,8 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'setup_tavily_search',
     title: 'Set up Tavily Search',
-    description: 'Collect the user\'s Tavily API key in a secure form and write a local MCP Client configuration for the tavily server. Call this when Tavily is not configured, the user wants to connect Tavily, or Tavily MCP tools fail because the API key is missing.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        mode: {
-          type: 'string',
-          enum: ['local', 'remote', 'http'],
-          description: 'Connection mode. local uses npx -y tavily-mcp@latest and is recommended. remote uses npx -y mcp-remote with the Tavily remote MCP URL. http connects directly to the remote MCP URL.',
-        },
-        defaultParameters: {
-          type: 'string',
-          description: 'JSON string for Tavily DEFAULT_PARAMETERS. Defaults to include_images=true, max_results=15, search_depth=advanced.',
-        },
-      },
-    },
+    description: 'Collect the Tavily API key via secure form and configure the MCP server. Call this when Tavily is not set up yet.',
+    inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute(input, exec) {
       const args = input as { mode?: TavilyMode; defaultParameters?: string };
@@ -224,32 +211,12 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
         fields: [
           {
             key: 'apiKey',
-            label: 'TAVILY_API_KEY',
+            label: 'API 密钥',
             type: 'password',
             secret: true,
             required: true,
             placeholder: 'tvly-…',
             description: t(ctx, 'form.setup.apiKey.description'),
-          },
-          {
-            key: 'mode',
-            label: t(ctx, 'field.mode'),
-            type: 'select',
-            required: true,
-            default: mode,
-            width: '1/2',
-            options: [
-              { value: 'local', label: 'local · npx tavily-mcp@latest' },
-              { value: 'remote', label: 'remote · npx mcp-remote' },
-              { value: 'http', label: 'http · direct remote MCP' },
-            ],
-          },
-          {
-            key: 'defaultParameters',
-            label: 'DEFAULT_PARAMETERS',
-            type: 'textarea',
-            default: defaultParameters,
-            description: t(ctx, 'form.setup.defaultParameters.description'),
           },
         ],
       });

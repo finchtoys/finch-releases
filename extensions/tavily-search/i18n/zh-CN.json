@@ -1,0 +1,24 @@
+{
+  "name": "Tavily Search",
+  "description": "通过 Tavily Search，让 Finch 使用网页搜索、内容提取、站点抓取和站点地图工具。",
+  "systemPrompt": "当用户需要最新网页研究、深度搜索、网页提取、站点抓取或带来源答案时，优先使用内置 tavily-search skill 和 Tavily MCP 工具。如果 Tavily 尚未配置，先调用 setup_tavily_search 安全收集 API Key。",
+  "toolMeta": { "name": "Tavily Search" },
+  "promptGuides": {
+    "setup-tavily": {
+      "title": "设置 Tavily",
+      "description": "用 API Key 连接 Tavily MCP",
+      "prompt": "帮我设置 Tavily Search"
+    },
+    "research-with-tavily": {
+      "title": "用 Tavily 研究",
+      "description": "使用 Tavily 做带来源的网页研究",
+      "prompt": "/tavily-search 研究 Finch App 的最新动态，并附来源总结"
+    }
+  },
+  "form.setup.title": "连接 Tavily Search",
+  "form.setup.description": "输入 Tavily API Key 完成配置",
+  "form.setup.submit": "保存并连接",
+  "form.setup.apiKey.description": "密钥以 tvly- 开头，仅保存本地，不会反馈给模型",
+  "toast.saved.title": "Tavily 配置已保存",
+  "toast.saved.description": "MCP Client 将读取本机配置并连接 Tavily"
+}

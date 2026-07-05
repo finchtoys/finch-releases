@@ -8,5 +8,10 @@
     "id": "mcp",
     "name": "MCP 客户端",
     "description": "连接 Model Context Protocol 服务，并把它们的工具暴露给 Finch。"
+  },
+  {
+    "id": "tavily-search",
+    "name": "Tavily 搜索",
+    "description": "通过 MCP 连接 Tavily Search，让 Finch 使用网页搜索、内容提取、站点抓取和站点地图工具。"
   }
 ]

@@ -1,6 +1,6 @@
 {
   "name": "Git Branch",
-  "description": "Manage Git branches from the Composer toolbar with change previews.",
+  "description": "Manage Git branches from the dialog box.",
   "systemPrompt": "When the user wants to create a new Git branch, use the create_git_branch tool which shows a form to collect the branch name.",
   "toolMeta": {
     "name": "Git Branch"
