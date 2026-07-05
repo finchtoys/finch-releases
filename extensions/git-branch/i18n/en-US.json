@@ -9,5 +9,32 @@
     "git-branch": {
       "tooltip": "Git Branch Manager"
     }
-  }
+  },
+
+  "git.branch.changes": "{count} changes",
+  "git.branch.more": "More branches",
+  "git.branch.create": "Create and checkout branch...",
+  "git.branch.create.prompt": "Create and checkout a new git branch",
+  "git.branch.fetch.error": "Failed to fetch branches",
+  "git.branch.switch.title": "Uncommitted Changes",
+  "git.branch.switch.desc": "Please handle uncommitted files before switching to {branch}",
+  "git.branch.switch.cancel": "Cancel",
+  "git.branch.switch.commit": "Commit & Switch",
+  "git.branch.switch.commit.msg": "checkpoint: before switching to {branch}",
+  "git.branch.switch.fail": "Branch switch failed, please check your workspace and retry",
+  "git.branch.diff.title": "! There are uncommitted changes in the current branch. Please commit before switching.",
+  "git.branch.diff.new": "(new file)",
+  "git.branch.diff.total": "> Total: {files} files, +{add} -{del}",
+  "git.branch.create.title": "Create Git Branch",
+  "git.branch.create.desc": "Enter the name for the new branch",
+  "git.branch.create.submit": "Create & Checkout",
+  "git.branch.create.field": "Branch Name",
+  "git.branch.create.ph": "feature/my-feature",
+  "git.branch.create.cancelled": "Branch creation cancelled",
+  "git.branch.create.invalid": "Branch name \"{name}\" is invalid. Use letters, numbers, underscores, slashes, and hyphens only.",
+  "git.branch.create.nocwd": "No working directory",
+  "git.branch.create.success": "✅ Created and switched to branch `{name}`",
+  "git.branch.create.checkpoint": "\n\nUncommitted changes were auto-committed as a checkpoint.",
+  "tool.create.title": "Create Git Branch",
+  "tool.create.desc": "Create and switch to a new Git branch. Opens a form to collect the branch name. Call when the user wants to create a new branch or says a branch name after clicking \"Create and checkout branch...\"."
 }

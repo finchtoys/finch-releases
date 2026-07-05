@@ -9,5 +9,32 @@
     "git-branch": {
       "tooltip": "Git 分支管理"
     }
-  }
+  },
+
+  "git.branch.changes": "{count} 个改动",
+  "git.branch.more": "更多分支",
+  "git.branch.create": "创建并检出分支...",
+  "git.branch.create.prompt": "帮我创建并检出一个新分支",
+  "git.branch.fetch.error": "获取分支失败",
+  "git.branch.switch.title": "未提交的更改",
+  "git.branch.switch.desc": "切换到 {branch} 前需要先处理未提交的文件",
+  "git.branch.switch.cancel": "取消",
+  "git.branch.switch.commit": "提交并切换",
+  "git.branch.switch.commit.msg": "checkpoint: before switching to {branch}",
+  "git.branch.switch.fail": "切换分支失败，请检查工作区状态后重试",
+  "git.branch.diff.title": "! 当前分支有未提交的更改，请先提交再切换",
+  "git.branch.diff.new": "(new file)",
+  "git.branch.diff.total": "> 总计: {files} 个文件，+{add} -{del}",
+  "git.branch.create.title": "创建 Git 分支",
+  "git.branch.create.desc": "输入新分支的名称",
+  "git.branch.create.submit": "创建并检出",
+  "git.branch.create.field": "分支名称",
+  "git.branch.create.ph": "feature/my-feature",
+  "git.branch.create.cancelled": "已取消创建分支",
+  "git.branch.create.invalid": "分支名称 \"{name}\" 不合法，请使用字母、数字、下划线、斜杠和连字符",
+  "git.branch.create.nocwd": "没有工作目录",
+  "git.branch.create.success": "✅ 已创建并切换到分支 `{name}`",
+  "git.branch.create.checkpoint": "\n\n已自动提交当前工作区的更改作为 checkpoint。",
+  "tool.create.title": "Create Git Branch",
+  "tool.create.desc": "Create and switch to a new Git branch. Opens a form to collect the branch name. Call when the user wants to create a new branch or says a branch name after clicking \"创建并检出分支...\"."
 }

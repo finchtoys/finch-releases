@@ -12,54 +12,58 @@ function readIconSvg(name: string): string {
   return readFileSync(new URL(`../icons/${name}.svg`, import.meta.url), 'utf-8');
 }
 
-// ── Icon definitions (for submenu + register) ────────────────────────────────
+// ── Icon definitions (i18n keys only, resolved at runtime via ctx) ───────────
 interface IconDef {
   id: string;
   svgName: string;
-  label: string;
-  description: string;
+  labelKey: string;
+  descKey: string;
 }
 const ALL_ICONS: IconDef[] = [
-  { id: 'finch-extension-example', svgName: 'finch-extension-example', label: '主图标', description: '自定义 SVG 主图标' },
-  { id: 'all-fields', svgName: 'all-fields', label: '全部字段', description: 'Lucide list' },
-  { id: 'login',      svgName: 'login',      label: '模拟登录', description: 'Lucide log-in' },
-  { id: 'timeout',    svgName: 'timeout',    label: '超时测试', description: 'Lucide timer' },
-  { id: 'config',     svgName: 'config',     label: '配置向导', description: 'Lucide settings' },
-  { id: 'toast',      svgName: 'toast',      label: '弹框与提示', description: 'Lucide bell' },
-  { id: 'preview',    svgName: 'preview',    label: '图标预览', description: 'Lucide eye' },
+  { id: 'finch-extension-example', svgName: 'finch-extension-example', labelKey: 'icon.main',        descKey: 'icon.main.desc' },
+  { id: 'all-fields',              svgName: 'all-fields',              labelKey: 'icon.all-fields',   descKey: 'icon.all-fields.desc' },
+  { id: 'login',                   svgName: 'login',                   labelKey: 'icon.login',        descKey: 'icon.login.desc' },
+  { id: 'timeout',                 svgName: 'timeout',                 labelKey: 'icon.timeout',      descKey: 'icon.timeout.desc' },
+  { id: 'config',                  svgName: 'config',                  labelKey: 'icon.config',       descKey: 'icon.config.desc' },
+  { id: 'toast',                   svgName: 'toast',                   labelKey: 'icon.toast',        descKey: 'icon.toast.desc' },
+  { id: 'preview',                 svgName: 'preview',                 labelKey: 'icon.preview',      descKey: 'icon.preview.desc' },
 ];
 const iconMap = new Map(ALL_ICONS.map(i => [i.id, i]));
 
-// ── Action definitions ──────────────────────────────────────────────────────
+// ── Action definitions (i18n keys only) ──────────────────────────────────────
 interface ActionDef {
   id: string;
-  label: string;
+  labelKey: string;
   icon: string;
-  prompt: string;
+  promptKey: string;
   group: string;
 }
 const ALL_ACTIONS: ActionDef[] = [
-  { id: 'all-fields', label: '全部字段类型', icon: ICON('all-fields'), prompt: '用扩展示例展示全部表单字段类型', group: '表单' },
-  { id: 'login',      label: '模拟登录',      icon: ICON('login'),      prompt: '用扩展示例测试登录表单',           group: '表单' },
-  { id: 'timeout',    label: '超时测试',       icon: ICON('timeout'),    prompt: '用扩展示例测 30 秒超时的表单',     group: '表单' },
-  { id: 'config',     label: '配置向导',       icon: ICON('config'),    prompt: '用扩展示例测试项目配置表单',       group: '表单' },
-  { id: 'toast',      label: '弹框与提示',     icon: ICON('toast'),     prompt: '用扩展示例演示弹框和提示功能',     group: 'UI 演示' },
-  { id: 'preview',    label: '自定义图标',     icon: ICON('preview'),   prompt: '用扩展示例展示所有注册的自定义图标', group: 'UI 演示' },
+  { id: 'all-fields', labelKey: 'action.all-fields', icon: ICON('all-fields'), promptKey: 'action.all-fields.prompt', group: '表单' },
+  { id: 'login',      labelKey: 'action.login',      icon: ICON('login'),      promptKey: 'action.login.prompt',      group: '表单' },
+  { id: 'timeout',    labelKey: 'action.timeout',     icon: ICON('timeout'),    promptKey: 'action.timeout.prompt',    group: '表单' },
+  { id: 'config',     labelKey: 'action.config',      icon: ICON('config'),    promptKey: 'action.config.prompt',     group: '表单' },
+  { id: 'toast',      labelKey: 'action.toast',       icon: ICON('toast'),     promptKey: 'action.toast.prompt',      group: 'UI 演示' },
+  { id: 'preview',    labelKey: 'action.preview',     icon: ICON('preview'),   promptKey: 'action.preview.prompt',    group: 'UI 演示' },
 ];
 const actionMap = new Map(ALL_ACTIONS.map(a => [a.id, a]));
+
+// ── i18n helper ──────────────────────────────────────────────────────────────
+function t(i18n: finch.ExtensionContext['i18n'], key: string, vars?: Record<string, string | number | boolean>): string {
+  return i18n.t(key, vars as Record<string, string>);
+}
 
 // ── Tool: 全部字段类型 ───────────────────────────────────────────────────────
 function registerAllFieldsTool(ctx: finch.ExtensionContext) {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'form_all_fields',
-      title: '全部字段类型',
-      description:
-        '展示 Finch 自定义表单支持的全部字段类型：text、password、textarea、number、select、boolean。' +
-        '同时演示 width 字段控制并排布局。当用户说「测试表单」「所有字段」「查看字段类型」时使用。',
+      title: t(ctx.i18n, 'action.all-fields'),
+      description: t(ctx.i18n, 'action.all-fields.prompt') + '。同时演示 width 字段控制并排布局。',
       inputSchema: { type: 'object', properties: {} },
       risk: 'low',
       async execute(_input, exec) {
+        const i18n = ctx.i18n;
         const result = await exec.ui.requestForm({
           title: '全部字段类型测试',
           description: '这是 Finch requestForm 支持的全部字段类型，包含并排布局演示。',
@@ -95,10 +99,8 @@ function registerLoginTool(ctx: finch.ExtensionContext) {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'form_login',
-      title: '模拟登录',
-      description:
-        '模拟登录场景，演示 requestForm 的实用案例和 secret 字段的使用。' +
-        '当用户说「登录」「登录表单」「测试登录」时使用。',
+      title: t(ctx.i18n, 'action.login'),
+      description: t(ctx.i18n, 'action.login.prompt') + '。演示 requestForm 的实用案例和 secret 字段。',
       inputSchema: { type: 'object', properties: {} },
       risk: 'low',
       async execute(_input, exec) {
@@ -134,9 +136,8 @@ function registerTimeoutTool(ctx: finch.ExtensionContext) {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'form_timeout',
-      title: '超时测试',
-      description:
-        '演示 requestForm 的可选超时参数。`seconds` 参数控制超时时长（默认 30 秒），设为 0 则不超时。' +
+      title: t(ctx.i18n, 'action.timeout'),
+      description: '演示 requestForm 的可选超时参数。`seconds` 参数控制超时时长（默认 30 秒），设为 0 则不超时。' +
         '当用户说「超时测试」「自动取消」「自定义超时」时使用。',
       inputSchema: {
         type: 'object',
@@ -180,10 +181,8 @@ function registerConfigTool(ctx: finch.ExtensionContext) {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'form_config',
-      title: '配置向导',
-      description:
-        '演示复杂的多字段配置表单，包含 select、boolean 组合、并排布局。' +
-        '当用户说「配置」「配置向导」「项目配置」时使用。',
+      title: t(ctx.i18n, 'action.config'),
+      description: t(ctx.i18n, 'action.config.prompt') + '。演示复杂的多字段表单，含 select/boolean/并排布局。',
       inputSchema: { type: 'object', properties: {} },
       risk: 'medium',
       async execute(_input, exec) {
@@ -238,7 +237,7 @@ function registerToastDemoTool(ctx: finch.ExtensionContext) {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'form_show_message',
-      title: '弹框与提示',
+      title: t(ctx.i18n, 'action.toast'),
       description:
         '演示 ctx.ui.showToast 和 ctx.ui.showMessage 两种通知方式。' +
         'showToast 支持变体（success/info/warning/error）和 action 按钮（如 Undo）。' +
@@ -290,10 +289,8 @@ function registerIconPreviewTool(ctx: finch.ExtensionContext) {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'form_icon_preview',
-      title: '自定义图标',
-      description:
-        '展示本扩展通过 contributes.icons 注册的所有自定义 SVG 图标，以及它们的引用方式。' +
-        '当用户说「图标」「自定义图标」「查看图标」「图标演示」时使用。',
+      title: t(ctx.i18n, 'action.preview'),
+      description: t(ctx.i18n, 'action.preview.prompt') + '。展示所有通过 contributes.iconPacks + ctx.icons.register() 注册的自定义 SVG 图标及引用方式。',
       inputSchema: { type: 'object', properties: {} },
       risk: 'low',
       async execute() {
@@ -339,14 +336,18 @@ function registerIconPreviewTool(ctx: finch.ExtensionContext) {
 
 // ── Composer action provider ─────────────────────────────────────────────────
 function registerComposerAction(ctx: finch.ExtensionContext) {
+  const i18n = ctx.i18n;
+
   ctx.subscriptions.push(
     ctx.composerActions.register('example-quick', {
       async getBadge() {
         const lastAction = await ctx.storage.get<string>(LAST_ACTION_KEY);
         if (lastAction && actionMap.has(lastAction)) {
-          return actionMap.get(lastAction)!.label.slice(0, 6);
+          const label = ctx.i18n.t(actionMap.get(lastAction)!.labelKey);
+          // 中文按 6 字节截，英文按 10 字符截，适配视觉宽度
+          return /[\u4e00-\u9fff]/.test(label) ? label.slice(0, 6) : label.slice(0, 10);
         }
-        return '演示';
+        return ctx.i18n.t('badge.default');
       },
 
       /** 动态读取当前图标，从 storage 读取用户选择 */
@@ -364,10 +365,10 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
           .filter(a => a.group === '表单')
           .map(a => ({
             id: a.id,
-            label: a.label,
+            label: ctx.i18n.t(a.labelKey),
             iconName: a.icon,
             group: 'example-forms',
-            groupLabel: '📋 表单交互',
+            groupLabel: ctx.i18n.t('group.forms'),
           }));
 
         // UI 演示组（一级菜单，无激活态；只保留弹框，去掉自定义图标）
@@ -375,17 +376,17 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
           .filter(a => a.group === 'UI 演示' && a.id !== 'preview')
           .map(a => ({
             id: a.id,
-            label: a.label,
+            label: ctx.i18n.t(a.labelKey),
             iconName: a.icon,
             group: 'example-ui',
-            groupLabel: '🔔 UI 能力',
+            groupLabel: ctx.i18n.t('group.ui'),
           }));
 
         // 图标选择二级菜单（hover 展开）
         const iconItems: finch.ComposerActionMenuItem[] = ALL_ICONS.map(i => ({
           id: `icon-${i.id}`,
-          label: i.label,
-          description: i.description,
+          label: ctx.i18n.t(i.labelKey),
+          description: ctx.i18n.t(i.descKey),
           iconName: ICON(i.id),
           current: currentIcon === i.id,
           group: 'example-icons',
@@ -394,11 +395,11 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
         // "更换图标" 作为可 hover 展开的二级菜单
         const iconPickerItem: finch.ComposerActionMenuItem = {
           id: 'icon-picker',
-          label: '更换图标',
-          description: currentIcon ? iconMap.get(currentIcon)?.label : '默认',
+          label: ctx.i18n.t('icon.picker'),
+          description: currentIcon ? ctx.i18n.t(iconMap.get(currentIcon)!.labelKey) : ctx.i18n.t('icon.picker.default'),
           iconName: currentIcon ? ICON(currentIcon) : ICON('finch-extension-example'),
           group: 'example-ui',
-          groupLabel: '🔔 UI 能力',
+          groupLabel: ctx.i18n.t('group.ui'),
           children: iconItems,
         };
 
@@ -413,8 +414,8 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
 
           await ctx.storage.set(CURRENT_ICON_KEY, iconId);
           ctx.ui.showToast({
-            title: '图标已更换',
-            description: `当前图标：${iconMap.get(iconId)!.label}`,
+            title: ctx.i18n.t('icon.changed'),
+            description: ctx.i18n.t('icon.changed.desc', { label: ctx.i18n.t(iconMap.get(iconId)!.labelKey) }),
             variant: 'success',
             position: 'TC',
           });
@@ -428,34 +429,35 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
         await ctx.storage.set(LAST_ACTION_KEY, itemId);
 
         // 填入 Composer
-        await actions.fillComposer(def.prompt);
+        await actions.fillComposer(ctx.i18n.t(def.promptKey));
 
         // 根据不同类型显示反馈（仅顶部中央一个 toast）
+        const label = ctx.i18n.t(def.labelKey);
         if (itemId === 'all-fields') {
           await ctx.ui.showToast({
-            title: '已填入',
-            description: `「${def.label}」的测试 prompt`,
+            title: ctx.i18n.t('toast.filled'),
+            description: ctx.i18n.t('toast.filled.desc', { label }),
             variant: 'success',
             position: 'TC',
           });
         } else if (itemId === 'toast') {
           ctx.ui.showToast({
-            title: '已填入',
-            description: `「${def.label}」的测试 prompt — 打开弹框演示工具查看更多`,
+            title: ctx.i18n.t('toast.filled'),
+            description: ctx.i18n.t('toast.toast.desc', { label }),
             variant: 'info',
             position: 'TC',
           });
         } else if (itemId === 'preview') {
           ctx.ui.showToast({
-            title: '已填入',
-            description: '打开自定义图标展示工具',
+            title: ctx.i18n.t('toast.filled'),
+            description: ctx.i18n.t('toast.preview.desc'),
             variant: 'info',
             position: 'TC',
           });
         } else {
           ctx.ui.showToast({
-            title: '已填入',
-            description: `「${def.label}」的测试 prompt`,
+            title: ctx.i18n.t('toast.filled'),
+            description: ctx.i18n.t('toast.filled.desc', { label }),
             variant: 'success',
             position: 'TC',
           });

@@ -127,6 +127,22 @@ declare module 'finch' {
    *   ctx.logger.info('activated');
    * }
    */
+  export type AppLocale = 'zh-CN' | 'en-US';
+  export type TranslationValue = string | number | boolean | null | undefined;
+  export type TranslationValues = Record<string, TranslationValue>;
+
+  /** 扩展运行时 i18n。读取扩展自己的 `i18n/<locale>.json`。 */
+  export interface ExtensionI18n {
+    /** 当前解析后的 app 语言，例如 `zh-CN` 或 `en-US`。 */
+    readonly locale: AppLocale;
+    /** 按 key 翻译，支持 `{placeholder}` 参数替换；缺失 key 返回 key 本身。 */
+    t(key: string, values?: TranslationValues): string;
+    /** key 是否存在于当前语言或 fallback 语言中。 */
+    has(key: string): boolean;
+    /** 监听 Finch app 语言变化。 */
+    onDidChangeLocale(listener: (locale: AppLocale) => void): Disposable;
+  }
+
   export interface ExtensionContext {
     /**
      * 推入此数组的 Disposable 将在插件停用时自动 `dispose()`。
@@ -244,6 +260,14 @@ declare module 'finch' {
      * 具体语义由消费扩展自行定义。
      */
     readonly extensions: Extensions;
+
+    /**
+     * 扩展运行时 i18n。读取当前扩展目录下的 `i18n/<locale>.json`，自动跟随 Finch app 语言。
+     *
+     * @example
+     * ctx.i18n.t('suggestion.code-review')
+     */
+    readonly i18n: ExtensionI18n;
 
     // ── 服务 ──────────────────────────────────────────────────────────────────
 

@@ -34,8 +34,6 @@ function isGitRepo(cwd: string): boolean {
   return Boolean(cwd) && existsSync(join(cwd, '.git'));
 }
 
-
-
 /** Get ahead/behind commit counts between HEAD and another branch. */
 async function getAheadBehind(
   cwd: string,
@@ -75,19 +73,14 @@ function renderAheadBehindDesc(diff: { ahead: number; behind: number }): string 
  * Build a structured message for the ModalDialog showing uncommitted changes.
  * Format: warning line, blank, each file with +/- counts, blank, total.
  */
-async function buildDiffMessage(cwd: string): Promise<string> {
-  // Per-file numstat: "additions\tdeletions\tfilename"
+async function buildDiffMessage(cwd: string, i18n: finch.ExtensionI18n): Promise<string> {
   const numstat = await git(cwd, ['diff', '--numstat']).catch(() => '');
-  // For untracked / new files
   const status = await git(cwd, ['status', '--porcelain']).catch(() => '');
-  // Overall stat for total summary
-  const diffStat = await git(cwd, ['diff', '--stat']).catch(() => '');
 
   const lines: string[] = [];
-  lines.push('! 当前分支有未提交的更改，请先提交再切换');
+  lines.push(i18n.t('git.branch.diff.title'));
   lines.push('');
 
-  // Parse numstat for tracked changes
   const numstatFiles = new Map<string, { add: number; del: number }>();
   if (numstat) {
     for (const line of numstat.split('\n').filter(Boolean)) {
@@ -101,7 +94,6 @@ async function buildDiffMessage(cwd: string): Promise<string> {
     }
   }
 
-  // Parse status to find all changed files (including untracked)
   const statusFiles = new Map<string, string>();
   let totalAdd = 0;
   let totalDel = 0;
@@ -114,7 +106,6 @@ async function buildDiffMessage(cwd: string): Promise<string> {
       if (state === '??') {
         statusFiles.set(file, 'new');
       } else if (state.startsWith('R')) {
-        // Renamed: "R100 old → new"
         const parts = file.split('\t');
         statusFiles.set(parts[parts.length - 1], 'renamed');
       } else {
@@ -123,7 +114,6 @@ async function buildDiffMessage(cwd: string): Promise<string> {
     }
   }
 
-  // Merge: show all status files with numstat info where available
   for (const [file, st] of statusFiles) {
     const ns = numstatFiles.get(file);
     if (ns) {
@@ -131,15 +121,13 @@ async function buildDiffMessage(cwd: string): Promise<string> {
       totalAdd += ns.add;
       totalDel += ns.del;
     } else if (st === 'new') {
-      lines.push(`${file}   (new file)`);
-      // Untracked files count as additions in stat
+      lines.push(`${file}   ${i18n.t('git.branch.diff.new')}`);
       totalAdd += 1;
     } else {
       lines.push(`${file}`);
     }
   }
 
-  // Also show any numstat-only files (e.g. modified that status shows differently)
   for (const [file, ns] of numstatFiles) {
     if (!statusFiles.has(file)) {
       lines.push(`${file}   +${ns.add}  -${ns.del}`);
@@ -149,7 +137,11 @@ async function buildDiffMessage(cwd: string): Promise<string> {
   }
 
   lines.push('');
-  lines.push(`> 总计: ${statusFiles.size + (numstatFiles.size - statusFiles.size)} 个文件，+${totalAdd} -${totalDel}`);
+  lines.push(i18n.t('git.branch.diff.total', {
+    files: String(statusFiles.size + (numstatFiles.size - statusFiles.size)),
+    add: String(totalAdd),
+    del: String(totalDel),
+  }));
   return lines.join('\n');
 }
 
@@ -178,7 +170,6 @@ export function activate(ctx: finch.ExtensionContext): void {
           const currentBranch = await git(cwd, ['branch', '--show-current']);
           if (!currentBranch) return [];
 
-          // List all local branches
           const raw = await git(cwd, ['branch']);
           const allBranches = raw
             .split('\n')
@@ -186,7 +177,6 @@ export function activate(ctx: finch.ExtensionContext): void {
             .map((l) => l.replace(/^\*?\s+/, '').trim())
             .filter(Boolean);
 
-          // Pin main / master (exclude current)
           const pinned = ['main', 'master'].filter(
             (b) => b !== currentBranch && allBranches.includes(b),
           );
@@ -194,11 +184,11 @@ export function activate(ctx: finch.ExtensionContext): void {
             (b) => b !== currentBranch && !pinned.includes(b),
           );
 
-          // Change info for current branch (staged + unstaged + untracked)
           const changedFiles = await getChangedFileCount(cwd);
-          const currentDesc = changedFiles > 0 ? `${changedFiles} 个改动` : undefined;
+          const currentDesc = changedFiles > 0
+            ? ctx.i18n.t('git.branch.changes', { count: String(changedFiles) })
+            : undefined;
 
-          // Ahead-behind for pinned branches (others are in submenu)
           const pinnedDiffs = new Map<string, string>();
           await Promise.all(
             pinned.map(async (b) => {
@@ -208,10 +198,8 @@ export function activate(ctx: finch.ExtensionContext): void {
             }),
           );
 
-          // Build menu items
           const items: finch.ComposerActionMenuItem[] = [];
 
-          // 1. Current branch — pinned top
           items.push({
             id: currentBranch,
             label: currentBranch,
@@ -220,7 +208,6 @@ export function activate(ctx: finch.ExtensionContext): void {
             iconName: 'git-branch',
           });
 
-          // 2. main / master
           for (const b of pinned) {
             items.push({
               id: b,
@@ -230,9 +217,7 @@ export function activate(ctx: finch.ExtensionContext): void {
             });
           }
 
-          // 3. "More branches" submenu — only when there are extra branches
           if (otherBranches.length > 0) {
-            // Separator before submenu only when it exists
             items.push({ id: '__sep1__', label: '', separator: true });
 
             const otherDiffs = new Map<string, string>();
@@ -255,78 +240,70 @@ export function activate(ctx: finch.ExtensionContext): void {
 
             items.push({
               id: '__submenu__',
-              label: '更多分支',
+              label: ctx.i18n.t('git.branch.more'),
               description: `${otherBranches.length}`,
               iconName: 'git-commit-horizontal',
               children,
             });
           }
 
-          // 4. Single separator before create button
           items.push({ id: '__sep__', label: '', separator: true });
 
-          // 5. Create branch
           items.push({
             id: '__create_branch__',
-            label: '创建并检出分支...',
+            label: ctx.i18n.t('git.branch.create'),
             iconName: 'ext:git-branch/plus',
           });
 
           return items;
         } catch (err) {
           ctx.logger.error('getMenu failed', err);
-          return [{ id: '__error__', label: '获取分支失败', disabled: true }];
+          return [{ id: '__error__', label: ctx.i18n.t('git.branch.fetch.error'), disabled: true }];
         }
       },
 
       async execute({ cwd }, itemId: string, actions: finch.ComposerActionActions): Promise<void> {
         if (!cwd || !itemId) return;
 
-        // ── Create branch ──────────────────────────────────────────────
+        // ── Create branch: 直接填入 Prompt ────────────────────────────
         if (itemId === '__create_branch__') {
-          await actions.fillComposer('帮我创建并检出一个新分支');
+          await actions.fillComposer(ctx.i18n.t('git.branch.create.prompt'));
           return;
         }
 
-        // Skip control items
         if (itemId.startsWith('__')) return;
 
         // ── Branch switch ──────────────────────────────────────────────
         try {
-          // 1) Check for uncommitted changes
           const status = await git(cwd, ['status', '--porcelain']);
           if (status) {
-            // Build detailed diff info for the ModalDialog
-            const message = await buildDiffMessage(cwd);
+            const message = await buildDiffMessage(cwd, ctx.i18n);
 
             const result = await ctx.ui.showModalDialog({
-              title: '未提交的更改',
-              description: `切换到 ${itemId} 前需要先处理未提交的文件`,
+              title: ctx.i18n.t('git.branch.switch.title'),
+              description: ctx.i18n.t('git.branch.switch.desc', { branch: itemId }),
               message,
               actions: [
-                { id: 'cancel', label: '取消' },
-                { id: 'commit', label: '提交并切换' },
+                { id: 'cancel', label: ctx.i18n.t('git.branch.switch.cancel') },
+                { id: 'commit', label: ctx.i18n.t('git.branch.switch.commit') },
               ],
             });
 
-            // User cancelled or dismissed
             if (result.action === 'dismissed' || result.action === 'cancel') {
               return;
             }
 
-            // 2) Stage all and commit
             await git(cwd, ['add', '-A']);
             await git(cwd, [
               'commit', '-m',
-              `checkpoint: before switching to ${itemId}`,
+              ctx.i18n.t('git.branch.switch.commit.msg', { branch: itemId }),
             ]);
           }
 
-          // 3) Switch branch
           await git(cwd, ['checkout', itemId], 10_000);
         } catch (err) {
           ctx.logger.error('checkout failed', err);
-          ctx.ui.showMessage('切换分支失败，请检查工作区状态后重试', 'error');
+          ctx.ui.showMessage(ctx.i18n.t('git.branch.switch.fail'), 'error');
         }
       },
     }),
@@ -336,11 +313,8 @@ export function activate(ctx: finch.ExtensionContext): void {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'create_git_branch',
-      title: 'Create Git Branch',
-      description:
-        'Create and switch to a new Git branch. ' +
-        'Opens a form to collect the branch name. ' +
-        'Call when the user wants to create a new branch or says a branch name after clicking "创建并检出分支...".',
+      title: ctx.i18n.t('tool.create.title'),
+      description: ctx.i18n.t('tool.create.desc'),
       inputSchema: {
         type: 'object',
         properties: {},
@@ -351,33 +325,30 @@ export function activate(ctx: finch.ExtensionContext): void {
         await exec.storage.delete('pendingCreateBranch').catch(() => {});
 
         const result = await exec.ui.requestForm({
-          title: '创建 Git 分支',
-          description: '输入新分支的名称',
-          submitLabel: '创建并检出',
+          title: ctx.i18n.t('git.branch.create.title'),
+          description: ctx.i18n.t('git.branch.create.desc'),
+          submitLabel: ctx.i18n.t('git.branch.create.submit'),
           fields: [
             {
               key: 'branchName',
-              label: '分支名称',
+              label: ctx.i18n.t('git.branch.create.field'),
               type: 'text',
               required: true,
-              placeholder: 'feature/my-feature',
+              placeholder: ctx.i18n.t('git.branch.create.ph'),
             },
           ],
           timeoutMs: 120_000,
         });
 
         if (!result.submitted) {
-          return { content: [{ type: 'text', text: '已取消创建分支' }] };
+          return { content: [{ type: 'text', text: ctx.i18n.t('git.branch.create.cancelled') }] };
         }
 
         const branchName = result.values.branchName as string;
         if (!branchName || !/^[a-zA-Z0-9_./-]+$/.test(branchName)) {
           return {
             content: [
-              {
-                type: 'text',
-                text: `分支名称 "${branchName}" 不合法，请使用字母、数字、下划线、斜杠和连字符`,
-              },
+              { type: 'text', text: ctx.i18n.t('git.branch.create.invalid', { name: branchName }) },
             ],
             isError: true,
           };
@@ -385,10 +356,9 @@ export function activate(ctx: finch.ExtensionContext): void {
 
         const cwd = exec.cwd;
         if (!cwd) {
-          return { content: [{ type: 'text', text: '没有工作目录' }], isError: true };
+          return { content: [{ type: 'text', text: ctx.i18n.t('git.branch.create.nocwd') }], isError: true };
         }
 
-        // Auto-commit uncommitted changes before creating branch
         const status = await git(cwd, ['status', '--porcelain']).catch(() => '');
         if (status) {
           await git(cwd, ['add', '-A']);
@@ -400,9 +370,9 @@ export function activate(ctx: finch.ExtensionContext): void {
 
         await git(cwd, ['checkout', '-b', branchName], 10_000);
 
-        let msg = `✅ 已创建并切换到分支 \`${branchName}\``;
+        let msg = ctx.i18n.t('git.branch.create.success', { name: branchName });
         if (status) {
-          msg += '\n\n已自动提交当前工作区的更改作为 checkpoint。';
+          msg += ctx.i18n.t('git.branch.create.checkpoint');
         }
 
         return {
