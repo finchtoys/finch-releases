@@ -477,8 +477,20 @@ async function cmdUpdate(id, opts) {
   const dir = targetDir(opts);
   const target = join(dir, id);
   if (!existsSync(target)) throw new Error(`extension not found: ${id}`);
-  const source = readLock(dir)[id];
-  if (!source) throw new Error(`no install record for "${id}"; reinstall it with \`add\` to enable updates.`);
+  let source = readLock(dir)[id];
+  if (!source) {
+    // No install record — this happens for bundled first-party extensions that
+    // were deployed by copying (e.g. the MCP bridge), not via `add`. Fall back to
+    // the installed package.json's npm name so they can still be updated from the
+    // registry. recordInstall below then writes a proper lock entry.
+    const pkg = readPackageJson(target);
+    const pkgName = typeof pkg?.name === 'string' ? pkg.name.trim() : '';
+    if (pkgName) {
+      source = { type: 'npm', package: pkgName };
+    } else {
+      throw new Error(`no install record for "${id}"; reinstall it with \`add\` to enable updates.`);
+    }
+  }
 
   if (source.type === 'local') {
     const localPath = source.localPath ? expandHome(source.localPath) : '';

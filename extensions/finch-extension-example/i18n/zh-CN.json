@@ -1,0 +1,31 @@
+{
+  "name": "扩展示例",
+  "description": "Finch 扩展示例 — 展示全部扩展能力：表单、弹框、自定义图标、工具、工具栏按钮、国际化。",
+  "systemPrompt": "当用户需要查看扩展示例、测试表单或了解 Finch 扩展能力时，使用扩展示例。",
+  "toolMeta": { "name": "扩展示例" },
+  "promptGuides": {
+    "try-all-fields": {
+      "title": "全部字段类型",
+      "description": "展示所有表单字段类型",
+      "prompt": "用扩展示例展示全部表单字段类型"
+    },
+    "try-login": {
+      "title": "模拟登录",
+      "description": "演示登录表单与 secret 字段",
+      "prompt": "用扩展示例测试登录表单"
+    },
+    "try-toast": {
+      "title": "弹框与提示",
+      "description": "演示 showToast / showMessage",
+      "prompt": "用扩展示例演示弹框和提示功能"
+    },
+    "try-icons": {
+      "title": "自定义图标",
+      "description": "查看所有注册的扩展图标",
+      "prompt": "用扩展示例展示所有注册的自定义图标"
+    }
+  },
+  "composerActions": {
+    "example-quick": { "tooltip": "扩展能力演示" }
+  }
+}

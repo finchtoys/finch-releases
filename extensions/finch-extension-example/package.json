@@ -1,0 +1,92 @@
+{
+  "name": "@finch.app/extension-example",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Comprehensive Finch extension example — demonstrates all extension capabilities including forms, toasts, custom icons, tools, composer actions, and i18n.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "scripts": {
+    "copy-icons": "cp node_modules/lucide-static/icons/list.svg icons/all-fields.svg && cp node_modules/lucide-static/icons/log-in.svg icons/login.svg && cp node_modules/lucide-static/icons/timer.svg icons/timeout.svg && cp node_modules/lucide-static/icons/settings.svg icons/config.svg && cp node_modules/lucide-static/icons/bell.svg icons/toast.svg && cp node_modules/lucide-static/icons/eye.svg icons/preview.svg",
+    "prebuild": "npm run copy-icons",
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "finch-extension-example",
+    "name": "Finch Extension Example",
+    "description": "Comprehensive Finch extension example — demonstrates all extension capabilities: forms, toasts, custom icons, tools, composer actions, and i18n.",
+    "systemPrompt": "When the user wants to see extension demos, test forms, or understand Finch extension capabilities, prefer the Finch Extension Example extension.",
+    "toolMeta": {
+      "name": "Finch Extension Example"
+    },
+    "promptGuides": [
+      {
+        "id": "try-all-fields",
+        "title": "全部字段类型",
+        "description": "展示所有表单字段类型",
+        "prompt": "用扩展示例展示全部表单字段类型"
+      },
+      {
+        "id": "try-login",
+        "title": "模拟登录",
+        "description": "演示登录表单与 secret 字段",
+        "prompt": "用扩展示例测试登录表单"
+      },
+      {
+        "id": "try-toast",
+        "title": "弹框与提示",
+        "description": "演示 showToast / showMessage",
+        "prompt": "用扩展示例演示弹框和提示功能"
+      },
+      {
+        "id": "try-icons",
+        "title": "自定义图标",
+        "description": "查看所有注册的扩展图标",
+        "prompt": "用扩展示例展示所有注册的自定义图标"
+      }
+    ],
+    "main": "dist/index.js",
+    "activationEvents": ["onStartup"],
+    "contributes": {
+      "tools": true,
+      "composerActions": [
+        {
+          "id": "example-quick",
+          "icon": "finch-extension-example",
+          "tooltip": "扩展能力演示"
+        }
+      ],
+      "iconPacks": [
+        {
+          "id": "finch-extension-example",
+          "label": "Finch Extension Example Icons"
+        }
+      ]
+    },
+    "extensionType": "official",
+    "categories": ["developer"],
+    "permissions": {
+      "filesystem": "none",
+      "network": false,
+      "shell": false
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "lucide-static": "^1.23.0",
+    "typescript": "^5.6.0"
+  },
+  "files": [
+    "dist/",
+    "icons/",
+    "i18n/",
+    "package.json"
+  ]
+}

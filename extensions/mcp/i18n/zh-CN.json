@@ -11,5 +11,25 @@
       "description": "让 Finch 帮你创建本地 servers.json，连接 filesystem MCP。",
       "prompt": "帮我为当前项目目录配置 MCP Client 的 filesystem MCP 服务。"
     }
-  }
+  },
+
+  "form.defaultName": "该 MCP 服务",
+  "form.add.title": "添加 MCP 服务",
+  "form.add.description": "请检查并补全「{name}」的配置。密钥值只保存在你本地。",
+  "form.add.submit": "保存并连接",
+  "form.edit.title": "编辑 MCP 服务「{name}」",
+  "form.edit.description": "请检查并更新配置。密钥字段留空则保持不变。",
+  "form.edit.submit": "保存并重连",
+
+  "field.name": "服务名称",
+  "field.url": "接入地址",
+  "field.command": "命令",
+  "field.args": "参数",
+  "field.token.bearer": "API 令牌",
+  "field.token.customValue": "{header} 值",
+  "field.token.desc.bearerAdd": "只粘贴原始令牌（不含「Bearer」前缀）。将以「Authorization: Bearer <token>」发送。若服务无需鉴权可留空。",
+  "field.token.desc.customAdd": "将作为「{header}」请求头发送。若服务无需鉴权可留空。",
+  "field.token.desc.keep": "留空则保留原有令牌。",
+  "field.token.desc.bearerEdit": "只粘贴原始令牌（不含「Bearer」前缀）。将以「Authorization: Bearer <token>」发送。无需鉴权可留空。",
+  "field.token.desc.customEdit": "将作为「{header}」请求头发送。无需鉴权可留空。"
 }

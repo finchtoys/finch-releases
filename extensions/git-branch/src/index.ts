@@ -279,13 +279,12 @@ export function activate(ctx: finch.ExtensionContext): void {
         }
       },
 
-      async execute({ cwd }, itemId: string): Promise<void> {
+      async execute({ cwd }, itemId: string, actions: finch.ComposerActionActions): Promise<void> {
         if (!cwd || !itemId) return;
 
         // ── Create branch ──────────────────────────────────────────────
         if (itemId === '__create_branch__') {
-          await ctx.storage.set('pendingCreateBranch', true);
-          ctx.ui.showMessage('请在聊天中输入分支名称，我来帮您创建并切换', 'info');
+          await actions.fillComposer('帮我创建并检出一个新分支');
           return;
         }
 

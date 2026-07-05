@@ -611,6 +611,11 @@ function toToolResult(result: McpToolResult): finch.ToolResult {
 export async function activate(ctx: finch.ExtensionContext): Promise<void> {
   activeCtx = ctx;
 
+  // User-facing form strings are localized via ctx.i18n; the dictionary lives in
+  // extensions/mcp/i18n/<locale>.json. Tool-result text stays English on purpose —
+  // it is model-facing guidance, not user UI.
+  const t = (key: string, values?: Record<string, string | number | boolean>): string => ctx.i18n.t(key, values);
+
   // Load server configs and register them.
   // Connections are established lazily the first time a server is actually used
   // (ToolSearch or the mcp.client capability). Individual mcp__server__tool tools
@@ -679,36 +684,39 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     const secretKeys = (args.secretEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     const plainKeys = (args.plainEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
 
-    const fields: finch.ExtensionFormField[] = [
-      { key: 'name', label: 'Server name', type: 'text', required: true, default: args.name ?? '' },
-    ];
     // httpStream auth: optional custom header name (rare); defaults to the
     // standard Authorization: Bearer scheme. Provided by the model only when a
     // server needs a non-standard header (e.g. X-Api-Key).
     const httpHeaderName = (args.authHeader ?? '').trim() || 'Authorization';
     const isBearer = httpHeaderName.toLowerCase() === 'authorization';
+
+    const fields: finch.ExtensionFormField[] = [];
     if (isHttp) {
-      // Keep the HTTP form minimal: URL + a single token field. No env rows.
+      // HTTP: name (1/3) + URL (2/3) on one row; token below full-width.
       fields.push(
-        { key: 'url', label: 'Endpoint URL', type: 'text', required: true, placeholder: 'https://…', default: args.url ?? '' },
+        { key: 'name', label: t('field.name'), type: 'text', required: true, default: args.name ?? '', width: '1/3' },
+        { key: 'url', label: t('field.url'), type: 'text', required: true, placeholder: 'https://…', default: args.url ?? '', width: '2/3' },
         {
           key: 'authToken',
-          label: isBearer ? 'API token' : `${httpHeaderName} value`,
+          label: isBearer ? t('field.token.bearer') : t('field.token.customValue', { header: httpHeaderName }),
           type: 'password',
           secret: true,
           description: isBearer
-            ? 'Paste the raw token only (no "Bearer" prefix). Sent as "Authorization: Bearer <token>". Leave blank if the server needs no auth.'
-            : `Sent as the "${httpHeaderName}" header. Leave blank if the server needs no auth.`,
+            ? t('field.token.desc.bearerAdd')
+            : t('field.token.desc.customAdd', { header: httpHeaderName }),
         },
       );
     } else {
+      // stdio: name (1/2) + command (1/2) on one row; args textarea below.
       fields.push(
-        { key: 'command', label: 'Command', type: 'text', required: true, placeholder: 'npx', default: args.command ?? '' },
-        { key: 'args', label: 'Arguments', type: 'textarea', placeholder: '-y @modelcontextprotocol/server-filesystem /path', default: args.args ?? '' },
+        { key: 'name', label: t('field.name'), type: 'text', required: true, default: args.name ?? '', width: '1/2' },
+        { key: 'command', label: t('field.command'), type: 'text', required: true, placeholder: 'npx', default: args.command ?? '', width: '1/2' },
+        { key: 'args', label: t('field.args'), type: 'textarea', placeholder: '-y @modelcontextprotocol/server-filesystem /path', default: args.args ?? '' },
       );
-      // env-key fields apply to stdio servers only.
-      for (const key of plainKeys) {
-        fields.push({ key: `env:${key}`, label: key, type: 'text' });
+      // env-key fields: plain keys (1/2 each, paired) then secret keys (full, sensitive).
+      for (let i = 0; i < plainKeys.length; i++) {
+        const key = plainKeys[i];
+        fields.push({ key: `env:${key}`, label: key, type: 'text', width: plainKeys.length > 1 ? '1/2' : 'full' });
       }
       for (const key of secretKeys) {
         fields.push({ key: `env:${key}`, label: key, type: 'password', secret: true });
@@ -716,9 +724,9 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     }
 
     const result = await exec.ui.requestForm({
-      title: 'Add MCP server',
-      description: `Review and complete the configuration for "${args.name ?? 'this MCP server'}". Secret values stay on your machine.`,
-      submitLabel: 'Save & connect',
+      title: t('form.add.title'),
+      description: t('form.add.description', { name: args.name ?? t('form.defaultName') }),
+      submitLabel: t('form.add.submit'),
       fields,
     });
 
@@ -818,50 +826,62 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     const httpHeaderName = (args.authHeader ?? '').trim() || existingAuth.headerName || 'Authorization';
     const isBearer = httpHeaderName.toLowerCase() === 'authorization';
 
-    const fields: finch.ExtensionFormField[] = [
-      { key: 'name', label: 'Server name', type: 'text', required: true, default: requestedNewName || name },
-    ];
+    const existingCmd = !existingIsHttp ? (existing as { command: string }).command : '';
+    const existingArgs = !existingIsHttp ? ((existing as { args?: string[] }).args ?? []).join(' ') : '';
+
+    const fields: finch.ExtensionFormField[] = [];
     if (isHttp) {
-      // Keep the HTTP form minimal: URL + a single token field. No env rows.
+      // HTTP: name (1/3) + URL (2/3) on one row; token below full-width.
       fields.push(
-        { key: 'url', label: 'Endpoint URL', type: 'text', required: true, placeholder: 'https://…', default: args.url ?? (existingIsHttp ? (existing as { url: string }).url : '') },
+        { key: 'name', label: t('field.name'), type: 'text', required: true, default: requestedNewName || name, width: '1/3' },
+        { key: 'url', label: t('field.url'), type: 'text', required: true, placeholder: 'https://…', default: args.url ?? (existingIsHttp ? (existing as { url: string }).url : ''), width: '2/3' },
         {
           key: 'authToken',
-          label: isBearer ? 'API token' : `${httpHeaderName} value`,
+          label: isBearer ? t('field.token.bearer') : t('field.token.customValue', { header: httpHeaderName }),
           type: 'password',
           secret: true,
           description: existingAuth.hasToken
-            ? 'Leave blank to keep the existing token.'
+            ? t('field.token.desc.keep')
             : isBearer
-              ? 'Paste the raw token only (no "Bearer" prefix). Sent as "Authorization: Bearer <token>". Leave blank for no auth.'
-              : `Sent as the "${httpHeaderName}" header. Leave blank for no auth.`,
+              ? t('field.token.desc.bearerEdit')
+              : t('field.token.desc.customEdit', { header: httpHeaderName }),
         },
       );
     } else {
-      const existingCmd = !existingIsHttp ? (existing as { command: string }).command : '';
-      const existingArgs = !existingIsHttp ? ((existing as { args?: string[] }).args ?? []).join(' ') : '';
+      // stdio: name (1/2) + command (1/2) on one row; args textarea below.
       fields.push(
-        { key: 'command', label: 'Command', type: 'text', required: true, placeholder: 'npx', default: args.command ?? existingCmd },
-        { key: 'args', label: 'Arguments', type: 'textarea', placeholder: '-y @modelcontextprotocol/server-filesystem /path', default: args.args ?? existingArgs },
+        { key: 'name', label: t('field.name'), type: 'text', required: true, default: requestedNewName || name, width: '1/2' },
+        { key: 'command', label: t('field.command'), type: 'text', required: true, placeholder: 'npx', default: args.command ?? existingCmd, width: '1/2' },
+        { key: 'args', label: t('field.args'), type: 'textarea', placeholder: '-y @modelcontextprotocol/server-filesystem /path', default: args.args ?? existingArgs },
       );
-      // env-key fields apply to stdio servers only.
+      // env-key fields: plain keys (1/2 each, paired) then secret keys (full, sensitive).
       const envKeys = new Set<string>([...Object.keys(existingEnv), ...plainKeys, ...secretKeys]);
-      for (const key of envKeys) {
-        const isSecret = secretKeys.includes(key);
+      const plainEnvKeys = [...envKeys].filter((k) => !secretKeys.includes(k));
+      const secretEnvKeys = [...envKeys].filter((k) => secretKeys.includes(k));
+      for (const key of plainEnvKeys) {
         fields.push({
           key: `env:${key}`,
           label: key,
-          type: isSecret ? 'password' : 'text',
-          secret: isSecret,
-          default: isSecret ? '' : (existingEnv[key] ?? ''),
+          type: 'text',
+          default: existingEnv[key] ?? '',
+          width: plainEnvKeys.length > 1 ? '1/2' : 'full',
+        });
+      }
+      for (const key of secretEnvKeys) {
+        fields.push({
+          key: `env:${key}`,
+          label: key,
+          type: 'password',
+          secret: true,
+          default: '',
         });
       }
     }
 
     const result = await exec.ui.requestForm({
-      title: `Edit MCP server "${name}"`,
-      description: 'Review and update the configuration. Leave secret fields blank to keep them unchanged.',
-      submitLabel: 'Save & reconnect',
+      title: t('form.edit.title', { name }),
+      description: t('form.edit.description'),
+      submitLabel: t('form.edit.submit'),
       fields,
     });
     if (!result.submitted) {

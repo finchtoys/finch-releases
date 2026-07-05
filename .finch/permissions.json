@@ -1,0 +1,14 @@
+{
+  "allow": [
+    {
+      "toolName": "Bash",
+      "key": "npx"
+    },
+    {
+      "toolName": "Bash",
+      "key": "npm run"
+    }
+  ],
+  "ask": [],
+  "deny": []
+}

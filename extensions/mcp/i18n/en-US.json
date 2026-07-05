@@ -11,5 +11,25 @@
       "description": "Ask Finch to help create a local servers.json config for filesystem access.",
       "prompt": "Help me configure MCP Client with a filesystem MCP server for my current project directory."
     }
-  }
+  },
+
+  "form.defaultName": "this MCP server",
+  "form.add.title": "Add MCP server",
+  "form.add.description": "Review and complete the configuration for \"{name}\". Secret values stay on your machine.",
+  "form.add.submit": "Save & connect",
+  "form.edit.title": "Edit MCP server \"{name}\"",
+  "form.edit.description": "Review and update the configuration. Leave secret fields blank to keep them unchanged.",
+  "form.edit.submit": "Save & reconnect",
+
+  "field.name": "Server name",
+  "field.url": "Endpoint URL",
+  "field.command": "Command",
+  "field.args": "Arguments",
+  "field.token.bearer": "API token",
+  "field.token.customValue": "{header} value",
+  "field.token.desc.bearerAdd": "Paste the raw token only (no \"Bearer\" prefix). Sent as \"Authorization: Bearer <token>\". Leave blank if the server needs no auth.",
+  "field.token.desc.customAdd": "Sent as the \"{header}\" header. Leave blank if the server needs no auth.",
+  "field.token.desc.keep": "Leave blank to keep the existing token.",
+  "field.token.desc.bearerEdit": "Paste the raw token only (no \"Bearer\" prefix). Sent as \"Authorization: Bearer <token>\". Leave blank for no auth.",
+  "field.token.desc.customEdit": "Sent as the \"{header}\" header. Leave blank for no auth."
 }

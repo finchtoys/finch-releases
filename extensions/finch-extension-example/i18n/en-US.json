@@ -1,0 +1,31 @@
+{
+  "name": "Extension Example",
+  "description": "Finch extension example — demonstrates all extension capabilities: forms, toasts, custom icons, tools, composer actions, and i18n.",
+  "systemPrompt": "When the user wants to see extension demos, test forms, or understand Finch extension capabilities, use the Extension Example.",
+  "toolMeta": { "name": "Extension Example" },
+  "promptGuides": {
+    "try-all-fields": {
+      "title": "All Field Types",
+      "description": "Demonstrate all form field types",
+      "prompt": "Use the extension example to show all form field types"
+    },
+    "try-login": {
+      "title": "Login Form",
+      "description": "Demonstrate login form with secret fields",
+      "prompt": "Use the extension example to test the login form"
+    },
+    "try-toast": {
+      "title": "Toasts & Messages",
+      "description": "Demonstrate showToast / showMessage",
+      "prompt": "Use the extension example to demonstrate toast and message capabilities"
+    },
+    "try-icons": {
+      "title": "Custom Icons",
+      "description": "View all registered extension icons",
+      "prompt": "Use the extension example to show all registered custom icons"
+    }
+  },
+  "composerActions": {
+    "example-quick": { "tooltip": "Extension Demo" }
+  }
+}

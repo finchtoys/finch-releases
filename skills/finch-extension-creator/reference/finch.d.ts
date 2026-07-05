@@ -42,6 +42,23 @@ declare module 'finch' {
     function from(...disposables: { dispose(): unknown }[]): Disposable;
   }
 
+  export type AppLocale = 'zh-CN' | 'en-US';
+  export type LocalePreference = 'system' | AppLocale;
+  export type TranslationValue = string | number | boolean | null | undefined;
+  export type TranslationValues = Record<string, TranslationValue>;
+
+  /** 扩展运行时 i18n。读取扩展自己的 `i18n/<locale>.json`。 */
+  export interface ExtensionI18n {
+    /** 当前解析后的 app 语言，例如 `zh-CN` 或 `en-US`。 */
+    readonly locale: AppLocale;
+    /** 按 key 翻译，支持 `{placeholder}` 参数替换；缺失 key 返回 key 本身。 */
+    t(key: string, values?: TranslationValues): string;
+    /** key 是否存在于当前语言或 fallback 语言中。 */
+    has(key: string): boolean;
+    /** 监听 Finch app 语言变化。 */
+    onDidChangeLocale(listener: (locale: AppLocale) => void): Disposable;
+  }
+
   /**
    * 类型安全的事件，可附加任意数量的监听器。
    *
@@ -205,6 +222,23 @@ declare module 'finch' {
      */
     readonly ui: {
       createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
+      /**
+       * 创建一个透明、无边框、可拖到任意位置、可置顶的**浮动 Canvas 窗口**。
+       *
+       * 与 `createWebviewPanel`（内嵌 Panel）正交：Canvas 窗口是独立顶层窗，适合桌宠、
+       * 悬浮工具、桌面小游戏等。开发者**不写 HTML**，只提供一段 canvas 脚本（`entry`），
+       * 脚本内调用 `finch.canvas.define({ init, frame, ... })` 注册生命周期。Finch 提供
+       * 统一外壳，负责透明窗壳、devicePixelRatio 缩放、rAF 循环、事件分发与双向通信。
+       *
+       * Phase 1 每个扩展只允许一个 Canvas 窗口，重复调用会替换现有窗口。
+       *
+       * @example
+       * // Host 段
+       * const win = ctx.ui.createCanvasWindow({ entry: 'dist/pet-canvas.js', width: 220, height: 220, alwaysOnTop: true });
+       * win.onDidReceiveMessage((msg) => ctx.logger.info('from canvas', msg));
+       * win.postMessage({ type: 'status', value: 'running' });
+       */
+      createCanvasWindow(options: CanvasWindowOptions): CanvasWindow;
       showToast(options: ToastOptions): Promise<ToastResult>;
       showConfirmDialog(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
       showModalDialog(options: ModalDialogOptions): Promise<ModalDialogResult>;
@@ -255,6 +289,14 @@ declare module 'finch' {
      * 具体语义由消费扩展自行定义。
      */
     readonly extensions: Extensions;
+
+    /**
+     * 扩展运行时 i18n。读取当前扩展目录下的 `i18n/<locale>.json`，自动跟随 Finch app 语言。
+     *
+     * @example
+     * ctx.i18n.t('toast.done', { name: 'GitHub' });
+     */
+    readonly i18n: ExtensionI18n;
 
     // ── 服务 ──────────────────────────────────────────────────────────────────
 
@@ -817,6 +859,79 @@ declare module 'finch' {
 
   // `ctx.ui.createWebviewPanel` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
   // "尚未实现" 错误。`ctx.ui.showToast` 会显示原生 Toast；`ctx.ui.showMessage` 映射为 Toast。全局 namespace 不再暴露。
+
+  /**
+   * Canvas 窗口选项。开发者只提供 `entry`（一段 canvas 脚本路径），不写 HTML。
+   */
+  export interface CanvasWindowOptions {
+    /**
+     * 开发者 canvas 脚本路径（相对扩展目录），如 `'dist/pet-canvas.js'`。
+     * 脚本运行在 Finch 提供的隔离外壳里，需调用 `finch.canvas.define({ ... })` 注册生命周期。
+     */
+    entry: string;
+    /** 初始宽度（逻辑像素）。 */
+    width: number;
+    /** 初始高度（逻辑像素）。 */
+    height: number;
+    /** 初始横坐标；缺省时屏幕居中。 */
+    x?: number;
+    /** 初始纵坐标；缺省时屏幕居中。 */
+    y?: number;
+    /** 是否置顶，默认 false。 */
+    alwaysOnTop?: boolean;
+    /** 是否透明背景，默认 true。 */
+    transparent?: boolean;
+    /** 是否允许缩放，默认 false。 */
+    resizable?: boolean;
+    /** 是否鼠标穿透（点击透传到下层窗口），默认 false。 */
+    clickThrough?: boolean;
+    /** 传给脚本 `init({ initialData })` 的初始数据（会 JSON 序列化）。 */
+    initialData?: unknown;
+  }
+
+  /**
+   * Canvas 窗口句柄（Host 段）。
+   *
+   * 窗口内脚本的运行时契约（Canvas 段）通过 `finch.canvas.define(...)` 注册：
+   *
+   * ```js
+   * // pet-canvas.js —— 运行在 Finch canvas 外壳里，不写 HTML
+   * finch.canvas.define({
+   *   init({ canvas, ctx2d, width, height, dpr, finch, initialData }) {},
+   *   frame(dt) {},                 // 可选：外壳驱动 requestAnimationFrame
+   *   resize(width, height) {},
+   *   onPointer(e) {},              // { type:'move'|'down'|'up', x, y, button }
+   *   onMessage(msg) {},            // 来自 Host 段 postMessage
+   *   dispose() {},
+   * });
+   * ```
+   *
+   * 外壳注入的 `finch` 桥（Canvas 段可调用）：
+   * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v)` /
+   * `finch.window.setPosition(x,y)` / `finch.window.setClickThrough(v)` / `finch.window.close()`。
+   */
+  export interface CanvasWindow {
+    /** 窗口唯一 id。 */
+    readonly id: string;
+    show(): void;
+    hide(): void;
+    setAlwaysOnTop(value: boolean): void;
+    setPosition(x: number, y: number): void;
+    setSize(width: number, height: number): void;
+    setClickThrough(value: boolean): void;
+    /** Host 段 → Canvas 段：脚本内 `onMessage(msg)` 接收。 */
+    postMessage(message: unknown): Promise<void>;
+    /** Canvas 段 → Host 段：脚本内 `finch.postMessage()` 触发。 */
+    readonly onDidReceiveMessage: Event<unknown>;
+    /** 窗口被移动（拖动结束或 setPosition）时触发。 */
+    readonly onDidMove: Event<{ x: number; y: number }>;
+    /** 窗口尺寸变化时触发。 */
+    readonly onDidResize: Event<{ width: number; height: number }>;
+    /** 销毁窗口。 */
+    dispose(): void;
+    /** 窗口被关闭 / 销毁时触发。 */
+    readonly onDidDispose: Event<void>;
+  }
 
   // ════════════════════════════════════════════════════════════════════════════
   // § 6.5  Capabilities — 插件间能力协作

@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/mcp-bridge",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
@@ -43,7 +43,7 @@
     "autoEnable": true,
     "categories": [
       "mcp",
-      "developer-tools"
+      "developer"
     ],
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",

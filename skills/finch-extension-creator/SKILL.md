@@ -251,11 +251,14 @@ Example `i18n/zh-CN.json`:
   },
   "composerActions": {
     "open-file": { "tooltip": "打开文件" }
-  }
+  },
+  "menu.open": "打开文件",
+  "toast.opened": "已打开 {name}",
+  "dialog.confirm.title": "确认操作"
 }
 ```
 
-External i18n overrides the corresponding user-visible manifest fields for the active UI locale. It currently supports:
+External i18n overrides the corresponding user-visible manifest fields for the active UI locale. It supports:
 
 - `name` / `displayName`
 - `description`
@@ -263,6 +266,26 @@ External i18n overrides the corresponding user-visible manifest fields for the a
 - `toolMeta.name`
 - `promptGuides.<id>.title/description/prompt`
 - `composerActions.<actionId>.tooltip`
+
+The same files also power runtime UI strings through `ctx.i18n.t(key, values)`. Prefer flat keys such as `menu.open` / `toast.opened`; nested objects are also resolved by dotted paths when possible. Finch loads `i18n/zh-CN.json`, `i18n/en-US.json`, and optional `i18n/default.json`, follows the app's active locale, falls back to the other supported locale/default, and returns the key itself if missing.
+
+```ts
+export function activate(ctx: finch.ExtensionContext) {
+  ctx.subscriptions.push(
+    ctx.composerActions.register('open-file', {
+      async getMenu() {
+        return [{ id: 'open', label: ctx.i18n.t('menu.open') }];
+      },
+      async execute(_ctx, itemId) {
+        await ctx.ui.showToast({
+          title: ctx.i18n.t('toast.opened', { name: itemId }),
+          variant: 'success',
+        });
+      },
+    }),
+  );
+}
+```
 
 Do **not** localize executable identifiers such as extension `id`, tool `name`, composer action `id`, command ids, capability names, MCP server names, or storage keys. Only localize user/model-facing text.
 
@@ -357,9 +380,10 @@ with JSDoc and examples. Key sections:
 | `§ 3` `ctx.tools` | `ToolDefinition`, `ToolExecutionContext`, `ToolResult` |
 | `§ 4` `ctx.composerActions` | `ComposerActionProvider`, `ComposerActionMenuItem`, `actions.fillComposer()` |
 | `§ 5` `ctx.commands` | _(Phase 2, reserved)_ |
-| `§ 6` `ctx.ui` | Toast notifications (`showToast`); Webview Panel is reserved |
+| `§ 6` `ctx.ui` | Toast notifications (`showToast`); Canvas Window (`createCanvasWindow`, §4.8); Webview Panel is reserved |
 | `§ 6.5` `ctx.capabilities` | Extension-to-extension provide/get (§5.5 below) |
 | `§ 6.5` `ctx.extensions` | Read other enabled extensions' manifest contribution snapshots (`listContributions`) |
+| `§ 6.6` `ctx.i18n` | Runtime strings from this extension's `i18n/<locale>.json` (`t`, `has`, `onDidChangeLocale`) |
 | `§ 7` `ctx.storage` | Persistent KV store |
 | `§ 7b` `ctx.settings` | Read-only user settings (manifest `settings` schema) |
 | `§ 8` `ctx.secrets` | Read-only secrets declared in manifest |
@@ -384,6 +408,7 @@ ctx.ui.showToast({ title, description, variant, position, action }) // → Promi
 ctx.ui.showConfirmDialog({ title, description, confirmLabel, cancelLabel, variant }) // → Promise<{ confirmed }>
 ctx.ui.showModalDialog({ title, description, actions }) // → Promise<{ action }>
 ctx.ui.showMessage(message, type)              // compatibility helper; maps to Toast
+ctx.ui.createCanvasWindow({ entry, width, height, alwaysOnTop, transparent, clickThrough }) // → CanvasWindow (§4.8, transparent floating window)
 
 // Services
 ctx.storage           // { get, set, delete, clear, keys }  — KV store
@@ -392,6 +417,7 @@ ctx.secrets           // { get }               — read-only secrets
 ctx.logger            // { debug, info, warn, error }
 ctx.capabilities      // { provide, get, has, getVersion } — cross-extension collaboration (§5.5)
 ctx.extensions        // { listContributions(point) } — read other extensions' manifest contributions (§5.6)
+ctx.i18n              // { locale, t, has, onDidChangeLocale } — runtime UI strings from i18n/<locale>.json
 ctx.session           // { id, title, spaceId, cwd, model } — read-only snapshot of the active session
 ctx.workspace         // { spaceId, spaceName, directoryPath, projectPath } — read-only snapshot of the active Space/workspace
 ```
@@ -765,6 +791,82 @@ Dialog content is text only; do not pass HTML. `message` supports only a tiny sa
 
 ---
 
+## 4.8  Canvas Windows (desktop pet / floating overlay)
+
+`ctx.ui.createCanvasWindow(options)` opens a **transparent, frameless, draggable, optionally always-on-top floating window** — perfect for desktop pets, floating tools, or small desktop games. It is orthogonal to the reserved `createWebviewPanel` (which is an embedded panel): a Canvas Window is an independent top-level window.
+
+**You do not write HTML.** You provide one **canvas script** (the `entry` path, relative to your extension dir). Finch owns the window shell (transparent surface, devicePixelRatio scaling, requestAnimationFrame loop, event dispatch, two-way messaging). Your script registers a lifecycle object via the injected global `finch.canvas.define(...)`. Phase 1 allows **one window per extension** — calling `createCanvasWindow` again replaces it.
+
+An extension is **two pieces of code** (VS Code webview mental model):
+
+- **Host 段** (`activate()`, runs in the plugin host): registers tools, controls the window lifecycle.
+- **Canvas 段** (`entry` script, runs in Finch's canvas shell renderer): pure drawing + interaction.
+
+They talk via `postMessage`.
+
+**Host 段** — create and control the window:
+
+```ts
+import type * as finch from 'finch';
+
+export function activate(ctx: finch.ExtensionContext) {
+  let win: finch.CanvasWindow | undefined;
+
+  ctx.subscriptions.push(
+    ctx.tools.register({
+      name: 'pet_show', title: 'Show pet',
+      description: 'Show the desktop pet.',
+      inputSchema: { type: 'object', properties: {} },
+      async execute() {
+        if (win) { win.show(); }
+        else {
+          win = ctx.ui.createCanvasWindow({ entry: 'pet-canvas.js', width: 220, height: 220, alwaysOnTop: true });
+          win.onDidReceiveMessage((msg) => ctx.logger.info('pet →', msg));
+          win.onDidDispose(() => { win = undefined; });
+        }
+        return { content: [{ type: 'text', text: 'Pet is out 🐤' }] };
+      },
+    }),
+    { dispose: () => win?.dispose() }, // clean up on deactivate
+  );
+}
+export function deactivate() {}
+```
+
+Host handle (`CanvasWindow`): `show()` / `hide()` / `setAlwaysOnTop(v)` / `setPosition(x,y)` / `setSize(w,h)` / `setClickThrough(v)` / `postMessage(msg)` / `dispose()`, plus events `onDidReceiveMessage` / `onDidMove` / `onDidResize` / `onDidDispose`.
+
+**Canvas 段** — `pet-canvas.js` (plain JS, no imports, no bundler needed). Register via the injected `finch.canvas.define`:
+
+```js
+finch.canvas.define({
+  init({ canvas, ctx2d, width, height, dpr, finch, initialData }) { this.c = ctx2d; this.w = width; this.h = height; this.t = 0; },
+  frame(dt) {                                   // driven by requestAnimationFrame
+    this.t += dt / 1000;
+    this.c.clearRect(0, 0, this.w, this.h);
+    const cy = this.h / 2 + Math.sin(this.t * 2) * 6;
+    this.c.fillStyle = '#f7c948';
+    this.c.beginPath(); this.c.ellipse(this.w / 2, cy, 58, 52, 0, 0, Math.PI * 2); this.c.fill();
+  },
+  resize(width, height) { this.w = width; this.h = height; },
+  onPointer(e) {                                // { type:'move'|'down'|'up', x, y, button }
+    if (e.type === 'down') finch.window.startDrag();  // press-drag the whole window
+    if (e.type === 'up') finch.window.endDrag();
+  },
+  onMessage(msg) { /* from Host 段 postMessage */ },
+  dispose() {},
+});
+```
+
+Injected `finch` bridge inside the canvas script: `finch.postMessage(msg)`; `finch.window.startDrag()` / `endDrag()` / `setAlwaysOnTop(v)` / `setPosition(x,y)` / `setClickThrough(v)` / `close()`. Dragging a frameless window uses `startDrag()`/`endDrag()` around a pointer down/up (CSS `-webkit-app-region` is not used here because canvas needs pointer events).
+
+Notes & limits:
+- The canvas renderer is isolated: no Node, no arbitrary network. Only the audited `finch` bridge is exposed.
+- `finch.input.beginText()` (a native text-input helper for IME-friendly quick-input boxes) is **reserved** and throws until a later Finch version.
+- Status subscription (`ctx.status` / `ctx.notifications`) is planned; until then, push app state to the window yourself via `win.postMessage(...)`.
+- Full working example: `examples/extensions/hello-pet/`.
+
+---
+
 ## 5  Storage and Secrets
 
 ### KV Storage
@@ -1070,6 +1172,11 @@ Current isolation level:
 | Toast not showing | Use `ctx.ui.showToast({ title: '...', position: 'TC' })`; position must be `TL`/`TC`/`TR`/`BL`/`BC`/`BR`. Check extension host logs for bridge errors. |
 | Toast action not firing | Await `ctx.ui.showToast({ ..., action: { label: 'Undo' } })` and handle `result.action === 'action'`. |
 | Dialog not resolving | Await `ctx.ui.showConfirmDialog()` / `showModalDialog()` and ensure the renderer window is open; closing returns `confirmed:false` or `action:'dismissed'`. |
+| Canvas window blank / never opens | Ensure the `entry` path is correct **relative to the extension dir** and the script calls `finch.canvas.define({...})`. Add `frame()` to draw each tick, or draw once in `init()`. Check extension host logs for "canvas entry script error". |
+| Canvas window can't be dragged | Call `finch.window.startDrag()` on pointer `down` and `finch.window.endDrag()` on pointer `up` inside `onPointer`. Frameless canvas windows don't use CSS `-webkit-app-region`. |
+| `finch.canvas.define` is undefined | The script runs only inside a Canvas Window shell created by `ctx.ui.createCanvasWindow`. It is not available in the Host 段 (`activate`) or in normal tools. |
+| `ctx.i18n.t()` returns the key | Add the key to `i18n/<active-locale>.json`, `i18n/default.json`, or the fallback locale file. Check extension host logs for a one-time missing-key warning. |
+| Locale switch does not update text | Runtime text must be produced with `ctx.i18n.t()` when `getMenu()`/toast/dialog/form is called, not cached at module load. Manifest text updates after Finch reloads the extension on locale change. |
 | Storage reads returning `undefined` | Check `ctx.storagePath` exists. Storage is per-extension and reset if the extension id changes. |
 | Secret returns `undefined` | Key must be declared in `permissions.secrets` AND the user must have set a value in Settings. |
 | Installed extension doesn't show up in Toolcase | Did you install to `<cwd>/.finch/extensions/`? That tier is not scanned for new extensions (§0) — reinstall to personal/global with `npx @finch.app/extensions add .` (no `--cwd`). |
