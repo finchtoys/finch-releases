@@ -1,0 +1,135 @@
+{
+  "name": "@finch.app/ext-tavily-search",
+  "version": "0.1.0",
+  "description": "Tavily Search MCP extension for Finch.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "tavily-search",
+    "name": "Tavily Search",
+    "description": "Connect Tavily Search through MCP and make web search, extract, crawl, and map tools available to Finch.",
+    "toolMeta": {
+      "name": "Tavily Search"
+    },
+    "systemPrompt": "When the user needs fresh web research, deep search, page extraction, site crawling, or source-backed answers, prefer the bundled tavily-search skill and Tavily MCP tools. If Tavily is not configured, call setup_tavily_search first to collect the API key securely.",
+    "promptGuides": [
+      {
+        "id": "setup-tavily",
+        "title": "Set up Tavily",
+        "description": "Connect Tavily MCP with your API key.",
+        "prompt": "Set up Tavily Search for Finch."
+      },
+      {
+        "id": "research-with-tavily",
+        "title": "Research with Tavily",
+        "description": "Use Tavily for source-backed web research.",
+        "prompt": "/tavily-search Research the latest updates about Finch App and summarize with sources."
+      }
+    ],
+    "main": "dist/index.js",
+    "activationEvents": ["onStartup"],
+    "extensionType": "official",
+    "categories": ["research", "developer"],
+    "privacyPolicyUrl": "https://finchwork.app/privacy",
+    "termsOfServiceUrl": "https://finchwork.app/terms",
+    "requires": {
+      "capabilities": ["mcp.client"]
+    },
+    "contributes": {
+      "tools": true,
+      "skills": true,
+      "mcpServers": [
+        {
+          "name": "tavily",
+          "command": "npx",
+          "args": ["-y", "tavily-mcp@latest"],
+          "description": "Tavily Search MCP server. Run setup_tavily_search to store TAVILY_API_KEY before using it.",
+          "env": {
+            "TAVILY_API_KEY": "",
+            "DEFAULT_PARAMETERS": "{\"include_images\": true, \"max_results\": 15, \"search_depth\": \"advanced\"}"
+          },
+          "toolMeta": {
+            "titles": {
+              "tavily_search": "Tavily Search",
+              "tavily_extract": "Tavily Extract",
+              "tavily_crawl": "Tavily Crawl",
+              "tavily_map": "Tavily Map",
+              "tavily_research": "Tavily Research"
+            }
+          },
+          "toolDisplay": {
+            "tools": {
+              "tavily_search": {
+                "inline": {
+                  "mode": "join",
+                  "fields": [{ "path": "query", "maxLength": 80 }],
+                  "template": "{query}"
+                }
+              },
+              "tavily_extract": {
+                "inline": {
+                  "mode": "join",
+                  "fields": [{ "path": "urls", "format": "truncate", "maxLength": 80 }],
+                  "template": "{urls}"
+                }
+              },
+              "tavily_crawl": {
+                "inline": {
+                  "mode": "join",
+                  "fields": [{ "path": "url", "format": "truncate", "maxLength": 80 }],
+                  "template": "{url}"
+                }
+              },
+              "tavily_map": {
+                "inline": {
+                  "mode": "join",
+                  "fields": [{ "path": "url", "format": "truncate", "maxLength": 60 }],
+                  "template": "{url}"
+                }
+              },
+              "tavily_research": {
+                "inline": {
+                  "mode": "join",
+                  "fields": [
+                    { "path": "input", "maxLength": 80 },
+                    { "path": "query", "maxLength": 80 },
+                    { "path": "topic", "maxLength": 40 }
+                  ],
+                  "template": "{input}{query}{topic}"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "permissions": {
+      "filesystem": "readwrite",
+      "network": false,
+      "shell": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  },
+  "files": [
+    "dist/",
+    "i18n/",
+    "skills/",
+    "README.md",
+    "README.en-US.md",
+    "README.zh-CN.md",
+    "package.json"
+  ]
+}
