@@ -8,74 +8,14 @@ const DEFAULT_PARAMETERS = '{"include_images": true, "max_results": 15, "search_
 
 type TavilyMode = 'local' | 'remote' | 'http';
 
-type McpServerUi = {
-  toolMeta?: {
-    titles?: Record<string, string>;
-  };
-  toolDisplay?: {
-    tools?: Record<string, finch.ToolCallDisplay>;
-  };
-};
-
-type McpServerConfig = McpServerUi & (
+// Tool titles + ToolCallCard inline summaries are declared once in package.json
+// under `contributes.mcpServers[].toolMeta / toolDisplay`. Finch's MCP bridge
+// treats that contribution as the authoritative presentation source and persists
+// it to the global tool catalog (~/.finch/tools.json) at registration time, so
+// this extension only writes transport/env details into servers.json.
+type McpServerConfig =
   | { name: string; command: string; args?: string[]; env?: Record<string, string>; description?: string }
-  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; description?: string }
-);
-
-const TAVILY_MCP_UI: McpServerUi = {
-  toolMeta: {
-    titles: {
-      tavily_search: 'Tavily Search',
-      tavily_extract: 'Tavily Extract',
-      tavily_crawl: 'Tavily Crawl',
-      tavily_map: 'Tavily Map',
-      tavily_research: 'Tavily Research',
-    },
-  },
-  toolDisplay: {
-    tools: {
-      tavily_search: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'query', maxLength: 80 }],
-          template: '{query}',
-        },
-      },
-      tavily_extract: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'urls', format: 'truncate', maxLength: 80 }],
-          template: '{urls}',
-        },
-      },
-      tavily_crawl: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'url', format: 'truncate', maxLength: 80 }],
-          template: '{url}',
-        },
-      },
-      tavily_map: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'url', format: 'truncate', maxLength: 60 }],
-          template: '{url}',
-        },
-      },
-      tavily_research: {
-        inline: {
-          mode: 'join',
-          fields: [
-            { path: 'input', maxLength: 80 },
-            { path: 'query', maxLength: 80 },
-            { path: 'topic', maxLength: 40 },
-          ],
-          template: '{input}{query}{topic}',
-        },
-      },
-    },
-  },
-};
+  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; description?: string };
 
 interface ServersFile {
   servers?: McpServerConfig[];
@@ -137,7 +77,6 @@ function buildServer(mode: TavilyMode, apiKey: string, defaultParameters: string
       headers: { DEFAULT_PARAMETERS: '${DEFAULT_PARAMETERS}' },
       env: { DEFAULT_PARAMETERS: defaultParameters },
       description: 'Tavily remote MCP server connected directly over Streamable HTTP.',
-      ...TAVILY_MCP_UI,
     };
   }
 
@@ -148,7 +87,6 @@ function buildServer(mode: TavilyMode, apiKey: string, defaultParameters: string
       args: ['-y', 'mcp-remote', buildTavilyUrl(apiKey)],
       env: { DEFAULT_PARAMETERS: defaultParameters },
       description: 'Tavily remote MCP server connected through mcp-remote.',
-      ...TAVILY_MCP_UI,
     };
   }
 
@@ -161,7 +99,6 @@ function buildServer(mode: TavilyMode, apiKey: string, defaultParameters: string
       DEFAULT_PARAMETERS: defaultParameters,
     },
     description: 'Local Tavily MCP server launched with npx. Recommended when DEFAULT_PARAMETERS should be passed through env.',
-    ...TAVILY_MCP_UI,
   };
 }
 
