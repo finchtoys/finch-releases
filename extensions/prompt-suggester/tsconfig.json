@@ -11,7 +11,7 @@
     "types": [],
     "baseUrl": ".",
     "paths": {
-      "finch": ["./finch.d.ts"]
+      "finch": ["../../packages/extension-api/finch.d.ts"]
     }
   },
   "include": ["src"]
