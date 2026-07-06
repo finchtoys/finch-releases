@@ -4,10 +4,8 @@
   "description": "Finch Extension API — type contract for Finch extension authors. Zero runtime dependencies.",
   "type": "module",
   "exports": {
-    ".": "./index.d.ts",
-    "./finch": "./finch.d.ts"
+    ".": "./finch.d.ts"
   },
-  "types": "index.d.ts",
   "keywords": ["finch", "extension", "api", "types"],
   "repository": {
     "type": "git",

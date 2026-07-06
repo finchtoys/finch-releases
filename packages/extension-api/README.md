@@ -48,7 +48,7 @@ Add a path alias so TypeScript resolves `'finch'` to this package's declarations
   "compilerOptions": {
     "moduleResolution": "Bundler",
     "paths": {
-      "finch": ["./node_modules/@finch.app/extension-api/finch.d.ts"]
+      "finch": ["./node_modules/@finch.app/extension-api"]
     }
   }
 }
