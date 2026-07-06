@@ -194,8 +194,8 @@ declare module 'finch' {
      * ctx.subscriptions.push(
      *   ctx.composerActions.register('git-branch', {
      *     async getBadge({ cwd }) { return getCurrentBranch(cwd); },
-     *     async getMenu({ cwd })  { return listBranches(cwd); },
-     *     async execute({ cwd }, branch) { await checkout(cwd, branch); },
+     *     async getMenu({ cwd })  { return listBranches(cwd).map(b => ({ id: b, label: b })); },
+     *     async execute({ cwd }, itemId, actions) { await checkout(cwd, itemId); },
      *   }),
      * );
      */

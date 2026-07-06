@@ -101,8 +101,8 @@ Add buttons to the Composer input bar. Declare the button slot in `package.json`
 ```ts
 ctx.composerActions.register('git-branch', {
   async getBadge({ cwd }) { return getCurrentBranch(cwd); },
-  async getMenu({ cwd })  { return listBranches(cwd).map(b => ({ label: b, value: b })); },
-  async execute({ cwd }, branch) { await checkoutBranch(cwd, branch); },
+  async getMenu({ cwd })  { return listBranches(cwd).map(b => ({ id: b, label: b })); },
+  async execute({ cwd }, itemId, actions) { await checkoutBranch(cwd, itemId); },
 });
 ```
 
