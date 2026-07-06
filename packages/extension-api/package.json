@@ -1,5 +1,5 @@
 {
-  "name": "@finch/extension-api",
+  "name": "@finch.app/extension-api",
   "version": "0.1.0",
   "description": "Finch Extension API — type contract for Finch extension authors. Zero runtime dependencies.",
   "type": "module",
@@ -8,10 +8,10 @@
     "./finch": "./finch.d.ts"
   },
   "types": "index.d.ts",
-  "private": true,
-  "keywords": ["finch", "extension", "api"],
+  "keywords": ["finch", "extension", "api", "types"],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/puterjam/finch.git"
-  }
+    "url": "git+https://github.com/puterjam/finch-releases.git"
+  },
+  "license": "MIT"
 }
