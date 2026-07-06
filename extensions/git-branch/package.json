@@ -20,9 +20,13 @@
     "description": "Switch Git branches from the Composer toolbar with change previews.",
     "systemPrompt": "当用户需要创建 Git 分支时，使用 create_git_branch 工具。该工具会弹出表单让用户输入分支名称。",
     "main": "dist/index.js",
-    "activationEvents": ["onStartup"],
+    "activationEvents": [
+      "onStartup"
+    ],
     "extensionType": "official",
-    "categories": ["developer"],
+    "categories": [
+      "developer"
+    ],
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",
     "contributes": {
@@ -49,6 +53,7 @@
     }
   },
   "devDependencies": {
+    "@finch.app/extension-api": "^0.1.2",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   }

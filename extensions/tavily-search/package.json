@@ -37,13 +37,20 @@
       }
     ],
     "main": "dist/index.js",
-    "activationEvents": ["onStartup"],
+    "activationEvents": [
+      "onStartup"
+    ],
     "extensionType": "official",
-    "categories": ["research", "developer"],
+    "categories": [
+      "research",
+      "developer"
+    ],
     "privacyPolicyUrl": "https://www.tavily.com/privacy",
     "termsOfServiceUrl": "https://www.tavily.com/terms",
     "requires": {
-      "capabilities": ["mcp.client"]
+      "capabilities": [
+        "mcp.client"
+      ]
     },
     "contributes": {
       "tools": true,
@@ -52,7 +59,10 @@
         {
           "name": "tavily",
           "command": "npx",
-          "args": ["-y", "tavily-mcp@latest"],
+          "args": [
+            "-y",
+            "tavily-mcp@latest"
+          ],
           "description": "Tavily Search MCP server. Run setup_tavily_search to store TAVILY_API_KEY before using it.",
           "env": {
             "TAVILY_API_KEY": "",
@@ -72,28 +82,51 @@
               "tavily_search": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "query", "maxLength": 80 }],
+                  "fields": [
+                    {
+                      "path": "query",
+                      "maxLength": 80
+                    }
+                  ],
                   "template": "{query}"
                 }
               },
               "tavily_extract": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "urls", "format": "truncate", "maxLength": 80 }],
+                  "fields": [
+                    {
+                      "path": "urls",
+                      "format": "truncate",
+                      "maxLength": 80
+                    }
+                  ],
                   "template": "{urls}"
                 }
               },
               "tavily_crawl": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "url", "format": "truncate", "maxLength": 80 }],
+                  "fields": [
+                    {
+                      "path": "url",
+                      "format": "truncate",
+                      "maxLength": 80
+                    }
+                  ],
                   "template": "{url}"
                 }
               },
               "tavily_map": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "url", "format": "truncate", "maxLength": 60 }],
+                  "fields": [
+                    {
+                      "path": "url",
+                      "format": "truncate",
+                      "maxLength": 60
+                    }
+                  ],
                   "template": "{url}"
                 }
               },
@@ -101,9 +134,18 @@
                 "inline": {
                   "mode": "join",
                   "fields": [
-                    { "path": "input", "maxLength": 80 },
-                    { "path": "query", "maxLength": 80 },
-                    { "path": "topic", "maxLength": 40 }
+                    {
+                      "path": "input",
+                      "maxLength": 80
+                    },
+                    {
+                      "path": "query",
+                      "maxLength": 80
+                    },
+                    {
+                      "path": "topic",
+                      "maxLength": 40
+                    }
                   ],
                   "template": "{input}{query}{topic}"
                 }
@@ -120,6 +162,7 @@
     }
   },
   "devDependencies": {
+    "@finch.app/extension-api": "^0.1.2",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },

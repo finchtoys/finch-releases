@@ -53,7 +53,9 @@
       }
     ],
     "main": "dist/index.js",
-    "activationEvents": ["onStartup"],
+    "activationEvents": [
+      "onStartup"
+    ],
     "contributes": {
       "tools": true,
       "composerActions": [
@@ -71,7 +73,9 @@
       ]
     },
     "extensionType": "official",
-    "categories": ["developer"],
+    "categories": [
+      "developer"
+    ],
     "permissions": {
       "filesystem": "none",
       "network": false,
@@ -79,6 +83,7 @@
     }
   },
   "devDependencies": {
+    "@finch.app/extension-api": "^0.1.2",
     "@types/node": "^26.1.0",
     "lucide-static": "^1.23.0",
     "typescript": "^5.6.0"
