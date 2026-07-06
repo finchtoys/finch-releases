@@ -267,6 +267,26 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
   }));
 }
 
+/** Wait for the mcp.client capability to come online, then register. Extension
+ *  activation order is not guaranteed (Finch activates alphabetically by display
+ *  name), so if the MCP Client host hasn't provided its capability yet, poll a
+ *  few times before giving up. Finch seeds + pushes capability availability, so
+ *  has() flips to true as soon as MCP Client is up. */
+async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<void> {
+  const MAX_ATTEMPTS = 20;
+  const INTERVAL_MS = 250;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (ctx.capabilities.has('mcp.client')) {
+      const res = await registerRuntimeServer(ctx, setup);
+      if (res.ok) return;
+      ctx.logger.warn('Tavily runtime server registration failed:', res.error);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS));
+  }
+  ctx.logger.warn('Tavily: mcp.client capability never became available; server not registered. Is MCP Client enabled?');
+}
+
 export function activate(ctx: finch.ExtensionContext): void {
   ctx.logger.info('Tavily Search extension activated');
   activeCtx = ctx;
@@ -277,9 +297,7 @@ export function activate(ctx: finch.ExtensionContext): void {
   // them on every activation. No-op when Tavily hasn't been set up yet.
   void readSetup(ctx).then((setup) => {
     if (!setup) return;
-    return registerRuntimeServer(ctx, setup).then((res) => {
-      if (!res.ok) ctx.logger.warn('Tavily runtime server registration deferred:', res.error);
-    });
+    return registerWhenReady(ctx, setup);
   }).catch((err) => ctx.logger.error('Tavily activation registration failed', err));
 }
 
