@@ -48,7 +48,7 @@ Add a path alias so TypeScript resolves `'finch'` to this package's declarations
   "compilerOptions": {
     "moduleResolution": "Bundler",
     "paths": {
-      "finch": ["./node_modules/@finch.app/extension-api"]
+      "finch": ["./node_modules/@finch.app/extension-api/finch.d.ts"]
     }
   }
 }
@@ -139,7 +139,7 @@ const apiKey = await ctx.secrets.get('MY_API_KEY');
 Read declared settings (defined by `package.json → settings` JSON Schema, rendered natively by Finch). Read-only; extension reloads after the user saves.
 
 ```ts
-const theme = ctx.settings.get<string>('theme', 'dark');
+const theme = ctx.settings.get<string>('theme'); // returns T | undefined
 ```
 
 ### `ctx.capabilities` — Cross-Extension Communication
