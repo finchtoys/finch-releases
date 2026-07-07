@@ -43,23 +43,6 @@ declare module 'finch' {
     function from(...disposables: { dispose(): unknown }[]): Disposable;
   }
 
-  export type AppLocale = 'zh-CN' | 'en-US';
-  export type LocalePreference = 'system' | AppLocale;
-  export type TranslationValue = string | number | boolean | null | undefined;
-  export type TranslationValues = Record<string, TranslationValue>;
-
-  /** 扩展运行时 i18n。读取扩展自己的 `i18n/<locale>.json`。 */
-  export interface ExtensionI18n {
-    /** 当前解析后的 app 语言，例如 `zh-CN` 或 `en-US`。 */
-    readonly locale: AppLocale;
-    /** 按 key 翻译，支持 `{placeholder}` 参数替换；缺失 key 返回 key 本身。 */
-    t(key: string, values?: TranslationValues): string;
-    /** key 是否存在于当前语言或 fallback 语言中。 */
-    has(key: string): boolean;
-    /** 监听 Finch app 语言变化。 */
-    onDidChangeLocale(listener: (locale: AppLocale) => void): Disposable;
-  }
-
   /**
    * 类型安全的事件，可附加任意数量的监听器。
    *
@@ -290,6 +273,24 @@ declare module 'finch' {
      * 具体语义由消费扩展自行定义。
      */
     readonly extensions: Extensions;
+
+    /**
+     * 运行时事件订阅。插件可只读观察 Finch 的 Agent 运行事件，用于状态展示或轻量遥测。
+     * 事件为 best-effort 推送；监听器抛错不会影响 Agent 主流程。
+     *
+     * @example
+     * ctx.subscriptions.push(ctx.events.onAgentEvent((event) => {
+     *   if (event.kind === 'tool_use') ctx.logger.info('tool started', event.toolName);
+     *   if (event.kind === 'session_status') ctx.logger.info('run status', event.runStatus);
+     * }));
+     */
+    readonly events: Events;
+
+    /** 聚合后的 Finch 当前状态，适合 badge、浮窗、状态展示等低频 UI。 */
+    readonly status: Status;
+
+    /** Finch 发出的用户可见通知事件。 */
+    readonly notifications: Notifications;
 
     /**
      * 扩展运行时 i18n。读取当前扩展目录下的 `i18n/<locale>.json`，自动跟随 Finch app 语言。
@@ -935,7 +936,7 @@ declare module 'finch' {
   }
 
   // ════════════════════════════════════════════════════════════════════════════
-  // § 6.5  Capabilities — 插件间能力协作
+  // § 6.1  Capabilities — 插件间能力协作
   // ════════════════════════════════════════════════════════════════════════════
 
   /**
@@ -993,9 +994,131 @@ declare module 'finch' {
     value: T;
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // § 6.2  Extensions — 读取其它扩展贡献
+  // ════════════════════════════════════════════════════════════════════════════
+
   /** `ctx.extensions` 的接口：读取已启用扩展的原始 manifest contributions。 */
   export interface Extensions {
     listContributions<T = unknown>(point: string): ExtensionContribution<T>[];
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // § 6.3  Events — Finch 运行时事件订阅
+  // ════════════════════════════════════════════════════════════════════════════
+
+  export type AgentEventKind =
+    | 'status'
+    | 'user'
+    | 'session_init'
+    | 'assistant_text'
+    | 'assistant_text_delta'
+    | 'thinking'
+    | 'thinking_delta'
+    | 'tool_use'
+    | 'tool_input_delta'
+    | 'tool_result'
+    | 'result'
+    | 'error'
+    | 'permission_request'
+    | 'interrupted'
+    | 'usage_update'
+    | 'compact_boundary'
+    | 'session_status';
+
+  export interface AgentTokenUsage {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheCreationTokens: number;
+    readonly cacheReadTokens: number;
+  }
+
+  /**
+   * Finch Agent 运行事件的插件可见只读快照。
+   * 仅包含状态元数据；用户文本、工具输入、工具结果等内容字段会在主进程侧清洗掉。
+   */
+  export interface AgentEvent {
+    readonly id: string;
+    readonly kind: AgentEventKind;
+    readonly createdAt: string;
+    readonly sessionId?: string;
+    readonly toolName?: string;
+    readonly toolUseId?: string;
+    readonly isToolError?: boolean;
+    readonly isRetryable?: boolean;
+    readonly errorCategory?: string;
+    readonly permissionGranted?: boolean;
+    readonly permissionDangerous?: boolean;
+    readonly runStatus?: string;
+    readonly usage?: AgentTokenUsage;
+    readonly modelProvider?: string;
+    readonly modelId?: string;
+  }
+
+  export interface Events {
+    /** 订阅 Finch Agent 运行事件。返回的 Disposable 可用于取消订阅。 */
+    onAgentEvent(listener: (event: AgentEvent) => unknown): Disposable;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // § 6.4  Status — Finch 聚合状态
+  // ════════════════════════════════════════════════════════════════════════════
+
+  export type FinchStatus = 'idle' | 'running' | 'waiting' | 'unread';
+
+  export interface FinchStatusSnapshot {
+    readonly status: FinchStatus;
+    readonly runningCount: number;
+    readonly waitingCount: number;
+    readonly unreadCount: number;
+    readonly updatedAt: string;
+  }
+
+  export interface Status {
+    /** 读取最新聚合状态快照。 */
+    get(): Promise<FinchStatusSnapshot>;
+    /** 订阅聚合状态变化。 */
+    onDidChange(listener: (status: FinchStatusSnapshot) => unknown): Disposable;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // § 6.5  Notifications — Finch 用户可见通知事件
+  // ════════════════════════════════════════════════════════════════════════════
+
+  export type FinchNotificationKind = 'background-done' | 'waiting' | 'error' | 'info';
+
+  export interface FinchNotificationEvent {
+    readonly id: string;
+    readonly kind: FinchNotificationKind;
+    readonly createdAt: string;
+    readonly sessionId?: string;
+    readonly title: string;
+  }
+
+  export interface Notifications {
+    /** 订阅 Finch 发出的用户可见通知事件。 */
+    onDidPost(listener: (event: FinchNotificationEvent) => unknown): Disposable;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // § 6.6  I18n — 扩展运行时多语言
+  // ════════════════════════════════════════════════════════════════════════════
+
+  export type AppLocale = 'zh-CN' | 'en-US';
+  export type LocalePreference = 'system' | AppLocale;
+  export type TranslationValue = string | number | boolean | null | undefined;
+  export type TranslationValues = Record<string, TranslationValue>;
+
+  /** 扩展运行时 i18n。读取扩展自己的 `i18n/<locale>.json`。 */
+  export interface ExtensionI18n {
+    /** 当前解析后的 app 语言，例如 `zh-CN` 或 `en-US`。 */
+    readonly locale: AppLocale;
+    /** 按 key 翻译，支持 `{placeholder}` 参数替换；缺失 key 返回 key 本身。 */
+    t(key: string, values?: TranslationValues): string;
+    /** key 是否存在于当前语言或 fallback 语言中。 */
+    has(key: string): boolean;
+    /** 监听 Finch app 语言变化。 */
+    onDidChangeLocale(listener: (locale: AppLocale) => void): Disposable;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -1020,6 +1143,10 @@ declare module 'finch' {
     /** 返回当前所有 key。 */
     keys(): Promise<string[]>;
   }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // § 7.1  finch.settings — 用户配置的只读插件设置
+  // ════════════════════════════════════════════════════════════════════════════
 
   /**
    * 用户配置的插件设置（只读）。字段由 manifest `settings.fields` 声明，Finch
