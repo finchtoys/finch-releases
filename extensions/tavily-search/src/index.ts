@@ -18,11 +18,15 @@ interface StoredSetup {
   defaultParameters: string;
 }
 
-// Tool titles + ToolCallCard inline summaries are declared once in package.json
-// under `contributes.mcpServers[].toolMeta / toolDisplay`. Finch's MCP bridge
-// treats that contribution as the authoritative presentation source and persists
-// it to the global tool catalog (~/.finch/tools.json) at registration time, so
-// the runtime config below only carries transport/env details.
+// Transport is built dynamically here (command/url + env with the resolved API key)
+// and registered via mcp.client#registerServer() at activate time.
+// Presentation metadata (tool titles, ToolCallCard inline summaries) is declared
+// statically in package.json under `contributes.mcpServers[].toolMeta / toolDisplay`.
+// The MCP bridge merges both: transport from the runtime registration, presentation
+// from the contribution, and writes the result to the global tool catalog
+// (~/.finch/tools.json) when the tools connect.
+// This separation means no secrets ever appear in the static manifest, and the
+// extension never writes to the shared servers.json user config file.
 type McpServerConfig =
   | { name: string; command: string; args?: string[]; env?: Record<string, string>; description?: string; ownerExtensionId?: string; ownerExtensionName?: string }
   | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; description?: string; ownerExtensionId?: string; ownerExtensionName?: string };

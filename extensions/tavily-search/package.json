@@ -58,16 +58,7 @@
       "mcpServers": [
         {
           "name": "tavily",
-          "command": "npx",
-          "args": [
-            "-y",
-            "tavily-mcp@latest"
-          ],
-          "description": "Tavily Search MCP server. Run setup_tavily_search to store TAVILY_API_KEY before using it.",
-          "env": {
-            "TAVILY_API_KEY": "",
-            "DEFAULT_PARAMETERS": "{\"include_images\": true, \"max_results\": 15, \"search_depth\": \"advanced\"}"
-          },
+          "description": "Tavily Search MCP server. Call setup_tavily_search to configure. The actual transport is registered dynamically by the extension after the API key is collected.",
           "toolMeta": {
             "titles": {
               "tavily_search": "Tavily Search",
