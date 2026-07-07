@@ -1,51 +1,209 @@
 # MCP Client
 
-MCP Client is [Finch](https://finchwork.app/)'s official built-in plugin for connecting Model Context Protocol (MCP) servers to Finch.
+MCP Client is Finch's bridge for mini tools that want to expose Model Context Protocol (MCP) servers to the Agent.
 
-It does three things:
+For mini tool authors, the recommended pattern is:
 
-1. Connects MCP servers, caches each service's tool list, and activates MCP tools on demand through Finch's standard `ToolSearch`.
-2. Provides the `mcp.client` capability so other Finch plugins can call MCP servers without implementing their own MCP client.
-3. Reads MCP servers contributed by other extensions through `ctx.extensions.listContributions('mcpServers')` and connects them through Client-owned policy.
+1. Declare that your mini tool depends on the `mcp.client` capability.
+2. Declare `contributes.mcpServers` as **presentation metadata only**: server name, tool titles, and ToolCallCard display hints.
+3. Collect secrets in your own setup tool with a secure form.
+4. Store those secrets in your mini tool's own `ctx.storage`.
+5. Register the actual MCP transport at runtime with `mcp.client#registerServer()`.
 
-## Dynamic tool loading
+This is the same pattern used by Tavily Search: the manifest describes how Tavily tools should look in Finch, while `activate()` registers the real MCP server after the API key is available.
 
-To avoid flattening every MCP tool into the model context at once (which gets expensive with many servers/tools), MCP Client integrates with Finch's standard `ToolSearch`. The initial context only carries `ToolSearch` plus a few management tools; when the model needs MCP capabilities, it calls `ToolSearch({ source: "mcp", query })` to discover and activate matching tools on demand.
+## Best practice: metadata in manifest, transport at runtime
 
-| Entry | Purpose |
-|---|---|
-| `ToolSearch` | Finch's standard dynamic-tool search; with `source: "mcp"`, MCP Client connects servers, discovers tools, and injects matches into the current run |
-| `MCP action=list` | List configured MCP services and their connection/tool-count status |
-| `mcp__<server>__<tool>` | Real MCP tools injected after ToolSearch matches them; callable directly |
+### 1. Declare the dependency and MCP presentation metadata
 
-The typical model flow is: optionally call `MCP({ action: "list" })` to inspect services → call `ToolSearch({ source: "mcp", query: "..." })` → directly call the injected `mcp__<server>__<tool>`.
+In `package.json`, declare `requires.capabilities: ["mcp.client"]` and add a metadata-only `contributes.mcpServers` entry.
 
-## Managing MCP servers
+Do **not** put `command`, `args`, `url`, `headers`, or secrets here when the server depends on user configuration.
 
-MCP Client also exposes one dispatcher management tool to the AI, so the user can add, edit, or remove MCP servers through natural language:
+```json
+{
+  "finch": {
+    "requires": {
+      "capabilities": ["mcp.client"]
+    },
+    "contributes": {
+      "mcpServers": [
+        {
+          "name": "my-service",
+          "description": "My Service MCP server. Call setup_my_service to configure it.",
+          "toolMeta": {
+            "titles": {
+              "search": "My Service Search",
+              "extract": "My Service Extract"
+            }
+          },
+          "toolDisplay": {
+            "tools": {
+              "search": {
+                "inline": {
+                  "mode": "join",
+                  "fields": [{ "path": "query", "maxLength": 80 }],
+                  "template": "{query}"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
 
-| Tool | Purpose |
-|---|---|
-| `MCP action=add` | Add a new MCP server; the user fills command/URL and secrets in a secure form |
-| `MCP action=edit` | Edit an existing server's command, arguments, URL, or environment variables |
-| `MCP action=remove` | Remove a server so it no longer connects |
+`toolMeta.titles` controls the short title shown in Finch tool cards. `toolDisplay.tools` controls the inline summary shown beside a tool call.
 
-These tools only manage servers in the local `servers.json`; MCP servers injected by other plugins via their manifest cannot be edited or removed here. Secret values are always entered by the user in the form and never returned to the model.
+### 2. Register the real MCP server at runtime
 
-## Supported transports
+In your mini tool code, use the `mcp.client` capability to register a server after configuration is available.
 
-MCP Client supports two transport types.
+```ts
+import type * as finch from 'finch';
 
-### 1. stdio / stdout subprocess
+const SERVER_NAME = 'my-service';
+const STORAGE_KEY = 'my-service.setup';
 
-Use this for local command-line MCP servers, such as filesystem, git, or database servers.
+interface StoredSetup {
+  apiKey: string;
+}
+
+type McpServerConfig =
+  | { name: string; command: string; args?: string[]; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string }
+  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string };
+
+interface McpClientCapability {
+  registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
+  unregisterServer(name: string): Promise<{ ok: boolean }>;
+}
+
+async function readSetup(ctx: finch.ExtensionContext): Promise<StoredSetup | undefined> {
+  return ctx.storage.get<StoredSetup>(STORAGE_KEY);
+}
+
+async function registerRuntimeServer(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<void> {
+  if (!ctx.capabilities.has('mcp.client')) {
+    ctx.logger.warn('mcp.client capability is not available');
+    return;
+  }
+
+  const mcp = ctx.capabilities.get<McpClientCapability>('mcp.client');
+  const result = await mcp.registerServer({
+    name: SERVER_NAME,
+    url: `https://example.com/mcp?apiKey=${encodeURIComponent(setup.apiKey)}`,
+    ownerExtensionId: ctx.extension.id,
+    ownerExtensionName: ctx.extension.displayName,
+  });
+
+  if (!result.ok) {
+    ctx.logger.warn('failed to register MCP server', result.error);
+  }
+}
+
+export function activate(ctx: finch.ExtensionContext): void {
+  void readSetup(ctx).then((setup) => {
+    if (setup) return registerRuntimeServer(ctx, setup);
+  });
+}
+```
+
+Runtime registrations are in-memory and tied to the mini tool lifecycle. If the mini tool is disabled or removed, the runtime server disappears with it and does not leave stale entries in MCP Client's user config.
+
+### 3. Add a setup tool for secrets
+
+Use a setup tool to collect secrets via Finch's secure form, store them in your own extension storage, then call `registerServer()`.
+
+```ts
+ctx.subscriptions.push(ctx.tools.register({
+  name: 'setup_my_service',
+  title: 'Set up My Service',
+  description: 'Collect the API key and register the My Service MCP server.',
+  inputSchema: { type: 'object', properties: {} },
+  risk: 'medium',
+  async execute(_input, exec) {
+    const form = await exec.ui.requestForm({
+      title: 'Set up My Service',
+      fields: [
+        { key: 'apiKey', label: 'API Key', type: 'password', secret: true, required: true },
+      ],
+    });
+
+    if (!form.submitted) {
+      return { content: [{ type: 'text', text: 'Setup cancelled.' }] };
+    }
+
+    const apiKey = String(form.values.apiKey ?? '').trim();
+    if (!apiKey) {
+      return { content: [{ type: 'text', text: 'No API key was provided.' }], isError: true };
+    }
+
+    const setup = { apiKey };
+    await ctx.storage.set(STORAGE_KEY, setup);
+    await registerRuntimeServer(ctx, setup);
+
+    return { content: [{ type: 'text', text: 'My Service MCP server is configured.' }] };
+  },
+}));
+```
+
+Secrets should never be written to `package.json`, committed to the mini tool package, or returned to the model in tool results.
+
+## Server name matching
+
+MCP Client merges the runtime server config with the static contribution by normalized server name. Case-only differences are tolerated, but you should still keep one stable name in both places:
+
+```text
+contributes.mcpServers[].name = "My Service"
+registerServer({ name: "my-service", ... })
+→ both normalize to my_service / my-service style matching internally
+```
+
+The model-facing MCP tool names are not prefixed with the mini tool id. Tools are exposed as:
+
+```text
+mcp__<server>__<tool>
+```
+
+Finch keeps an internal owner-qualified key such as `my-plugin.my-service` for UI attribution and ownership, not for the tool name shown to the model.
+
+## What MCP Client provides
+
+The `mcp.client` capability is intended for mini tools. Its core methods are:
+
+```ts
+interface McpClientCapability {
+  listServers(): Promise<string[]>;
+  getServerStatuses?(): Promise<Array<{ name: string; status: string; toolCount: number; ownerExtensionId?: string; qualifiedName?: string }>>;
+  listTools(server: string): Promise<Array<{ name: string; title?: string; description?: string; inputSchema?: Record<string, unknown> }>>;
+  registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
+  unregisterServer(name: string): Promise<{ ok: boolean }>;
+}
+```
+
+For normal mini tools, prefer `registerServer()` over writing MCP Client config files directly.
+
+## Manual MCP config: supported but not recommended for mini tools
+
+MCP Client still supports a user-owned `servers.json` file for manual local configuration and troubleshooting. This is useful for advanced users, but mini tools should not write to it because uninstalling the mini tool would leave orphaned server entries.
+
+Path:
+
+```text
+~/.finch/extension-data/mcp/servers.json
+```
+
+In dev mode, the root is `~/.finch-dev/`.
+
+### stdio server
 
 ```json
 {
   "servers": [
     {
       "name": "filesystem",
-      "transport": "stdio",
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/me/Documents"],
       "env": {
@@ -56,18 +214,13 @@ Use this for local command-line MCP servers, such as filesystem, git, or databas
 }
 ```
 
-For backward compatibility, configs without `transport` but with `command` are treated as `stdio`.
-
-### 2. HTTP Stream
-
-Use this for remote MCP services or MCP endpoints exposed through a gateway. Finch sends JSON-RPC POST requests to `url` and accepts either `application/json` or `text/event-stream` responses.
+### HTTP Stream server
 
 ```json
 {
   "servers": [
     {
       "name": "remote-search",
-      "transport": "httpStream",
       "url": "https://example.com/mcp",
       "headers": {
         "Authorization": "Bearer ${MCP_TOKEN}"
@@ -80,113 +233,10 @@ Use this for remote MCP services or MCP endpoints exposed through a gateway. Fin
 }
 ```
 
-`env` is not sent in the HTTP body. It is only used to expand `${KEY}` placeholders in `headers`.
+For HTTP Stream, `env` is only used to expand `${KEY}` placeholders in `headers`; it is not sent in the request body.
 
-## Config files
+## Agent usage
 
-This version intentionally does not expose a MCP configuration UI yet. MCP Client reads these configuration sources:
+The Agent should not call `mcp__<server>__<tool>` names before they are activated. It should first use Finch `ToolSearch` with `source: "mcp"`; MCP Client will connect matching servers, discover their tools, and inject the matched tools into the current run.
 
-| Source | Purpose |
-|---|---|
-| `servers.json` | User-written / local MCP server config |
-| `ctx.extensions.listContributions('mcpServers')` | MCP servers contributed by enabled extension manifests |
-
-When local config and plugin contributions define the same server name, `servers.json` wins and can override contributed config.
-
-The absolute paths are:
-
-```
-~/.finch/extension-data/mcp/servers.json
-```
-
-In dev mode the root is `~/.finch-dev/`. Developers can hand-write `servers.json` (format shown above); restart Finch to apply changes. Plugin-contributed MCP servers come from the enabled-plugin manifest contribution snapshot.
-
-## For plugin authors
-
-MCP Client provides the `mcp.client` capability. Other plugins can declare the dependency in their manifest:
-
-```json
-{
-  "finch": {
-    "requires": {
-      "capabilities": ["mcp.client"]
-    }
-  }
-}
-```
-
-Then call MCP from plugin code:
-
-```ts
-const mcp = await ctx.capabilities.get('mcp.client');
-const servers = await mcp.listServers();
-const tools = await mcp.listTools('filesystem');
-const result = await mcp.callTool('filesystem', 'read_file', { path: '/tmp/a.txt' });
-```
-
-## Contributing MCP servers
-
-A plugin can contribute MCP servers through `contributes.mcpServers`. For servers that do not need secrets, include the transport directly:
-
-```json
-{
-  "finch": {
-    "requires": {
-      "capabilities": ["mcp.client"]
-    },
-    "contributes": {
-      "mcpServers": [
-        {
-          "name": "my-server",
-          "command": "node",
-          "args": ["dist/server.js"]
-        }
-      ]
-    }
-  }
-}
-```
-
-For secret-dependent servers, use a metadata-only contribution and register the actual transport at runtime with `mcp.client#registerServer()`:
-
-```json
-{
-  "name": "my-server",
-  "description": "Configured by this plugin at runtime.",
-  "toolMeta": {
-    "titles": {
-      "search": "My Search"
-    }
-  },
-  "toolDisplay": {
-    "tools": {
-      "search": {
-        "inline": {
-          "fields": [{ "path": "query", "maxLength": 80 }],
-          "template": "{query}"
-        }
-      }
-    }
-  }
-}
-```
-
-Then call `registerServer({ name: "my-server", ... })` from `activate()` after collecting secrets through plugin storage or a secure form. MCP Client matches the runtime server to the static contribution by normalized server name, so case-only differences are tolerated; keeping the same stable name is still recommended.
-
-Contributed server names are not prefixed in the model-facing tool name: tools are exposed as `mcp__<server>__<tool>`. Finch keeps an internal owner-qualified key such as `my-plugin.my-server` for UI attribution.
-
-## Environment variables and secrets
-
-- `stdio`: `env` is merged into the MCP server subprocess environment.
-- `httpStream`: `env` expands `${KEY}` placeholders in request headers.
-- Do not commit real secrets in plugin manifests. Prefer local `servers.json` or Finch's future secret configuration UI for sensitive values.
-
-## Localized README files
-
-Plugin README files can be localized with these filenames:
-
-- `README.zh-CN.md`
-- `README.en-US.md`
-- `README.md` as the default fallback
-
-Finch chooses the best README for the current UI language.
+This is a runtime optimization detail for the Agent. Mini tool authors usually only need the contribution + `registerServer()` pattern above.
