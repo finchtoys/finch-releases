@@ -101,86 +101,21 @@ function sanitizeSegment(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '_');
 }
 
-function titleCase(value: string): string {
-  return value.split(/\s+/).filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ');
-}
-
 function mcpModelToolName(serverName: string, toolName: string): string {
   return `mcp__${sanitizeSegment(serverName)}__${sanitizeSegment(toolName)}`;
-}
-
-function humanizeMcpToolName(name: string): string {
-  const exact: Record<string, string> = {
-    issue_read: 'Get Issue',
-    issue_write: 'Write Issue',
-    sub_issue_write: 'Write Sub-Issue',
-    pull_request_read: 'Get Pull Request',
-    pull_request_review_write: 'Write Pull Request Review',
-    discussion_comment_write: 'Write Discussion Comment',
-    label_write: 'Write Label',
-    actions_get: 'Get Actions Resource',
-    actions_list: 'List Actions Workflows',
-    actions_run_trigger: 'Run Actions Workflow',
-    get_job_logs: 'Get Job Logs',
-    github_support_docs_search: 'Search GitHub Support Docs',
-  };
-  if (exact[name]) return exact[name];
-  return titleCase(name.replace(/_/g, ' '))
-    .replace(/\bPr\b/g, 'PR')
-    .replace(/\bPrs\b/g, 'PRs')
-    .replace(/\bGithub\b/g, 'GitHub')
-    .replace(/\bCopilot\b/g, 'Copilot');
-}
-
-function isGitHubServer(serverName: string): boolean {
-  const value = serverName.trim().toLowerCase();
-  return value === 'github' || value.startsWith('github-') || value.startsWith('github_');
-}
-
-function githubInlineDisplay(): finch.ToolInlineDisplaySpec {
-  return {
-    mode: 'join',
-    fields: [
-      { path: 'owner' },
-      { path: 'repo' },
-      { path: 'issueNumber' },
-      { path: 'pullNumber' },
-      { path: 'number' },
-      { path: 'path', format: 'truncate', maxLength: 40 },
-      { path: 'branch', maxLength: 24 },
-      { path: 'base', maxLength: 24 },
-      { path: 'head', maxLength: 24 },
-      { path: 'tag', maxLength: 24 },
-      { path: 'perPage' },
-      { path: 'state', maxLength: 20 },
-      { path: 'query', format: 'truncate', maxLength: 50 },
-      { path: 'q', format: 'truncate', maxLength: 50 },
-      { path: 'resource_id' },
-      { path: 'workflow_id' },
-    ],
-    template: '{owner}/{repo} #{issueNumber} #{pullNumber} #{number} path:{path} branch:{branch} base:{base} head:{head} tag:{tag} perPage:{perPage} state:{state} query:{query} q:{q} id:{resource_id} workflow:{workflow_id}',
-  };
 }
 
 function buildMcpToolTitle(serverName: string, toolName: string): string | undefined {
   const config = configs.get(serverName);
   if (!config?.ownerExtensionId) return undefined;
-  return config.toolMeta?.titles?.[toolName]
-    ?? (isGitHubServer(serverName) ? humanizeMcpToolName(toolName) : undefined);
+  return config.toolMeta?.titles?.[toolName];
 }
 
 function buildMcpToolCallDisplay(serverName: string, toolName: string): finch.ToolCallDisplay | undefined {
   const config = configs.get(serverName);
   const ownerExtensionId = config?.ownerExtensionId;
   if (!ownerExtensionId) return undefined;
-  const declared = config?.toolDisplay?.tools?.[toolName];
-  if (declared) return declared;
-  if (isGitHubServer(serverName)) {
-    return {
-      inline: githubInlineDisplay(),
-    };
-  }
-  return undefined;
+  return config?.toolDisplay?.tools?.[toolName];
 }
 
 /**
@@ -591,11 +526,15 @@ function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[
   const storagePath = ctx.storagePath;
   const fileServers = readServersFile(join(storagePath, 'servers.json'), ctx.logger);
   const contributed = readContributedServers(ctx);
-  // Match contributions to runtime/file servers by a normalized key, not the raw
-  // name. Dynamic tool names are sanitized to lowercase, so a manifest server
-  // named "Tavily" still yields mcp__tavily__* tools and may be registered at
-  // runtime as "tavily". Exact-case matching would silently drop toolMeta /
-  // toolDisplay from metadata-only contributions.
+  // Match contributions to runtime/file servers by a NORMALIZED key, not the raw
+  // name. Dynamic tool names are sanitized to lowercase — a server named "Tavily"
+  // still yields mcp__tavily__* tools — and the contribution name (presentation
+  // only) may legitimately differ in case from the name passed to registerServer()
+  // (e.g. contributes.mcpServers[].name = "Tavily" but SERVER_NAME = "tavily").
+  // An exact-case lookup would then fail to overlay the presentation metadata
+  // (toolMeta/toolDisplay), silently dropping tool titles and inline display.
+  // Keying by sanitizeSegment() keeps the raw name for display/connection while
+  // making the merge robust to case/format drift between the two sources.
   const contributedByName = new Map(contributed.map((s) => [sanitizeSegment(s.name), s]));
   const byName = new Map<string, ManagedMcpServerConfig>();
   // Only add contributed servers that have a transport (command or url).
