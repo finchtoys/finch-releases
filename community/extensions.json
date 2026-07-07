@@ -11,7 +11,7 @@
       "developer"
     ],
     "featured": true,
-    "version": "0.2.2"
+    "version": "0.2.3"
   },
   {
     "id": "mcp",
@@ -51,6 +51,7 @@
     "categories": [
       "research"
     ],
-    "featured": true
+    "featured": true,
+    "version": "0.1.5"
   }
 ]

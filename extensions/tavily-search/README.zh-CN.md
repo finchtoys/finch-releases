@@ -1,6 +1,6 @@
-# Tavily Search
+# Tavily 搜索
 
-Tavily Search 扩展通过 Finch 的 MCP Client 连接 Tavily MCP，让 Agent 可以使用 Tavily 的搜索、网页提取、站点抓取和站点地图能力。
+Tavily 搜索小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是一款桌面 AI Agent，可在 [finchwork.app](https://finchwork.app/) 下载。本扩展通过 Finch 的 MCP Client 连接 Tavily MCP，让 Agent 可以使用 Tavily 的搜索、网页提取、站点抓取和站点地图能力。
 
 ## 推荐接入方式
 

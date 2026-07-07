@@ -1,6 +1,8 @@
 # Git 分支
 
-一个在对话框里切换 Git 分支的小工具。
+Git 分支小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是一款桌面 AI Agent，可在 [finchwork.app](https://finchwork.app/) 下载。
+
+可在对话框里切换 Git 分支，方便你管理 Git 项目的分支。
 
 ## 功能
 
