@@ -1,8 +1,7 @@
 /*!
  * Finch Extension API
  *
- * Use this published type package as the `finch` module alias in `tsconfig.json`.
- * Runtime APIs still come through `ctx`:
+ * 扩展使用 `import type` 引入类型，所有运行时 API 通过 `ctx` 调用：
  *
  * ```ts
  * import type * as finch from 'finch';
@@ -17,8 +16,8 @@
  * export function deactivate() { }
  * ```
  *
- * `import type` is erased at compile time. The `finch` module name is only a type alias; runtime APIs still come through `ctx`.
- * Full docs: https://finchwork.app/docs/mini-tools
+ * `import type` 在编译时完全擦除，无需运行时解析 `finch` 模块。
+ * 完整文档：https://finchwork.app/docs/extensions
  */
 declare module 'finch' {
 
@@ -195,8 +194,8 @@ declare module 'finch' {
      * ctx.subscriptions.push(
      *   ctx.composerActions.register('git-branch', {
      *     async getBadge({ cwd }) { return getCurrentBranch(cwd); },
-     *     async getMenu({ cwd })  { return listBranches(cwd).map(b => ({ id: b, label: b })); },
-     *     async execute({ cwd }, itemId, actions) { await checkout(cwd, itemId); },
+     *     async getMenu({ cwd })  { return listBranches(cwd); },
+     *     async execute({ cwd }, branch) { await checkout(cwd, branch); },
      *   }),
      * );
      */
@@ -442,8 +441,8 @@ declare module 'finch' {
     readonly spaceId: string | undefined;
     /** 当前有效工作目录。 */
     readonly cwd: string | undefined;
-    /** 用户或超时触发中止时进入 aborted 状态；未中止或宿主未提供时为 undefined。 */
-    readonly signal?: AbortSignal;
+    /** 用户或超时触发中止时有信号。 */
+    readonly token: CancellationToken;
     readonly logger: Logger;
     readonly storage: Storage;
     readonly secrets: Secrets;

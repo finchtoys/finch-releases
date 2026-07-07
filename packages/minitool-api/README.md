@@ -2,9 +2,9 @@
 
 Type definitions for [Finch](https://finchwork.app) mini tool authors.
 
-This is a **type-only** package — zero runtime dependencies, zero bundle impact. All APIs are accessed through the `ctx` object injected at activation; the `finch` module itself is resolved by the Finch host at runtime and never needs to be installed.
+This is a **type-only** package — zero runtime dependencies, zero bundle impact. Use it as the published type package for Finch mini tools, then map the `finch` module to its declarations in `tsconfig.json`.
 
-mini tool is finch extension.
+All runtime APIs are accessed through the `ctx` object injected at activation; the `finch` module name is only a compile-time type alias.
 
 ## Installation
 
@@ -38,7 +38,7 @@ export function activate(ctx: finch.ExtensionContext) {
 export function deactivate() {}
 ```
 
-> **`import type`** — the import is erased at compile time. Finch injects the real `finch` module at runtime; you never bundle it.
+> **`import type`** — the import is erased at compile time. The `finch` module name is just a type alias for this package's declarations; runtime APIs still come from `ctx`.
 
 ## tsconfig Setup
 
