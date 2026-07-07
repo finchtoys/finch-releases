@@ -1278,7 +1278,7 @@ declare module 'finch' {
    *       ]
    *     },
    *     "permissions": {
-   *       "filesystem": "readonly",
+   *       "filesystem": "read",
    *       "network": false,
    *       "shell": false,
    *       "secrets": ["MY_API_KEY"]
@@ -1406,8 +1406,8 @@ declare module 'finch' {
 
   /** 插件权限声明。 */
   export interface ExtensionPermissions {
-    /** 文件系统访问级别。`'none'` = 禁止，`'readonly'/'read'` = 只读，`'readwrite'` = 读写。 */
-    readonly filesystem?: 'none' | 'read' | 'readonly' | 'readwrite';
+    /** 文件系统访问级别。`'none'` = 禁止，`'read'` = 只读，`'readwrite'` = 读写。 */
+    readonly filesystem?: 'none' | 'read' | 'readwrite';
     /** 是否允许发起网络请求。 */
     readonly network?: boolean;
     /** 是否允许执行 shell 命令。 */

@@ -1,7 +1,8 @@
 /*!
  * Finch Extension API
  *
- * 扩展使用 `import type` 引入类型，所有运行时 API 通过 `ctx` 调用：
+ * Use this published type package as the `finch` module alias in `tsconfig.json`.
+ * Runtime APIs still come through `ctx`:
  *
  * ```ts
  * import type * as finch from 'finch';
@@ -16,8 +17,8 @@
  * export function deactivate() { }
  * ```
  *
- * `import type` 在编译时完全擦除，无需运行时解析 `finch` 模块。
- * 完整文档：https://finchwork.app/docs/extensions
+ * `import type` is erased at compile time. The `finch` module name is only a type alias; runtime APIs still come through `ctx`.
+ * Full docs: https://finchwork.app/docs/mini-tools
  */
 declare module 'finch' {
 
@@ -177,8 +178,8 @@ declare module 'finch' {
      * ctx.subscriptions.push(
      *   ctx.composerActions.register('git-branch', {
      *     async getBadge({ cwd }) { return getCurrentBranch(cwd); },
-     *     async getMenu({ cwd })  { return listBranches(cwd); },
-     *     async execute({ cwd }, branch) { await checkout(cwd, branch); },
+     *     async getMenu({ cwd })  { return listBranches(cwd).map(b => ({ id: b, label: b })); },
+     *     async execute({ cwd }, itemId, actions) { await checkout(cwd, itemId); },
      *   }),
      * );
      */
@@ -442,8 +443,8 @@ declare module 'finch' {
     readonly spaceId: string | undefined;
     /** 当前有效工作目录。 */
     readonly cwd: string | undefined;
-    /** 用户或超时触发中止时有信号。 */
-    readonly token: CancellationToken;
+    /** 用户或超时触发中止时进入 aborted 状态；未中止或宿主未提供时为 undefined。 */
+    readonly signal?: AbortSignal;
     readonly logger: Logger;
     readonly storage: Storage;
     readonly secrets: Secrets;
@@ -1277,7 +1278,7 @@ declare module 'finch' {
    *       ]
    *     },
    *     "permissions": {
-   *       "filesystem": "readonly",
+   *       "filesystem": "read",
    *       "network": false,
    *       "shell": false,
    *       "secrets": ["MY_API_KEY"]
@@ -1405,8 +1406,8 @@ declare module 'finch' {
 
   /** 插件权限声明。 */
   export interface ExtensionPermissions {
-    /** 文件系统访问级别。`'none'` = 禁止，`'readonly'/'read'` = 只读，`'readwrite'` = 读写。 */
-    readonly filesystem?: 'none' | 'read' | 'readonly' | 'readwrite';
+    /** 文件系统访问级别。`'none'` = 禁止，`'read'` = 只读，`'readwrite'` = 读写。 */
+    readonly filesystem?: 'none' | 'read' | 'readwrite';
     /** 是否允许发起网络请求。 */
     readonly network?: boolean;
     /** 是否允许执行 shell 命令。 */
