@@ -1,12 +1,17 @@
 {
-  "name": "@finch.app/ext-git-branch",
-  "version": "0.2.1",
+  "name": "@finch.app/git-branch",
+  "version": "0.2.2",
   "description": "Git Branch Manager for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
   },
   "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/git-branch"
+  },
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

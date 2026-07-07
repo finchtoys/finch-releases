@@ -2,13 +2,17 @@
   "name": "@finch.app/mini-tool-demo",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
   "description": "Comprehensive Finch mini tool demo — demonstrates all mini tool capabilities including forms, toasts, custom icons, tools, composer actions, and i18n.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
   },
   "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/finch-mini-tool-demo"
+  },
   "license": "MIT",
   "main": "dist/index.js",
   "scripts": {

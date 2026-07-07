@@ -1,12 +1,17 @@
 {
   "name": "finch-tavily-search",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Tavily Search MCP extension for Finch.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
   },
   "homepage": "https://www.tavily.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/tavily-search"
+  },
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
