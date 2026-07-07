@@ -53,6 +53,7 @@ finch-releases/
 
 ## 注意事项
 
+- **术语说明**：Finch 中的「小工具」即「扩展（Extension）」，两者指同一概念，文档和代码中统一使用「扩展」。
 - 本仓库不存放 Finch App 主程序源码；主程序源码位于独立的开发仓库。
 - 扩展开发统一放在 `extensions/` 目录下，每个子目录一个扩展项目。如需独立维护（如大项目迁移至单独仓库），在 `extensions/` 保留配置文件索引并指向外部仓库链接。
 - `packages/` 使用 npm workspaces 管理，发布脚本位于 `scripts/publish-all.sh`，CI 配置位于 `.github/workflows/publish.yml`。

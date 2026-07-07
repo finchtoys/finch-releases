@@ -2,7 +2,7 @@ import type * as finch from 'finch';
 import { readFileSync } from 'node:fs';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const PACK_ID = 'finch-extension-example' as const;
+const PACK_ID = 'mini-tool-demo' as const;
 const ICON = (name: string) => `ext:${PACK_ID}/${name}` as const;
 const CURRENT_ICON_KEY = 'currentIcon';
 const LAST_ACTION_KEY = 'lastAction';
@@ -20,7 +20,7 @@ interface IconDef {
   descKey: string;
 }
 const ALL_ICONS: IconDef[] = [
-  { id: 'finch-extension-example', svgName: 'finch-extension-example', labelKey: 'icon.main',        descKey: 'icon.main.desc' },
+  { id: 'mini-tool-demo', svgName: 'mini-tool-demo', labelKey: 'icon.main',        descKey: 'icon.main.desc' },
   { id: 'all-fields',              svgName: 'all-fields',              labelKey: 'icon.all-fields',   descKey: 'icon.all-fields.desc' },
   { id: 'login',                   svgName: 'login',                   labelKey: 'icon.login',        descKey: 'icon.login.desc' },
   { id: 'timeout',                 svgName: 'timeout',                 labelKey: 'icon.timeout',      descKey: 'icon.timeout.desc' },
@@ -63,32 +63,34 @@ function registerAllFieldsTool(ctx: finch.ExtensionContext) {
       inputSchema: { type: 'object', properties: {} },
       risk: 'low',
       async execute(_input, exec) {
-        const i18n = ctx.i18n;
+        const i = ctx.i18n;
         const result = await exec.ui.requestForm({
-          title: '全部字段类型测试',
-          description: '这是 Finch requestForm 支持的全部字段类型，包含并排布局演示。',
-          submitLabel: '查看结果',
-          cancelLabel: '取消',
+          title: i.t('form.all-fields.title'),
+          description: i.t('form.all-fields.description'),
+          submitLabel: i.t('form.all-fields.submit'),
+          cancelLabel: i.t('form.cancel'),
           fields: [
-            { key: 'name', label: '姓名', type: 'text', placeholder: '请输入你的名字', required: true, width: '2/3' },
-            { key: 'age', label: '年龄', type: 'number', placeholder: '18', default: 18, width: '1/3' },
-            { key: 'password', label: '密码', type: 'password', placeholder: '不会泄露给 AI', secret: true, width: '2/3' },
-            { key: 'color', label: '喜欢的颜色', type: 'select', default: 'blue', width: '1/3',
+            { key: 'name', label: i.t('form.all-fields.name.label'), type: 'text', placeholder: i.t('form.all-fields.name.placeholder'), required: true, width: '2/3' },
+            { key: 'age', label: i.t('form.all-fields.age.label'), type: 'number', placeholder: '18', default: 18, width: '1/3' },
+            { key: 'password', label: i.t('form.all-fields.password.label'), type: 'password', placeholder: i.t('form.all-fields.password.placeholder'), secret: true, width: '2/3' },
+            { key: 'color', label: i.t('form.all-fields.color.label'), type: 'select', default: 'blue', width: '1/3',
               options: [
-                { value: 'red', label: '红色' }, { value: 'blue', label: '蓝色' },
-                { value: 'green', label: '绿色' }, { value: 'purple', label: '紫色' },
+                { value: 'red', label: i.t('form.all-fields.color.red') },
+                { value: 'blue', label: i.t('form.all-fields.color.blue') },
+                { value: 'green', label: i.t('form.all-fields.color.green') },
+                { value: 'purple', label: i.t('form.all-fields.color.purple') },
               ] },
-            { key: 'bio', label: '自我介绍', type: 'textarea', placeholder: '写一段关于你自己的介绍…', description: '支持多行文本' },
-            { key: 'subscribe', label: '订阅通知', type: 'boolean', description: '是否接收通知', default: true },
+            { key: 'bio', label: i.t('form.all-fields.bio.label'), type: 'textarea', placeholder: i.t('form.all-fields.bio.placeholder'), description: i.t('form.all-fields.bio.description') },
+            { key: 'subscribe', label: i.t('form.all-fields.subscribe.label'), type: 'boolean', description: i.t('form.all-fields.subscribe.description'), default: true },
           ],
           timeoutMs: 120_000,
         });
 
-        if (!result.submitted) return { content: [{ type: 'text', text: `表单已取消（原因：${result.reason}）` }] };
+        if (!result.submitted) return { content: [{ type: 'text', text: i.t('result.all-fields.cancelled', { reason: result.reason ?? '' }) }] };
 
         const entries = Object.entries(result.values)
           .map(([k, v]) => `- **${k}**: \`${JSON.stringify(v)}\``).join('\n');
-        return { content: [{ type: 'text', text: `✅ 表单提交成功！以下是填写的内容：\n\n${entries}` }] };
+        return { content: [{ type: 'text', text: `${i.t('result.all-fields.success')}\n\n${entries}` }] };
       },
     }),
   );
@@ -104,26 +106,27 @@ function registerLoginTool(ctx: finch.ExtensionContext) {
       inputSchema: { type: 'object', properties: {} },
       risk: 'low',
       async execute(_input, exec) {
+        const i = ctx.i18n;
         const result = await exec.ui.requestForm({
-          title: '登录',
-          description: '请输入你的登录凭据。密码标记为 secret，不会返回给模型。',
-          submitLabel: '登录',
+          title: i.t('form.login.title'),
+          description: i.t('form.login.description'),
+          submitLabel: i.t('form.login.submit'),
           fields: [
-            { key: 'username', label: '用户名', type: 'text', placeholder: '输入用户名', required: true },
-            { key: 'password', label: '密码', type: 'password', placeholder: '输入密码', secret: true, required: true,
-              description: '此字段值不会泄露给 AI 模型' },
-            { key: 'remember', label: '记住我', type: 'boolean', default: false },
+            { key: 'username', label: i.t('form.login.username.label'), type: 'text', placeholder: i.t('form.login.username.placeholder'), required: true },
+            { key: 'password', label: i.t('form.login.password.label'), type: 'password', placeholder: i.t('form.login.password.placeholder'), secret: true, required: true,
+              description: i.t('form.login.password.description') },
+            { key: 'remember', label: i.t('form.login.remember.label'), type: 'boolean', default: false },
           ],
         });
 
-        if (!result.submitted) return { content: [{ type: 'text', text: `❌ 登录已取消（原因：${result.reason}）` }] };
+        if (!result.submitted) return { content: [{ type: 'text', text: i.t('result.login.cancelled', { reason: result.reason ?? '' }) }] };
 
         return {
           content: [{
             type: 'text',
-            text: `✅ 登录成功！欢迎回来 **${result.values.username}**` +
-              (result.values.remember ? '（已勾选"记住我"）' : '') +
-              '\n\n> 注意：密码字段标记为 `secret: true`，其值未返回给模型。',
+            text: i.t('result.login.success', { username: String(result.values.username) }) +
+              (result.values.remember ? i.t('result.login.remember') : '') +
+              '\n\n' + i.t('result.login.notice'),
           }],
         };
       },
@@ -147,30 +150,31 @@ function registerTimeoutTool(ctx: finch.ExtensionContext) {
       },
       risk: 'low',
       async execute(input, exec) {
+        const i = ctx.i18n;
         const { seconds } = input as { seconds?: number };
         const timeoutSec = seconds != null && seconds >= 0 ? seconds : 30;
 
         const result = await exec.ui.requestForm({
-          title: timeoutSec > 0 ? `${timeoutSec} 秒超时测试` : '无超时测试',
+          title: timeoutSec > 0 ? i.t('form.timeout.title.with', { seconds: timeoutSec }) : i.t('form.timeout.title.without'),
           description: timeoutSec > 0
-            ? `这个表单会在 **${timeoutSec} 秒** 后自动取消。`
-            : '这个表单没有超时限制，可一直等待。',
-          submitLabel: '提交',
+            ? i.t('form.timeout.description.with', { seconds: timeoutSec })
+            : i.t('form.timeout.description.without'),
+          submitLabel: i.t('form.timeout.submit'),
           fields: [
-            { key: 'feedback', label: '输入点什么', type: 'text', placeholder: '随便输入… 或者等待超时' },
+            { key: 'feedback', label: i.t('form.timeout.input.label'), type: 'text', placeholder: i.t('form.timeout.input.placeholder') },
           ],
           timeoutMs: timeoutSec > 0 ? timeoutSec * 1000 : undefined,
         });
 
         if (!result.submitted) {
           const reasonMap: Record<string, string> = {
-            timeout: `⏰ 超时了！表单因 ${timeoutSec} 秒无操作自动取消。`,
-            cancelled: '📋 表单已取消',
-            'session-ended': '📋 会话已结束，表单关闭',
+            timeout: i.t('result.timeout.timeout', { seconds: timeoutSec }),
+            cancelled: i.t('result.timeout.cancelled'),
+            'session-ended': i.t('result.timeout.session-ended'),
           };
-          return { content: [{ type: 'text', text: reasonMap[result.reason!] || `📋 表单已取消（${result.reason}）` }] };
+          return { content: [{ type: 'text', text: reasonMap[result.reason!] || i.t('result.timeout.other', { reason: result.reason ?? '' }) }] };
         }
-        return { content: [{ type: 'text', text: `✅ 已提交：${result.values.feedback}` }] };
+        return { content: [{ type: 'text', text: i.t('result.timeout.submitted', { value: String(result.values.feedback) }) }] };
       },
     }),
   );
@@ -186,25 +190,26 @@ function registerConfigTool(ctx: finch.ExtensionContext) {
       inputSchema: { type: 'object', properties: {} },
       risk: 'medium',
       async execute(_input, exec) {
+        const i = ctx.i18n;
         const result = await exec.ui.requestForm({
-          title: '项目配置',
-          description: '配置一个新项目的基本参数',
-          submitLabel: '创建项目',
+          title: i.t('form.config.title'),
+          description: i.t('form.config.description'),
+          submitLabel: i.t('form.config.submit'),
           fields: [
-            { key: 'projectName', label: '项目名称', type: 'text', placeholder: 'my-project', required: true },
-            { key: 'language', label: '主要语言', type: 'select', default: 'ts', width: '1/2',
+            { key: 'projectName', label: i.t('form.config.name.label'), type: 'text', placeholder: 'my-project', required: true },
+            { key: 'language', label: i.t('form.config.language.label'), type: 'select', default: 'ts', width: '1/2',
               options: [
                 { value: 'ts', label: 'TypeScript' }, { value: 'js', label: 'JavaScript' },
                 { value: 'py', label: 'Python' }, { value: 'rs', label: 'Rust' },
               ] },
-            { key: 'port', label: '端口号', type: 'number', placeholder: '3000', default: 3000, width: '1/2' },
-            { key: 'initGit', label: '初始化 Git', type: 'boolean', default: true, width: '1/2' },
-            { key: 'initReadme', label: '生成 README', type: 'boolean', default: true, width: '1/2' },
-            { key: 'notes', label: '备注', type: 'textarea', placeholder: '可选的备注信息…', description: '非必填' },
+            { key: 'port', label: i.t('form.config.port.label'), type: 'number', placeholder: '3000', default: 3000, width: '1/2' },
+            { key: 'initGit', label: i.t('form.config.initGit.label'), type: 'boolean', default: true, width: '1/2' },
+            { key: 'initReadme', label: i.t('form.config.initReadme.label'), type: 'boolean', default: true, width: '1/2' },
+            { key: 'notes', label: i.t('form.config.notes.label'), type: 'textarea', placeholder: i.t('form.config.notes.placeholder'), description: i.t('form.config.notes.description') },
           ],
         });
 
-        if (!result.submitted) return { content: [{ type: 'text', text: '❌ 配置已取消' }] };
+        if (!result.submitted) return { content: [{ type: 'text', text: i.t('result.config.cancelled') }] };
 
         const { projectName, language, port, initGit, initReadme, notes } = result.values;
         const langMap: Record<string, string> = { ts: 'TypeScript', js: 'JavaScript', py: 'Python', rs: 'Rust' };
@@ -213,17 +218,17 @@ function registerConfigTool(ctx: finch.ExtensionContext) {
           content: [{
             type: 'text',
             text: [
-              `✅ 项目「${projectName}」配置完成！`,
+              i.t('result.config.header', { name: String(projectName) }),
               '',
-              '| 参数 | 值 |',
+              `| ${i.t('result.config.table.key')} | ${i.t('result.config.table.value')} |`,
               '| --- | --- |',
-              `| 语言 | ${langMap[language as string] || language} |`,
-              `| 端口 | ${port} |`,
-              `| Git 初始化 | ${initGit ? '✅' : '❌'} |`,
-              `| 生成 README | ${initReadme ? '✅' : '❌'} |`,
-              notes ? `| 备注 | ${notes} |` : null,
+              `| ${i.t('result.config.row.language')} | ${langMap[language as string] || language} |`,
+              `| ${i.t('result.config.row.port')} | ${port} |`,
+              `| ${i.t('result.config.row.git')} | ${initGit ? '✅' : '❌'} |`,
+              `| ${i.t('result.config.row.readme')} | ${initReadme ? '✅' : '❌'} |`,
+              notes ? `| ${i.t('result.config.row.notes')} | ${notes} |` : null,
               '',
-              '现在可以使用 Finch 的工具来创建这个项目了。',
+              i.t('result.config.footer'),
             ].filter(Boolean).join('\n'),
           }],
         };
@@ -259,26 +264,27 @@ function registerToastDemoTool(ctx: finch.ExtensionContext) {
       },
       risk: 'low',
       async execute(input, exec) {
+        const i = ctx.i18n;
         const { type = 'toast', variant = 'success' } = input as { type?: string; variant?: string };
 
         if (type === 'message') {
-          ctx.ui.showMessage(`这是一条 showMessage（${variant}）`, variant as 'info' | 'warning' | 'error');
-          return { content: [{ type: 'text', text: `✅ 已调用 ctx.ui.showMessage('${variant}')` }] };
+          ctx.ui.showMessage(i.t('toast.demo.description', { variant }), variant as 'info' | 'warning' | 'error');
+          return { content: [{ type: 'text', text: i.t('result.toast.message', { variant }) }] };
         }
 
         const result = await ctx.ui.showToast({
-          title: `${variant} 通知`,
-          description: `这是 ${variant} 变体的 showToast 演示`,
+          title: i.t('toast.demo.title', { variant }),
+          description: i.t('toast.demo.description', { variant }),
           variant: variant as 'info' | 'success' | 'warning' | 'error',
-          action: { label: '撤销' },
+          action: { label: i.t('toast.demo.undo') },
           position: 'TC',
         });
 
         if (result.action === 'action') {
-          ctx.ui.showToast({ title: '已撤销操作', variant: 'info', position: 'TC' });
+          ctx.ui.showToast({ title: i.t('toast.demo.undone'), variant: 'info', position: 'TC' });
         }
 
-        return { content: [{ type: 'text', text: `✅ 已完成 ${variant} toast 演示` }] };
+        return { content: [{ type: 'text', text: i.t('result.toast.done', { variant }) }] };
       },
     }),
   );
@@ -295,7 +301,7 @@ function registerIconPreviewTool(ctx: finch.ExtensionContext) {
       risk: 'low',
       async execute() {
         const icons = [
-          { name: 'finch-extension-example',  label: '主按钮图标（自定义 SVG）', file: 'finch-extension-example.svg' },
+          { name: 'mini-tool-demo',  label: '主按钮图标（自定义 SVG）', file: 'mini-tool-demo.svg' },
           { name: 'all-fields', label: '全部字段类型（Lucide list）', file: 'list.svg → all-fields.svg' },
           { name: 'login',      label: '模拟登录（Lucide log-in）', file: 'log-in.svg → login.svg' },
           { name: 'timeout',    label: '超时测试（Lucide timer）', file: 'timer.svg → timeout.svg' },
@@ -305,7 +311,7 @@ function registerIconPreviewTool(ctx: finch.ExtensionContext) {
         ];
 
         const table = icons.map(i =>
-          `| \`ext:finch-extension-example/${i.name}\` | ${i.label} | \`icons/${i.file}\` |`
+          `| \`ext:mini-tool-demo/${i.name}\` | ${i.label} | \`icons/${i.file}\` |`
         ).join('\n');
 
         return {
@@ -315,16 +321,16 @@ function registerIconPreviewTool(ctx: finch.ExtensionContext) {
               '## 🎨 注册的自定义图标',
               '',
               '本扩展通过 `contributes.iconPacks` + `ctx.icons.register()` 注册了以下 SVG 图标，',
-              '可通过 `ext:finch-extension-example/<name>` 在菜单、按钮中引用。',
+              '可通过 `ext:mini-tool-demo/<name>` 在菜单、按钮中引用。',
               '',
               '| 引用名 | 用途 | 源文件 |',
               '| --- | --- | --- |',
               table,
               '',
               '**使用方式：**',
-              '- Manifest 中：`"icon": "finch-extension-example"`（指向 pack id）',
-              '- 菜单项 iconName：`"ext:finch-extension-example/xxx"`',
-              '- 注册：`ctx.icons.register(\'finch-extension-example\', { ... })`',
+              '- Manifest 中：`"icon": "mini-tool-demo"`（指向 pack id）',
+              '- 菜单项 iconName：`"ext:mini-tool-demo/xxx"`',
+              '- 注册：`ctx.icons.register(\'mini-tool-demo\', { ... })`',
               '- 来源：6 枚来自 Lucide，1 枚自定义',
             ].join('\n'),
           }],
@@ -397,7 +403,7 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
           id: 'icon-picker',
           label: ctx.i18n.t('icon.picker'),
           description: currentIcon ? ctx.i18n.t(iconMap.get(currentIcon)!.labelKey) : ctx.i18n.t('icon.picker.default'),
-          iconName: currentIcon ? ICON(currentIcon) : ICON('finch-extension-example'),
+          iconName: currentIcon ? ICON(currentIcon) : ICON('mini-tool-demo'),
           group: 'example-ui',
           groupLabel: ctx.i18n.t('group.ui'),
           children: iconItems,
@@ -471,12 +477,12 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
 
 // ── Activation ───────────────────────────────────────────────────────────────
 export function activate(ctx: finch.ExtensionContext): void {
-  ctx.logger.info('finch-extension-example activating...');
+  ctx.logger.info('mini-tool-demo activating...');
 
   // Register icon pack — all 7 custom SVG icons
   ctx.subscriptions.push(
-    ctx.icons.register('finch-extension-example', {
-      'finch-extension-example':  { svg: readIconSvg('finch-extension-example'),  description: 'Extension Example main icon' },
+    ctx.icons.register('mini-tool-demo', {
+      'mini-tool-demo':  { svg: readIconSvg('mini-tool-demo'),  description: 'Extension Example main icon' },
       'all-fields': { svg: readIconSvg('all-fields'), description: 'All form fields' },
       'login':      { svg: readIconSvg('login'),      description: 'Login form' },
       'timeout':    { svg: readIconSvg('timeout'),    description: 'Timeout test' },
@@ -497,7 +503,7 @@ export function activate(ctx: finch.ExtensionContext): void {
   // Register composer action
   registerComposerAction(ctx);
 
-  ctx.logger.info('finch-extension-example activated — 6 tools + 1 composer action + 7 custom icons');
+  ctx.logger.info('mini-tool-demo activated — 6 tools + 1 composer action + 7 custom icons');
 }
 
 export function deactivate(): void {

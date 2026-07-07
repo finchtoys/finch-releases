@@ -53,7 +53,7 @@
     }
   },
   "devDependencies": {
-    "@finch.app/extension-api": "^0.1.2",
+    "@finch.app/minitool-api": "^0.1.6",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   }

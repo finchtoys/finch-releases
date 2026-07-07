@@ -29,6 +29,18 @@
     "version": "1.1.13"
   },
   {
+    "id": "mini-tool-demo",
+    "name": "Finch Mini Tool Demo",
+    "author": "Finch Team",
+    "description": "A comprehensive demo extension showcasing all Finch mini tool capabilities: forms, toasts, custom icons, composer actions, and i18n.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "@finch.app/mini-tool-demo",
+    "extensionType": "official",
+    "categories": [
+      "developer"
+    ]
+  },
+  {
     "id": "tavily-search",
     "name": "Tavily Search",
     "author": "Finch Team",
