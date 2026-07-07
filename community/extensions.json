@@ -19,14 +19,14 @@
     "author": "Finch Team",
     "description": "Connect Model Context Protocol servers and expose their tools to the Finch agent.",
     "repo": "finchtoys/finch-releases",
-    "npm": "@finch.app/mcp-bridge",
+    "npm": "@finch.app/mcp-client",
     "extensionType": "official",
     "installScope": "global",
     "categories": [
       "developer"
     ],
     "featured": true,
-    "version": "1.1.10"
+    "version": "1.1.13"
   },
   {
     "id": "tavily-search",

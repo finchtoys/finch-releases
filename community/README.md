@@ -26,7 +26,7 @@ Each entry in `extensions.json` is an object with these fields:
 | `author` | string | ✅ | Author name or org |
 | `description` | string | ✅ | One-line description |
 | `repo` | string | ✅ | GitHub `owner/repo` (for source / issues link) |
-| `npm` | string | — | npm package name — enables `npx @finch.app/extensions add <npm>` one-click install |
+| `npm` | string | — | npm package name — enables `npx @finch.app/minitools add <npm>` one-click install |
 | `extensionType` | `"official"` \| `"community"` | — | Defaults to `"community"` |
 | `featured` | boolean | — | When `true`, the item appears under Featured. Defaults to `false`. |
 | `categories` | string[] | — | Used for category filters in the Finch marketplace. Use the fixed category ids below. |
@@ -67,7 +67,7 @@ Each entry in `extensions.json` is an object with these fields:
 3. Open a Pull Request — the team will review and merge.
 
 **Requirements before submitting:**
-- The extension must be published on npm (so users can install via `npx @finch.app/extensions add <npm>`), or have a public GitHub repo with a downloadable zip.
+- The extension must be published on npm (so users can install via `npx @finch.app/minitools add <npm>`), or have a public GitHub repo with a downloadable zip.
 - `package.json#finch.id` must match the `id` field here.
 - Description must be in English.
 - Use `featured: true` only for curated items that should appear in Featured.

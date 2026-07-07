@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @finch.app/extensions — install Finch extensions to the correct location.
+ * @finch.app/minitools — install Finch extensions to the correct location.
  *
  * Zero npm dependencies. npm sources are fetched with `npm install --ignore-scripts`
  * so third-party install scripts never run during CLI install.
@@ -554,7 +554,7 @@ function parseArgs(argv) {
 }
 
 function help() {
-  console.log(`npx @finch.app/extensions\n\nUsage:\n  add <npm-package|local-path|url.zip> [--global]\n  update <id> [--global]\n  list [--global]\n  remove <id> [--global]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/  (personal — default)\n  --global   ~/.finch/extensions/                              (global)\n\nThere is no project/--cwd scope — extensions only install to personal or global.\n`);
+  console.log(`npx @finch.app/minitools\n\nUsage:\n  add <npm-package|local-path|url.zip> [--global]\n  update <id> [--global]\n  list [--global]\n  remove <id> [--global]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/  (personal — default)\n  --global   ~/.finch/extensions/                              (global)\n\nThere is no project/--cwd scope — extensions only install to personal or global.\n`);
 }
 
 (async () => {

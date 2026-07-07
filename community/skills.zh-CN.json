@@ -5,9 +5,9 @@
     "description": "创建、读取、编辑和处理 Word 文档。适用于 .docx 报告、备忘录、信件、模板、修订记录和文档润色转换。"
   },
   {
-    "id": "finch-extension-creator",
-    "name": "Finch 扩展开发",
-    "description": "用于开发、调试和测试 Finch 扩展。适合创建新扩展、添加 Agent 工具或 Composer 按钮、排查已有扩展。"
+    "id": "finch-mini-tool-creator",
+    "name": "Finch 小工具开发",
+    "description": "用于开发、调试和测试 Finch 小工具。适合创建新工具、添加 Agent 工具或 Composer 按钮、排查已有工具。"
   },
   {
     "id": "find-skills",

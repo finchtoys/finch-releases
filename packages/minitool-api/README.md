@@ -1,13 +1,15 @@
-# @finch.app/extension-api
+# @finch.app/minitool-api
 
-Type definitions for [Finch](https://finchwork.app) extension authors.
+Type definitions for [Finch](https://finchwork.app) mini tool authors.
 
 This is a **type-only** package — zero runtime dependencies, zero bundle impact. All APIs are accessed through the `ctx` object injected at activation; the `finch` module itself is resolved by the Finch host at runtime and never needs to be installed.
+
+mini tool is finch extension.
 
 ## Installation
 
 ```bash
-npm install --save-dev @finch.app/extension-api
+npm install --save-dev @finch.app/minitool-api
 ```
 
 ## Quick Start
@@ -48,7 +50,7 @@ Add a path alias so TypeScript resolves `'finch'` to this package's declarations
   "compilerOptions": {
     "moduleResolution": "Bundler",
     "paths": {
-      "finch": ["./node_modules/@finch.app/extension-api/finch.d.ts"]
+      "finch": ["./node_modules/@finch.app/minitool-api/finch.d.ts"]
     }
   }
 }

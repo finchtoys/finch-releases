@@ -19,6 +19,7 @@ import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServer
 
 type ManagedMcpServerConfig = McpServerConfig & {
   ownerExtensionId?: string;
+  ownerExtensionName?: string;
   qualifiedName?: string;
   toolMeta?: {
     titles?: Record<string, string>;
@@ -26,6 +27,22 @@ type ManagedMcpServerConfig = McpServerConfig & {
   toolDisplay?: {
     tools?: Record<string, finch.ToolCallDisplay>;
   };
+};
+
+/**
+ * Metadata extracted from a `contributes.mcpServers` entry.
+ * Transport fields (command/url) are optional — extensions may contribute
+ * metadata-only entries (name + toolMeta + toolDisplay) when the actual
+ * transport is provided by a companion `registerServer()` call at runtime.
+ */
+type ContributedServerMeta = {
+  name: string;
+  description?: string;
+  ownerExtensionId?: string;
+  ownerExtensionName?: string;
+  qualifiedName?: string;
+  toolMeta?: ManagedMcpServerConfig['toolMeta'];
+  toolDisplay?: ManagedMcpServerConfig['toolDisplay'];
 };
 
 interface ServersFile {
@@ -37,6 +54,15 @@ export type ServerStatus = 'pending' | 'connecting' | 'connected' | 'failed' | '
 
 /** All configured MCP servers (populated on activate, requires no connection). */
 const configs = new Map<string, ManagedMcpServerConfig>();
+/**
+ * Servers registered at runtime by other extensions through the `mcp.client`
+ * capability (registerServer / unregisterServer). These live only in memory and
+ * are bound to the caller extension's lifecycle: the caller registers on
+ * activate and unregisters on deactivate, so uninstalling it leaves NO orphaned
+ * config on disk. This is the channel for dynamic servers whose transport needs
+ * secrets/user choices that a static `contributes.mcpServers` entry can't hold.
+ */
+const runtimeServers = new Map<string, ManagedMcpServerConfig>();
 /** Live connected clients (populated lazily on first use). */
 const clients = new Map<string, McpClient>();
 /** Cached tool lists for connected servers. */
@@ -77,6 +103,10 @@ function sanitizeSegment(s: string): string {
 
 function titleCase(value: string): string {
   return value.split(/\s+/).filter(Boolean).map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ');
+}
+
+function mcpModelToolName(serverName: string, toolName: string): string {
+  return `mcp__${sanitizeSegment(serverName)}__${sanitizeSegment(toolName)}`;
 }
 
 function humanizeMcpToolName(name: string): string {
@@ -199,22 +229,22 @@ function unregisterServerTools(name: string): void {
 
 /** Build the Finch tool registration for one MCP tool of a server. */
 function buildServerToolRegistration(serverName: string, toolName: string, tool: McpTool): finch.ToolDefinition {
-  const seg = sanitizeSegment(serverName);
-  const toolSeg = sanitizeSegment(tool.name);
+  const modelToolName = mcpModelToolName(serverName, tool.name);
   const title = buildMcpToolTitle(serverName, tool.name);
   const callDisplay = buildMcpToolCallDisplay(serverName, tool.name);
   // Attribute the tool to the extension that contributed this server (if any), so
   // its provenance, permission gatekeeping, and UI count follow that extension
   // rather than the MCP bridge itself. User-defined servers (no contribution
   // owner) stay attributed to the bridge.
-  const ownerExtensionId = configs.get(serverName)?.ownerExtensionId;
+  const owner = configs.get(serverName);
+  const ownerExtensionId = owner?.ownerExtensionId;
   return {
-    name: `mcp__${seg}__${toolSeg}`,
+    name: modelToolName,
     title: title ?? tool.name,
     description: tool.description ?? `${tool.name} tool from MCP server "${serverName}"`,
     inputSchema: (tool.inputSchema ?? { type: 'object', properties: {} }) as finch.JsonSchema,
     risk: 'medium',
-    ...(ownerExtensionId ? { owner: { extensionId: ownerExtensionId } } : {}),
+    ...(ownerExtensionId ? { owner: { extensionId: ownerExtensionId, extensionName: owner.ownerExtensionName } } : {}),
     ...(callDisplay ? { callDisplay } : {}),
     // MCP server tools can be numerous and are discovered on demand via Finch ToolSearch.
     // Keep them out of new sessions' startup schema and inject them into active
@@ -269,11 +299,10 @@ function buildServerToolRegistration(serverName: string, toolName: string, tool:
 function registerServerTools(serverName: string, tools: McpTool[]): void {
   if (!activeCtx) return;
 
-  const seg = sanitizeSegment(serverName);
   const existing = registeredTools.get(serverName) ?? new Map<string, finch.Disposable>();
   const desired = new Map<string, McpTool>();
   for (const tool of tools) {
-    desired.set(`mcp__${seg}__${sanitizeSegment(tool.name)}`, tool);
+    desired.set(mcpModelToolName(serverName, tool.name), tool);
   }
 
   // Dispose tools that no longer exist on the server.
@@ -332,7 +361,7 @@ function applyServerUpsert(
     // Same name but config changed — reconnect.
     disconnectServer(oldName);
   }
-  configs.set(server.name, server);
+  configs.set(server.name, mergeServerWithContribution(server, configs.get(server.name)));
   serverStatus.set(server.name, 'pending');
   serverLastError.delete(server.name);
   void connectIfNeeded(server.name, logger);
@@ -431,6 +460,23 @@ function isServerConfig(value: unknown): value is McpServerConfig {
   return typeof (value as { command?: unknown }).command === 'string' && (value as { command: string }).command.length > 0;
 }
 
+/**
+ * Looser check for contributed server entries — only `name` is required.
+ * Extensions can contribute metadata-only entries (`name` + `toolMeta` + `toolDisplay`)
+ * without a transport (`command`/`url`) when the actual connection is handled by a
+ * companion `registerServer()` call. Such entries are kept in `contributedByName`
+ * so that `mergeRuntimeWithContribution` can overlay their presentation metadata
+ * onto the runtime-registered server.
+ */
+function isContributedServerEntry(value: unknown): value is Record<string, unknown> {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    typeof (value as { name?: unknown }).name === 'string' &&
+    ((value as { name: string }).name).trim().length > 0,
+  );
+}
+
 function readServersFile(file: string, logger: finch.Logger): ManagedMcpServerConfig[] {
   if (!existsSync(file)) return [];
   try {
@@ -442,31 +488,135 @@ function readServersFile(file: string, logger: finch.Logger): ManagedMcpServerCo
   }
 }
 
-function readContributedServers(ctx: finch.ExtensionContext): ManagedMcpServerConfig[] {
+function readContributedServers(ctx: finch.ExtensionContext): ContributedServerMeta[] {
   return ctx.extensions.listContributions<unknown>('mcpServers').flatMap((contribution) => {
     const values = Array.isArray(contribution.value) ? contribution.value : [];
-    return values.filter(isServerConfig).map((server) => ({
-      ...server,
-      toolMeta: (server as ManagedMcpServerConfig).toolMeta,
-      toolDisplay: (server as ManagedMcpServerConfig).toolDisplay,
-      ownerExtensionId: contribution.extensionId,
-      qualifiedName: `${contribution.extensionId}.${server.name}`,
-    }));
+    // Use the looser isContributedServerEntry check (name only) so that
+    // metadata-only contributions (name + toolMeta + toolDisplay, no transport)
+    // are also captured and available for merge in contributedByName.
+    return values.filter(isContributedServerEntry).map((server): ContributedServerMeta => {
+      const raw = server as Record<string, unknown>;
+      const name = String(raw.name).trim();
+      return {
+        name,
+        ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
+        toolMeta: raw.toolMeta as ContributedServerMeta['toolMeta'],
+        toolDisplay: raw.toolDisplay as ContributedServerMeta['toolDisplay'],
+        ownerExtensionId: contribution.extensionId,
+        ownerExtensionName: contribution.extensionName,
+        qualifiedName: `${contribution.extensionId}.${name}`,
+      };
+    });
   });
 }
 
+/** Preserve ownership metadata when a user config overrides an extension-contributed server.
+ * This lets users provide local secrets/transport details while the UI still attributes
+ * dependency-only MCP services to the extension that declared them, not the MCP bridge.
+ *
+ * Presentation metadata (titles + ToolCallCard display templates) is owned by the
+ * extension, so the contributed values take priority over any stale copy the user's
+ * servers.json picked up from an earlier setup run. This way upgrading the extension
+ * updates tool titles/inline summaries immediately without re-running setup. */
+function mergeServerWithContribution(
+  server: ManagedMcpServerConfig,
+  contributed: ContributedServerMeta | undefined,
+): ManagedMcpServerConfig {
+  if (!contributed || server.ownerExtensionId) return server;
+  return {
+    ...server,
+    ownerExtensionId: contributed.ownerExtensionId,
+    ownerExtensionName: contributed.ownerExtensionName,
+    qualifiedName: contributed.qualifiedName,
+    toolMeta: contributed.toolMeta ?? server.toolMeta,
+    toolDisplay: contributed.toolDisplay ?? server.toolDisplay,
+  };
+}
+
+/** Validate and coerce an untrusted runtime server config received over the
+ * capability RPC boundary. Requires a name and a transport (url or command);
+ * copies only recognized fields so callers can't smuggle arbitrary keys. */
+function normalizeRuntimeServer(input: unknown): ManagedMcpServerConfig | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!name) return null;
+  const hasUrl = typeof raw.url === 'string' && raw.url.length > 0;
+  const hasCommand = typeof raw.command === 'string' && raw.command.length > 0;
+  if (!hasUrl && !hasCommand) return null;
+  const base: Record<string, unknown> = { name };
+  if (hasUrl) {
+    base.url = raw.url;
+    if (raw.headers && typeof raw.headers === 'object') base.headers = raw.headers;
+  } else {
+    base.command = raw.command;
+    if (Array.isArray(raw.args)) base.args = raw.args;
+  }
+  if (raw.env && typeof raw.env === 'object') base.env = raw.env;
+  if (typeof raw.description === 'string') base.description = raw.description;
+  if (typeof raw.ownerExtensionId === 'string') base.ownerExtensionId = raw.ownerExtensionId;
+  if (typeof raw.ownerExtensionName === 'string') base.ownerExtensionName = raw.ownerExtensionName;
+  if (raw.toolMeta && typeof raw.toolMeta === 'object') base.toolMeta = raw.toolMeta;
+  if (raw.toolDisplay && typeof raw.toolDisplay === 'object') base.toolDisplay = raw.toolDisplay;
+  return base as unknown as ManagedMcpServerConfig;
+}
+
+/** Overlay a static contribution's presentation onto a runtime-registered server.
+ * The runtime entry supplies the resolved transport (and its own ownership when
+ * it stands alone); the contribution, when present, remains the authoritative
+ * source for titles / inline display and attribution. */
+function mergeRuntimeWithContribution(
+  runtime: ManagedMcpServerConfig,
+  contributed: ContributedServerMeta | undefined,
+): ManagedMcpServerConfig {
+  if (!contributed) return runtime;
+  return {
+    ...runtime,
+    ownerExtensionId: runtime.ownerExtensionId ?? contributed.ownerExtensionId,
+    ownerExtensionName: runtime.ownerExtensionName ?? contributed.ownerExtensionName,
+    qualifiedName: contributed.qualifiedName ?? runtime.qualifiedName,
+    toolMeta: contributed.toolMeta ?? runtime.toolMeta,
+    toolDisplay: contributed.toolDisplay ?? runtime.toolDisplay,
+  };
+}
+
 /**
- * Merge user file config and extension-contributed servers. On name collision later
- * sources win; user-defined names take priority over contributed ones. Server
- * runtime names and model-facing tool names are an MCP Bridge policy.
+ * Merge the three server sources. Precedence low→high: static contributions
+ * (presentation only) < runtime registrations (resolved transport, lifecycle
+ * bound) < user file config (explicit user edits win). Extension ownership and
+ * presentation are preserved across tiers so dependency-only MCP services stay
+ * attributed to the contributing extension.
  */
 function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[] {
   const storagePath = ctx.storagePath;
   const fileServers = readServersFile(join(storagePath, 'servers.json'), ctx.logger);
   const contributed = readContributedServers(ctx);
+  const contributedByName = new Map(contributed.map((s) => [s.name, s]));
   const byName = new Map<string, ManagedMcpServerConfig>();
-  for (const s of contributed) byName.set(s.name, s);
-  for (const s of fileServers) byName.set(s.name, s);
+  // Only add contributed servers that have a transport (command or url).
+  // Metadata-only entries (name + toolMeta/toolDisplay, no transport) stay in
+  // contributedByName for merge purposes only — they are not connectable on their
+  // own and must not appear as pending/failed servers in the status list.
+  // Re-read the raw contributions here so transport-capable entries can be cast
+  // to ManagedMcpServerConfig and added to byName for immediate connection.
+  for (const contribution of ctx.extensions.listContributions<unknown>('mcpServers')) {
+    const values = Array.isArray(contribution.value) ? contribution.value : [];
+    for (const raw of values) {
+      if (!isServerConfig(raw)) continue;
+      const meta = contributedByName.get((raw as McpServerConfig).name);
+      const entry: ManagedMcpServerConfig = {
+        ...(raw as McpServerConfig),
+        ...(meta?.ownerExtensionId ? { ownerExtensionId: meta.ownerExtensionId } : {}),
+        ...(meta?.ownerExtensionName ? { ownerExtensionName: meta.ownerExtensionName } : {}),
+        ...(meta?.qualifiedName ? { qualifiedName: meta.qualifiedName } : {}),
+        ...(meta?.toolMeta ? { toolMeta: meta.toolMeta } : {}),
+        ...(meta?.toolDisplay ? { toolDisplay: meta.toolDisplay } : {}),
+      };
+      byName.set(entry.name, entry);
+    }
+  }
+  for (const s of runtimeServers.values()) byName.set(s.name, mergeRuntimeWithContribution(s, contributedByName.get(s.name)));
+  for (const s of fileServers) byName.set(s.name, mergeServerWithContribution(s, contributedByName.get(s.name)));
   return [...byName.values()];
 }
 
@@ -1063,7 +1213,6 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
             ctx.logger.warn(`ToolSearch failed to connect MCP server "${server}":`, err);
             continue;
           }
-          const seg = sanitizeSegment(server);
           for (const tool of serverTools.get(server) ?? []) {
             // When the server itself matched by name, return ALL its tools so the
             // caller activates the full capability set. Only apply the cross-server
@@ -1073,7 +1222,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
             // Include the tool if the server name matched (broad match) OR if
             // at least one query term appears anywhere in the tool's haystack.
             if (!serverMatches && queryTerms.length > 0 && !queryTerms.some((term) => haystack.includes(term))) continue;
-            const toolName = `mcp__${seg}__${sanitizeSegment(tool.name)}`;
+            const toolName = mcpModelToolName(server, tool.name);
             const title = buildMcpToolTitle(server, tool.name);
             const callDisplay = buildMcpToolCallDisplay(server, tool.name);
             results.push({
@@ -1129,6 +1278,25 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         const client = clients.get(server)!;
         return client.callTool(name, args ?? {});
       },
+      /**
+       * Register (or replace) a runtime MCP server owned by the calling extension.
+       * The config lives only in memory and is reconciled immediately; connection
+       * stays lazy. Callers should unregisterServer() on their own deactivate so
+       * uninstalling them leaves no orphaned config. See runtimeServers.
+       */
+      async registerServer(input: unknown): Promise<{ ok: boolean; error?: string }> {
+        const config = normalizeRuntimeServer(input);
+        if (!config) return { ok: false, error: 'invalid server config: require name and a url or command' };
+        runtimeServers.set(config.name, config);
+        refreshServerConfigs(ctx);
+        return { ok: true };
+      },
+      /** Remove a runtime server previously registered by registerServer(). */
+      async unregisterServer(name: string): Promise<{ ok: boolean }> {
+        const existed = runtimeServers.delete(String(name));
+        if (existed) refreshServerConfigs(ctx);
+        return { ok: existed };
+      },
     }),
   );
 }
@@ -1145,6 +1313,7 @@ export function deactivate(): void {
   clients.clear();
   serverTools.clear();
   configs.clear();
+  runtimeServers.clear();
   connecting.clear();
   serverStatus.clear();
 }
