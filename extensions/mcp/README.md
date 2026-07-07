@@ -1,6 +1,6 @@
 # MCP Client
 
-MCP Client is Finch's official built-in plugin for connecting Model Context Protocol (MCP) servers to Finch.
+MCP Client is [Finch](https://finchwork.app/)'s official built-in plugin for connecting Model Context Protocol (MCP) servers to Finch.
 
 It does three things:
 
@@ -126,7 +126,7 @@ const result = await mcp.callTool('filesystem', 'read_file', { path: '/tmp/a.txt
 
 ## Contributing MCP servers
 
-A plugin can contribute MCP servers through `contributes.mcpServers`:
+A plugin can contribute MCP servers through `contributes.mcpServers`. For servers that do not need secrets, include the transport directly:
 
 ```json
 {
@@ -138,7 +138,6 @@ A plugin can contribute MCP servers through `contributes.mcpServers`:
       "mcpServers": [
         {
           "name": "my-server",
-          "transport": "stdio",
           "command": "node",
           "args": ["dist/server.js"]
         }
@@ -148,7 +147,33 @@ A plugin can contribute MCP servers through `contributes.mcpServers`:
 }
 ```
 
-Finch automatically prefixes contributed server names with the plugin id, for example `my-plugin.my-server`, to avoid collisions.
+For secret-dependent servers, use a metadata-only contribution and register the actual transport at runtime with `mcp.client#registerServer()`:
+
+```json
+{
+  "name": "my-server",
+  "description": "Configured by this plugin at runtime.",
+  "toolMeta": {
+    "titles": {
+      "search": "My Search"
+    }
+  },
+  "toolDisplay": {
+    "tools": {
+      "search": {
+        "inline": {
+          "fields": [{ "path": "query", "maxLength": 80 }],
+          "template": "{query}"
+        }
+      }
+    }
+  }
+}
+```
+
+Then call `registerServer({ name: "my-server", ... })` from `activate()` after collecting secrets through plugin storage or a secure form. MCP Client matches the runtime server to the static contribution by normalized server name, so case-only differences are tolerated; keeping the same stable name is still recommended.
+
+Contributed server names are not prefixed in the model-facing tool name: tools are exposed as `mcp__<server>__<tool>`. Finch keeps an internal owner-qualified key such as `my-plugin.my-server` for UI attribution.
 
 ## Environment variables and secrets
 

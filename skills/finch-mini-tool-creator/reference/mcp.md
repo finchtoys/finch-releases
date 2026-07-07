@@ -99,7 +99,7 @@ async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup
   }
   const mcp = ctx.capabilities.get('mcp.client');
   await mcp.registerServer({
-    name: 'my-server',             // must match contributes.mcpServers[].name
+    name: 'my-server',             // matched to contributes.mcpServers[].name by normalized name; keep it stable
     command: 'npx',
     args: ['-y', 'my-mcp-server'],
     env: { API_KEY: setup.apiKey },
@@ -180,6 +180,6 @@ When a contributed MCP server does not connect:
 
 1. Check that the mini tool is enabled
 2. Check that MCP Client is enabled
-3. Verify `name` in `contributes.mcpServers` matches the `name` passed to `registerServer()`
+3. Verify `name` in `contributes.mcpServers` and `registerServer()` normalize to the same value; keep the same stable name when possible
 4. Check that `setup_*` was called and the API key is stored in `ctx.storage`
 5. Check the extension logs for connection or handshake errors

@@ -1,6 +1,6 @@
 # MCP Client
 
-MCP Client 是 Finch 官方内置扩展，用来把 Model Context Protocol（MCP）服务连接到 Finch。
+MCP Client 是 [Finch](https://finchwork.app/) 官方内置扩展，用来把 Model Context Protocol（MCP）服务连接到 Finch。
 
 它负责三件事：
 
@@ -126,7 +126,7 @@ const result = await mcp.callTool('filesystem', 'read_file', { path: '/tmp/a.txt
 
 ## 贡献 MCP 服务
 
-其他插件可以通过 `contributes.mcpServers` 声明自己要注入的 MCP server：
+其他插件可以通过 `contributes.mcpServers` 声明自己要注入的 MCP server。不需要密钥的服务可以直接在 manifest 里写 transport：
 
 ```json
 {
@@ -138,7 +138,6 @@ const result = await mcp.callTool('filesystem', 'read_file', { path: '/tmp/a.txt
       "mcpServers": [
         {
           "name": "my-server",
-          "transport": "stdio",
           "command": "node",
           "args": ["dist/server.js"]
         }
@@ -148,7 +147,33 @@ const result = await mcp.callTool('filesystem', 'read_file', { path: '/tmp/a.txt
 }
 ```
 
-Finch 会把名字自动加上插件 id 前缀，例如 `my-plugin.my-server`，避免不同插件冲突。
+需要密钥的服务建议使用 metadata-only contribution，把实际 transport 放到运行时通过 `mcp.client#registerServer()` 注册：
+
+```json
+{
+  "name": "my-server",
+  "description": "由这个插件在运行时配置。",
+  "toolMeta": {
+    "titles": {
+      "search": "My Search"
+    }
+  },
+  "toolDisplay": {
+    "tools": {
+      "search": {
+        "inline": {
+          "fields": [{ "path": "query", "maxLength": 80 }],
+          "template": "{query}"
+        }
+      }
+    }
+  }
+}
+```
+
+插件收集密钥并写入自身 storage 或安全表单后，在 `activate()` 中调用 `registerServer({ name: "my-server", ... })`。MCP Client 会用归一化后的 server name 匹配 runtime server 和静态 contribution，因此仅大小写不同也能匹配；但仍建议保持同一个稳定名称。
+
+贡献的 server name 不会加到模型可见工具名前缀里：工具会暴露为 `mcp__<server>__<tool>`。Finch 只在内部保留类似 `my-plugin.my-server` 的 owner-qualified key，用于 UI 归属展示。
 
 ## 环境变量与密钥
 
