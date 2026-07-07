@@ -591,7 +591,12 @@ function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[
   const storagePath = ctx.storagePath;
   const fileServers = readServersFile(join(storagePath, 'servers.json'), ctx.logger);
   const contributed = readContributedServers(ctx);
-  const contributedByName = new Map(contributed.map((s) => [s.name, s]));
+  // Match contributions to runtime/file servers by a normalized key, not the raw
+  // name. Dynamic tool names are sanitized to lowercase, so a manifest server
+  // named "Tavily" still yields mcp__tavily__* tools and may be registered at
+  // runtime as "tavily". Exact-case matching would silently drop toolMeta /
+  // toolDisplay from metadata-only contributions.
+  const contributedByName = new Map(contributed.map((s) => [sanitizeSegment(s.name), s]));
   const byName = new Map<string, ManagedMcpServerConfig>();
   // Only add contributed servers that have a transport (command or url).
   // Metadata-only entries (name + toolMeta/toolDisplay, no transport) stay in
@@ -603,7 +608,7 @@ function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[
     const values = Array.isArray(contribution.value) ? contribution.value : [];
     for (const raw of values) {
       if (!isServerConfig(raw)) continue;
-      const meta = contributedByName.get((raw as McpServerConfig).name);
+      const meta = contributedByName.get(sanitizeSegment((raw as McpServerConfig).name));
       const entry: ManagedMcpServerConfig = {
         ...(raw as McpServerConfig),
         ...(meta?.ownerExtensionId ? { ownerExtensionId: meta.ownerExtensionId } : {}),
@@ -615,8 +620,8 @@ function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[
       byName.set(entry.name, entry);
     }
   }
-  for (const s of runtimeServers.values()) byName.set(s.name, mergeRuntimeWithContribution(s, contributedByName.get(s.name)));
-  for (const s of fileServers) byName.set(s.name, mergeServerWithContribution(s, contributedByName.get(s.name)));
+  for (const s of runtimeServers.values()) byName.set(s.name, mergeRuntimeWithContribution(s, contributedByName.get(sanitizeSegment(s.name))));
+  for (const s of fileServers) byName.set(s.name, mergeServerWithContribution(s, contributedByName.get(sanitizeSegment(s.name))));
   return [...byName.values()];
 }
 
