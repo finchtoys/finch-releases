@@ -1280,8 +1280,15 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       },
       /**
        * Register (or replace) a runtime MCP server owned by the calling extension.
-       * The config lives only in memory and is reconciled immediately; connection
-       * stays lazy. Callers should unregisterServer() on their own deactivate so
+       * The config lives only in memory and is reconciled immediately, then we
+       * eagerly connect in the background so the server's tools (and their merged
+       * presentation metadata) become available without the user first having to
+       * trigger ToolSearch. This matches the "save & connect" expectation of a
+       * setup flow (e.g. Tavily) that calls registerServer() right after the user
+       * submits an API key — otherwise the server sits at `pending` until the next
+       * tool discovery or an app restart. Connection failures are swallowed here;
+       * the status map and logs keep the user-visible error and lazy retry on use
+       * still applies. Callers should unregisterServer() on their own deactivate so
        * uninstalling them leaves no orphaned config. See runtimeServers.
        */
       async registerServer(input: unknown): Promise<{ ok: boolean; error?: string }> {
@@ -1289,6 +1296,27 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         if (!config) return { ok: false, error: 'invalid server config: require name and a url or command' };
         runtimeServers.set(config.name, config);
         refreshServerConfigs(ctx);
+        // Force a clean rebuild of this server's connection and dynamic tools.
+        //
+        // The caller (e.g. Tavily) calls registerServer() on every activate. When the
+        // caller is reinstalled/reloaded WITHOUT a graceful deactivate, its
+        // unregisterServer() never runs, so this bridge keeps the previous client and
+        // the previously registered `mcp__<server>__*` tool disposers in memory — even
+        // though main has already dropped those tool registrations while uninstalling
+        // the caller (they are attributed to the caller via `owner`). With the same
+        // config, refreshServerConfigs() sees "no change" and connectIfNeeded() short-
+        // circuits on `clients.has()`, so the tools are NEVER re-registered back into
+        // main: the detail page still shows the server connected (bridge runtime state
+        // survives), but chat/ToolSearch can't see the tools until an app restart.
+        //
+        // Disconnecting first releases the stale client and disposes any leftover tool
+        // registrations (idempotent — safe when nothing is cached), so the reconnect
+        // below always re-pushes a fresh `mcp__<server>__*` tool set into main.
+        disconnectServer(config.name);
+        // Eagerly connect so tools register right away instead of staying pending.
+        void connectIfNeeded(config.name, ctx.logger).catch(() => {
+          // Status map + extension logs retain the user-visible error; lazy retry on use.
+        });
         return { ok: true };
       },
       /** Remove a runtime server previously registered by registerServer(). */

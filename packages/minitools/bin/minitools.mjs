@@ -15,6 +15,15 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 const LOCK_FILE = '.plugins-lock.json';
+const LEGACY_NPM_PACKAGE_RENAMES = new Map([
+  ['@finch.app/mcp-bridge', '@finch.app/mcp-client'],
+]);
+
+function normalizeInstallSource(source) {
+  if (source?.type !== 'npm' || typeof source.package !== 'string') return source;
+  const nextPackage = LEGACY_NPM_PACKAGE_RENAMES.get(source.package);
+  return nextPackage ? { ...source, package: nextPackage } : source;
+}
 
 function finchRuntimeHome() {
   return process.env.FINCH_RUNTIME_HOME ?? join(homedir(), '.finch');
@@ -477,7 +486,7 @@ async function cmdUpdate(id, opts) {
   const dir = targetDir(opts);
   const target = join(dir, id);
   if (!existsSync(target)) throw new Error(`extension not found: ${id}`);
-  let source = readLock(dir)[id];
+  let source = normalizeInstallSource(readLock(dir)[id]);
   if (!source) {
     // No install record — this happens for bundled first-party extensions that
     // were deployed by copying (e.g. the MCP bridge), not via `add`. Fall back to
@@ -486,7 +495,7 @@ async function cmdUpdate(id, opts) {
     const pkg = readPackageJson(target);
     const pkgName = typeof pkg?.name === 'string' ? pkg.name.trim() : '';
     if (pkgName) {
-      source = { type: 'npm', package: pkgName };
+      source = normalizeInstallSource({ type: 'npm', package: pkgName });
     } else {
       throw new Error(`no install record for "${id}"; reinstall it with \`add\` to enable updates.`);
     }

@@ -1,6 +1,6 @@
 {
   "name": "finch-tavily-search",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Tavily Search MCP extension for Finch.",
   "author": {
     "name": "Finch Team",
@@ -62,7 +62,7 @@
       "skills": true,
       "mcpServers": [
         {
-          "name": "tavily",
+          "name": "Tavily",
           "description": "Tavily Search MCP server. Call setup_tavily_search to configure. The actual transport is registered dynamically by the extension after the API key is collected.",
           "toolMeta": {
             "titles": {
