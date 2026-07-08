@@ -75,13 +75,16 @@ function registerSetupTool(ctx: any): void {
     async execute(_input: any, exec: any) {
       const { execSync } = await import('node:child_process');
 
-      // Check Python availability
-      const pythonCmds = ['/tmp/ocr-venv/bin/python3.12', 'python3', 'python'];
+      const lines: string[] = ['## PP-OCRv6 Setup\n'];
+
+      // Step 1: Check Python availability
+      const pythonCmds = ['/tmp/ocr-venv/bin/python3.12', '/tmp/ocr-venv/bin/python3', 'python3', 'python'];
       let pythonCmd: string | null = null;
+      let pythonVersion = 'unknown';
 
       for (const cmd of pythonCmds) {
         try {
-          execSync(`${cmd} -c "import paddleocr"`, { stdio: 'pipe' });
+          pythonVersion = execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
           pythonCmd = cmd;
           break;
         } catch {
@@ -90,43 +93,87 @@ function registerSetupTool(ctx: any): void {
       }
 
       if (!pythonCmd) {
-        return {
-          content: [{
-            type: 'text',
-            text: [
-              '❌ PaddleOCR not found. Please install it:',
-              '',
-              '```bash',
-              '# Create virtual environment',
-              'python3 -m venv /tmp/ocr-venv',
-              '',
-              '# Activate and install',
-              'source /tmp/ocr-venv/bin/activate',
-              'pip install paddleocr paddlepaddle',
-              '```',
-              '',
-              'Or install system-wide:',
-              '```bash',
-              'pip install paddleocr paddlepaddle',
-              '```',
-            ].join('\n'),
-          }],
-          isError: true,
-        };
+        lines.push('❌ **Python not found**');
+        lines.push('');
+        lines.push('Please install Python 3.10+ first:');
+        lines.push('- macOS: `brew install python@3.12`');
+        lines.push('- Ubuntu/Debian: `sudo apt install python3.12`');
+        lines.push('- Windows: Download from https://www.python.org/downloads/');
+        return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
       }
 
-      return {
-        content: [{
-          type: 'text',
-          text: [
-            '✅ PP-OCRv6 ready!',
-            `- Python: ${pythonCmd}`,
-            '- PaddleOCR: installed',
-            '',
-            'You can now use ocr_image to extract text from images.',
-          ].join('\n'),
-        }],
-      };
+      lines.push(`✅ **Python:** ${pythonCmd} (${pythonVersion})`);
+
+      // Step 2: Check PaddleOCR
+      let paddleocrInstalled = false;
+      let paddleocrVersion = 'unknown';
+      try {
+        paddleocrVersion = execSync(`${pythonCmd} -c "import paddleocr; print(paddleocr.__version__)"`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
+        paddleocrInstalled = true;
+        lines.push(`✅ **PaddleOCR:** installed (v${paddleocrVersion})`);
+      } catch {
+        lines.push('⚠️ **PaddleOCR:** not installed');
+      }
+
+      // Step 3: Install PaddleOCR if not installed
+      if (!paddleocrInstalled) {
+        lines.push('');
+        lines.push('📦 **Installing PaddleOCR...**');
+
+        try {
+          // Try to install in the venv first
+          if (pythonCmd.includes('ocr-venv')) {
+            lines.push('Installing in existing virtual environment...');
+            execSync(`${pythonCmd} -m pip install paddleocr paddlepaddle`, {
+              timeout: 300_000,
+              stdio: 'pipe',
+            });
+          } else {
+            // Create venv and install
+            lines.push('Creating virtual environment...');
+            execSync('python3 -m venv /tmp/ocr-venv', { timeout: 60_000, stdio: 'pipe' });
+            lines.push('Installing PaddleOCR in virtual environment...');
+            execSync('/tmp/ocr-venv/bin/python3 -m pip install paddleocr paddlepaddle', {
+              timeout: 300_000,
+              stdio: 'pipe',
+            });
+          }
+
+          // Verify installation
+          paddleocrVersion = execSync('/tmp/ocr-venv/bin/python3 -c "import paddleocr; print(paddleocr.__version__)"', {
+            stdio: 'pipe',
+            encoding: 'utf-8',
+          }).trim();
+          paddleocrInstalled = true;
+          lines.push(`✅ **PaddleOCR installed:** v${paddleocrVersion}`);
+        } catch (err) {
+          lines.push(`❌ **Installation failed:** ${err instanceof Error ? err.message : String(err)}`);
+          lines.push('');
+          lines.push('Please install manually:');
+          lines.push('```bash');
+          lines.push('python3 -m venv /tmp/ocr-venv');
+          lines.push('source /tmp/ocr-venv/bin/activate');
+          lines.push('pip install paddleocr paddlepaddle');
+          lines.push('```');
+          return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
+        }
+      }
+
+      // Step 4: Check OCR script
+      const scriptPath = join(ctx.extension.extensionPath, 'scripts', 'ocr.py');
+      if (existsSync(scriptPath)) {
+        lines.push('✅ **OCR Script:** found');
+      } else {
+        lines.push('❌ **OCR Script:** not found');
+        return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
+      }
+
+      lines.push('');
+      lines.push('🎉 **PP-OCRv6 is ready!**');
+      lines.push('');
+      lines.push('You can now use `ocr_image` to extract text from images.');
+
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
     },
   }));
 }
