@@ -31,7 +31,6 @@ interface OcrConfig {
   detModelPath: string;
   recModelPath: string;
   charsFilePath: string;
-  language: string;
 }
 
 interface TextBox {
@@ -68,6 +67,12 @@ function recModelPath(ctx: finch.ExtensionContext): string {
 
 function charsPath(ctx: finch.ExtensionContext): string {
   return join(modelsDir(ctx), 'chars.json');
+}
+
+function loadConfig(ctx: finch.ExtensionContext): OcrConfig | null {
+  const cp = configPath(ctx);
+  if (!existsSync(cp)) return null;
+  return JSON.parse(readFileSync(cp, 'utf-8'));
 }
 
 // ── Lazy-loaded native modules ──────────────────────────────────────────────
@@ -560,37 +565,20 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'setup_ocr',
     title: 'Set up PP-OCRv6',
-    description: 'Configure PP-OCRv6 OCR: select recognition language (CN/EN/JA), download medium ONNX models from HuggingFace on first use, and load models into memory. Call this when the user says "set up OCR", "configure OCR", "download OCR models", or when OCR reports that models are not yet available.',
+    description: 'Download PP-OCRv6 medium ONNX models from HuggingFace on first use and load models into memory. Supports Chinese, English, Japanese, and 47 other languages automatically. Call this when the user says "set up OCR", "configure OCR", "download OCR models", or when OCR reports that models are not yet available.',
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute(_input, exec) {
-      const settingsLang = ctx.settings.get<string>('language') ?? 'ch+en';
-
       const result = await exec.ui.requestForm({
         title: ctx.i18n.t('form.setup.title'),
         description: ctx.i18n.t('form.setup.description'),
         submitLabel: ctx.i18n.t('form.setup.submit'),
-        fields: [
-          {
-            key: 'language',
-            label: ctx.i18n.t('form.setup.language.label'),
-            type: 'select',
-            default: settingsLang,
-            options: [
-              { value: 'ch+en',    label: ctx.i18n.t('form.setup.language.options.ch+en') },
-              { value: 'en',       label: ctx.i18n.t('form.setup.language.options.en') },
-              { value: 'ch',       label: ctx.i18n.t('form.setup.language.options.ch') },
-              { value: 'ch+en+ja', label: ctx.i18n.t('form.setup.language.options.ch+en+ja') },
-            ],
-          },
-        ],
+        fields: [],
       });
 
       if (!result.submitted) {
         return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason ?? 'cancelled' }) }] };
       }
-
-      const language = String(result.values.language ?? 'ch+en');
 
       const detDest = detModelPath(ctx);
       const recDest = recModelPath(ctx);
@@ -647,7 +635,6 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
         detModelPath: detDest,
         recModelPath: recDest,
         charsFilePath: charsPath(ctx),
-        language,
       };
       mkdirSync(dirname(configPath(ctx)), { recursive: true });
       writeFileSync(configPath(ctx), JSON.stringify(config, null, 2), 'utf-8');
@@ -668,7 +655,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
             `✅ PP-OCRv6 (medium) 配置完成！`,
             `- 检测模型: 59 MB`,
             `- 识别模型: 73 MB`,
-            `- 语言: ${language}`,
+            `- 字符集: ${loadCharset().length} 个字符（支持中英日等 50 种语言）`,
             `- 模型已加载到内存，可以开始使用`,
           ].join('\n'),
         }],
@@ -723,7 +710,6 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
       lines.push(`- 检测模型: ${detLoaded ? '✅ 已加载' : '❌ 未加载'}`);
       lines.push(`- 识别模型: ${recLoaded ? '✅ 已加载' : '❌ 未加载'}`);
       if (config) {
-        lines.push(`- 识别语言: ${config.language}`);
         lines.push(`- 字符集: ${loadCharset().length} 个字符`);
       }
 

@@ -1,7 +1,7 @@
 {
   "name": "PP-OCRv6",
   "description": "使用 PP-OCRv6 从图片中提取文字——支持 50 种语言，完全本地运行。",
-  "systemPrompt": "当用户上传图片、截图或要求提取图片中的文字时，调用 ocr_image 工具——它会弹出一个表单让用户提供图片文件路径。不要自己猜测图片路径。如果 PP-OCRv6 尚未配置，先调用 setup_ocr 下载模型和配置语言。",
+  "systemPrompt": "当用户上传图片、截图或要求提取图片中的文字时，调用 ocr_image 工具——它会弹出一个表单让用户提供图片文件路径。不要自己猜测图片路径。如果 PP-OCRv6 尚未配置，先调用 setup_ocr 下载模型。",
   "toolMeta": { "name": "PP-OCRv6" },
   "promptGuides": {
     "setup-ocr": {
@@ -16,13 +16,8 @@
     }
   },
   "form.setup.title": "设置 PP-OCRv6 OCR",
-  "form.setup.description": "选择识别语言，首次使用会下载模型（约132MB）",
+  "form.setup.description": "首次使用会下载模型（约132MB），自动支持中英日等 50 种语言",
   "form.setup.submit": "下载并启动",
-  "form.setup.language.label": "识别语言",
-  "form.setup.language.options.ch+en": "中文 + 英文",
-  "form.setup.language.options.en": "英文",
-  "form.setup.language.options.ch": "中文",
-  "form.setup.language.options.ch+en+ja": "中文 + 英文 + 日文",
   "toast.saved.title": "OCR 配置已保存",
   "toast.saved.description": "PP-OCRv6 模型已就绪，已加载到内存。",
   "status.noModels": "**没有缓存的模型。** 运行 setup_ocr 下载模型。",
@@ -42,5 +37,4 @@
   "error.fileNotFound": "文件不存在: {path}",
   "error.ocrFailed": "OCR 识别失败: {message}",
   "error.ocrNoResult": "OCR 未返回结果。",
-  "settings.language.label": "识别语言"
 }

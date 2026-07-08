@@ -1,7 +1,7 @@
 {
   "name": "PP-OCRv6",
   "description": "Extract text from images using PP-OCRv6 ONNX models — supports 50 languages with high accuracy, fully local.",
-  "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool — it shows a form for the user to provide the image file path. Do NOT try to guess the image path yourself. If PP-OCRv6 is not set up yet, call setup_ocr first to download models and configure languages.",
+  "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool — it shows a form for the user to provide the image file path. Do NOT try to guess the image path yourself. If PP-OCRv6 is not set up yet, call setup_ocr first to download models.",
   "toolMeta": { "name": "PP-OCRv6" },
   "promptGuides": {
     "setup-ocr": {
@@ -16,13 +16,8 @@
     }
   },
   "form.setup.title": "Set up PP-OCRv6 OCR",
-  "form.setup.description": "Select recognition language. Models (~132 MB) will be downloaded on first use.",
+  "form.setup.description": "Models (~132 MB) will be downloaded on first use. Supports Chinese, English, Japanese, and 47 other languages.",
   "form.setup.submit": "Download & Start",
-  "form.setup.language.label": "Language",
-  "form.setup.language.options.ch+en": "Chinese + English",
-  "form.setup.language.options.en": "English",
-  "form.setup.language.options.ch": "Chinese",
-  "form.setup.language.options.ch+en+ja": "Chinese + English + Japanese",
   "toast.saved.title": "OCR configuration saved",
   "toast.saved.description": "PP-OCRv6 models are ready and loaded into memory.",
   "status.noModels": "**No models cached.** Run `setup_ocr` to download models.",
@@ -42,5 +37,4 @@
   "error.fileNotFound": "File not found: {path}",
   "error.ocrFailed": "OCR recognition failed: {message}",
   "error.ocrNoResult": "OCR returned no result.",
-  "settings.language.label": "Language"
 }
