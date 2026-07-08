@@ -680,6 +680,52 @@ async function ocrImage(imagePath: string): Promise<string> {
   return lines.join('\n') || 'No text recognized.';
 }
 
+/**
+ * OCR using Python PaddleOCR with high-accuracy parameters.
+ * Falls back to local ONNX inference if Python/PaddleOCR is not available.
+ */
+async function ocrImageViaPython(imagePath: string, ctx?: finch.ExtensionContext): Promise<string | null> {
+  try {
+    const { execSync } = await import('node:child_process');
+    const { join, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+
+    // Find the Python script
+    const scriptDir = ctx ? join(ctx.extension.extensionPath, 'scripts') : join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
+    const scriptPath = join(scriptDir, 'ocr.py');
+
+    if (!existsSync(scriptPath)) {
+      return null; // Script not found, fall back to local
+    }
+
+    // Try to find Python with paddleocr installed
+    const pythonCmds = [
+      '/tmp/ocr-venv/bin/python3.12',  // venv with paddleocr
+      '/tmp/ocr-venv/bin/python3',
+      'python3',
+      'python',
+    ];
+    for (const cmd of pythonCmds) {
+      try {
+        const result = execSync(`${cmd} "${scriptPath}" "${imagePath}"`, {
+          timeout: 60_000,
+          stdio: 'pipe',
+          encoding: 'utf-8',
+        });
+        const parsed = JSON.parse(result.trim());
+        if (parsed.lines && parsed.lines.length > 0) {
+          return parsed.lines.join('\n');
+        }
+      } catch {
+        // Try next python command
+      }
+    }
+    return null; // All attempts failed
+  } catch {
+    return null;
+  }
+}
+
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 function registerSetupTool(ctx: finch.ExtensionContext): void {
@@ -856,6 +902,13 @@ function registerOcrImageTool(ctx: finch.ExtensionContext): void {
       }
 
       try {
+        // Try Python PaddleOCR first (higher accuracy)
+        const pythonResult = await ocrImageViaPython(imagePath, ctx);
+        if (pythonResult) {
+          return { content: [{ type: 'text', text: pythonResult }] };
+        }
+
+        // Fall back to local ONNX inference
         const text = await ocrImage(imagePath);
         return { content: [{ type: 'text', text }] };
       } catch (err) {
