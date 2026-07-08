@@ -187,7 +187,25 @@ declare module 'finch' {
      * );
      */
     readonly composerActions: {
-      register(actionId: string, provider: ComposerActionProvider): Disposable;
+      register(actionId: string, provider: ComposerActionProvider): Disposable & {
+        /**
+         * Signal the app that this action's badge or icon may have changed.
+         * Triggers a re-fetch so `getBadge()` is called again and the toolbar updates.
+         *
+         * Use when the mini tool polls external state (e.g. git status, a counter)
+         * and needs the badge to update without waiting for user interaction.
+         *
+         * @example
+         * const action = ctx.composerActions.register('git-watch', provider);
+         * ctx.subscriptions.push(action);
+         *
+         * const timer = setInterval(async () => {
+         *   if (await gitStatusChanged()) action.notifyUpdate();
+         * }, 5000);
+         * ctx.subscriptions.push({ dispose: () => clearInterval(timer) });
+         */
+        notifyUpdate(): void;
+      };
     };
 
     /**
@@ -438,7 +456,7 @@ declare module 'finch' {
      */
     readonly width?: 'full' | '1/2' | '1/3' | '2/3';
     /**
-     * 仅 `type: 'link'` 字段使用：点击后由系统默认浏览器打开的外部 URL。link 字段是
+     * 仅 `type: 'link'` 字段使用：点击后由系统默认浏览器打开的外部链接地址。link 字段是
      * 纯展示元素（渲染为可点击链接，`label` 为显示文字），不产生表单值、不参与提交。
      * 用于把用户引到服务商注册页获取 API Key 等外部页面，可配合 `width` 与其他字段并排。
      *
@@ -446,10 +464,10 @@ declare module 'finch' {
      * fields: [
      *   { key: 'apiKey', label: 'API Key', type: 'password', secret: true, width: '2/3' },
      *   { key: 'signup', label: '去注册获取 Key', type: 'link',
-     *     url: 'https://app.tavily.com', width: '1/3' }, // 与 apiKey 同一行
+     *     href: 'https://app.tavily.com', width: '1/3' }, // 与 apiKey 同一行
      * ]
      */
-    readonly url?: string;
+    readonly href?: string;
   }
 
   /**

@@ -81,8 +81,8 @@ function registerAllFieldsTool(ctx: finch.ExtensionContext) {
                 { value: 'purple', label: i.t('form.all-fields.color.purple') },
               ] },
             { key: 'bio', label: i.t('form.all-fields.bio.label'), type: 'textarea', placeholder: i.t('form.all-fields.bio.placeholder'), description: i.t('form.all-fields.bio.description') },
-            { key: 'subscribe', label: i.t('form.all-fields.subscribe.label'), type: 'boolean', description: i.t('form.all-fields.subscribe.description'), default: true },
-            { key: 'finchLink', label: i.t('form.all-fields.link.label'), type: 'link', href: 'https://finchwork.app', width: 'full' } as any,
+            { key: 'subscribe', label: i.t('form.all-fields.subscribe.label'), type: 'boolean', description: i.t('form.all-fields.subscribe.description'), default: true, width: '2/3' },
+            { key: 'finchLink', label: i.t('form.all-fields.link.label'), type: 'link', href: 'https://finchwork.app', width: '1/3' },
           ],
           timeoutMs: 120_000,
         });

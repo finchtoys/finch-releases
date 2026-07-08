@@ -89,7 +89,7 @@ Recommended field types:
 - `number`
 - `select`
 - `boolean`
-- `link` — display-only clickable link (not an input); opens `url` in the system
+- `link` — display-only clickable link (not an input); opens `href` in the system
   browser. Produces no value and is not part of the submitted result.
 
 Tips:
@@ -100,7 +100,7 @@ Tips:
   can place a "Get an API key" link right next to the key input.
 - Keep `textarea` for longer freeform content.
 - Use a `type: 'link'` field to guide users to a provider's signup/API-key page.
-  Set `label` as the link text and `url` as the destination.
+  Set `label` as the link text and `href` as the destination.
 - Let the user cancel or timeout cleanly.
 
 Example:
@@ -115,7 +115,7 @@ const result = await exec.ui.requestForm({
     { key: 'port', label: 'Port', type: 'number', width: '1/3' },
     { key: 'apiKey', label: 'API Key', type: 'password', secret: true, width: '2/3' },
     { key: 'signup', label: 'Get an API key', type: 'link',
-      url: 'https://app.tavily.com', width: '1/3' } // sits next to apiKey
+      href: 'https://app.tavily.com', width: '1/3' } // sits next to apiKey
   ]
 });
 ```
