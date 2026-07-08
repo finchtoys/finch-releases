@@ -334,15 +334,13 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
   const isDark = await detectDarkTheme(imagePath);
 
   // Image preprocessing for better OCR accuracy:
-  // 1. Upscale small images (2x) - helps with small text in screenshots
-  // 2. Sharpen - makes text edges clearer
-  // 3. Normalize - improves contrast
+  // Match Python PaddleOCR high-accuracy params
   const upscaleThreshold = 1500; // if max side < 1500, upscale 2x
   const maxOrigSide = Math.max(origH, origW);
   const upscale = maxOrigSide < upscaleThreshold ? 2 : 1;
 
-  // PaddleOCR PP-OCRv6: limit_type='min', limit_side_len=64
-  const limitSideLen = 64;
+  // High-accuracy: limit_side_len=1536 (matches Python params)
+  const limitSideLen = 1536;
   const maxSideLimit = 4000;
   const minSide = Math.min(origH * upscale, origW * upscale);
   const maxSide = Math.max(origH * upscale, origW * upscale);
@@ -478,9 +476,9 @@ function dbPostProcess(
   probMap: Float32Array, probH: number, probW: number,
   scaleX: number, scaleY: number,
 ): TextBox[] {
-  // Align with PP-OCRv6 online API defaults
-  const thresh = 0.3;
-  const boxThresh = 0.6;
+  // Match Python PaddleOCR high-accuracy params
+  const thresh = 0.2;
+  const boxThresh = 0.4;
   const unclipRatio = 1.5;
   const maxCandidates = 3000;
   const minArea = 50;
