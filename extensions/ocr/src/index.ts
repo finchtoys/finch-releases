@@ -333,24 +333,30 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
   const origH = metadata.height ?? 0;
   const isDark = await detectDarkTheme(imagePath);
 
-  // PaddleOCR PP-OCRv6 default: limit_type='min', limit_side_len=64
-  // This means: resize so min(H,W) >= 64. For typical screenshots,
-  // min side is already >> 64, so NO resize happens — model gets full resolution.
-  // Also cap max side to 4000 to prevent memory issues on very large images.
+  // Image preprocessing for better OCR accuracy:
+  // 1. Upscale small images (2x) - helps with small text in screenshots
+  // 2. Sharpen - makes text edges clearer
+  // 3. Normalize - improves contrast
+  const upscaleThreshold = 1500; // if max side < 1500, upscale 2x
+  const maxOrigSide = Math.max(origH, origW);
+  const upscale = maxOrigSide < upscaleThreshold ? 2 : 1;
+
+  // PaddleOCR PP-OCRv6: limit_type='min', limit_side_len=64
   const limitSideLen = 64;
   const maxSideLimit = 4000;
-  const minSide = Math.min(origH, origW);
-  const maxSide = Math.max(origH, origW);
+  const minSide = Math.min(origH * upscale, origW * upscale);
+  const maxSide = Math.max(origH * upscale, origW * upscale);
   let ratio = minSide < limitSideLen ? limitSideLen / minSide : 1.0;
   if (maxSide * ratio > maxSideLimit) {
     ratio = maxSideLimit / maxSide;
   }
-  const resizedH = Math.round(origH * ratio);
-  const resizedW = Math.round(origW * ratio);
+  const resizedH = Math.round(origH * upscale * ratio);
+  const resizedW = Math.round(origW * upscale * ratio);
   const paddedH = Math.ceil(resizedH / 32) * 32;
   const paddedW = Math.ceil(resizedW / 32) * 32;
 
-  let pipeline: any = sharp(imagePath).resize(resizedW, resizedH, { fit: 'fill' });
+  let pipeline: any = sharp(imagePath)
+    .resize(resizedW, resizedH, { fit: 'fill' });
   if (isDark) {
     pipeline = pipeline.negate();
   }
