@@ -32,13 +32,13 @@
         "id": "setup-ocr",
         "title": "Set up OCR",
         "description": "Download PP-OCRv6 models and configure OCR.",
-        "prompt": "帮我设置 OCR，下载模型并启动 OCR 服务"
+        "prompt": "Set up OCR, download models and start OCR service"
       },
       {
         "id": "ocr-image",
         "title": "Extract text from image",
         "description": "Recognize text in an image using PP-OCRv6.",
-        "prompt": "帮我提取图片中的文字"
+        "prompt": "Extract text from this image"
       }
     ],
     "main": "dist/index.js",
