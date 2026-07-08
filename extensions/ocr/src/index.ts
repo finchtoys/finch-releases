@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 
 const SERVER_NAME = 'ocr';
 const HF_BASE = 'https://huggingface.co/PaddlePaddle';
+const HF_MIRROR = 'https://hf-mirror.com/PaddlePaddle';
 
 type Tier = 'tiny' | 'small' | 'medium';
 
@@ -74,18 +75,58 @@ function modelDownloadUrl(tier: Tier, type: 'det' | 'rec'): string {
   return `${HF_BASE}/${repo}/resolve/main/inference.onnx?download=1`;
 }
 
+function modelMirrorUrl(tier: Tier, type: 'det' | 'rec'): string {
+  const info = TIER_INFO[tier];
+  const repo = type === 'det' ? info.detRepo : info.recRepo;
+  return `${HF_MIRROR}/${repo}/resolve/main/inference.onnx?download=1`;
+}
+
 function recYmlUrl(tier: Tier): string {
   const info = TIER_INFO[tier];
   return `${HF_BASE}/${info.recRepo}/resolve/main/inference.yml`;
 }
 
-async function downloadFile(url: string, dest: string, logger: finch.Logger): Promise<void> {
+function recYmlMirrorUrl(tier: Tier): string {
+  const info = TIER_INFO[tier];
+  return `${HF_MIRROR}/${info.recRepo}/resolve/main/inference.yml`;
+}
+
+async function downloadFile(url: string, dest: string, logger: finch.Logger, fallbackUrl?: string): Promise<void> {
   mkdirSync(dirname(dest), { recursive: true });
 
   logger.info(`downloading: ${url}`);
 
-  const response = await fetch(url);
+  let response: Response;
+  try {
+    response = await fetch(url);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (err) {
+    if (fallbackUrl) {
+      logger.warn(`primary URL unreachable, trying mirror: ${fallbackUrl}`);
+      response = await fetch(fallbackUrl);
+      if (!response.ok) {
+        throw new Error(`Mirror download failed: ${response.status} ${response.statusText}`);
+      }
+      const buffer = await response.arrayBuffer();
+      writeFileSync(dest, Buffer.from(buffer));
+      logger.info(`saved to ${dest} (${buffer.byteLength} bytes) from mirror`);
+      return;
+    }
+    throw err;
+  }
+
   if (!response.ok) {
+    if (fallbackUrl) {
+      logger.warn(`primary URL failed (${response.status}), trying mirror: ${fallbackUrl}`);
+      const fallbackResponse = await fetch(fallbackUrl);
+      if (!fallbackResponse.ok) {
+        throw new Error(`Primary failed (${response.status}) and mirror failed (${fallbackResponse.status})`);
+      }
+      const buffer = await fallbackResponse.arrayBuffer();
+      writeFileSync(dest, Buffer.from(buffer));
+      logger.info(`saved to ${dest} (${buffer.byteLength} bytes) from mirror`);
+      return;
+    }
     throw new Error(`Failed to download: ${response.status} ${response.statusText}`);
   }
 
@@ -142,13 +183,27 @@ async function ensureCharsJson(modelsDir: string, tier: Tier, logger: finch.Logg
   }
 
   const ymlUrl = recYmlUrl(tier);
+  const ymlMirrorUrl = recYmlMirrorUrl(tier);
   const ymlDest = join(modelsDir, 'inference.yml');
 
   logger.info(`downloading inference.yml from ${ymlUrl}`);
-  const response = await fetch(ymlUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download inference.yml: ${response.status} ${response.statusText}`);
+  let response: Response;
+  try {
+    response = await fetch(ymlUrl);
+  } catch {
+    logger.warn(`inference.yml primary unreachable, trying mirror: ${ymlMirrorUrl}`);
+    response = await fetch(ymlMirrorUrl);
   }
+
+  if (!response.ok) {
+    logger.warn(`inference.yml primary failed (${response.status}), trying mirror: ${ymlMirrorUrl}`);
+    response = await fetch(ymlMirrorUrl);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to download inference.yml from both sources: ${response.status} ${response.statusText}`);
+  }
+
   const yamlContent = await response.text();
   writeFileSync(ymlDest, yamlContent);
 
@@ -265,14 +320,14 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
         // Check if models already exist
         if (!existsSync(detDest)) {
           exec.logger.info('detection model not cached, downloading...');
-          await downloadFile(modelDownloadUrl(tier, 'det'), detDest, exec.logger);
+          await downloadFile(modelDownloadUrl(tier, 'det'), detDest, exec.logger, modelMirrorUrl(tier, 'det'));
         } else {
           exec.logger.info('detection model already cached');
         }
 
         if (!existsSync(recDest)) {
           exec.logger.info('recognition model not cached, downloading...');
-          await downloadFile(modelDownloadUrl(tier, 'rec'), recDest, exec.logger);
+          await downloadFile(modelDownloadUrl(tier, 'rec'), recDest, exec.logger, modelMirrorUrl(tier, 'rec'));
         } else {
           exec.logger.info('recognition model already cached');
         }
