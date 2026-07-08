@@ -18,6 +18,7 @@ interface McpServerConfig {
   name: string;
   command: string;
   args?: string[];
+  cwd?: string;
   env?: Record<string, string>;
   description?: string;
 }
@@ -139,19 +140,19 @@ function extractCharacterDict(yamlContent: string): string[] {
 
   for (const line of lines) {
     const trimmed = line.trimEnd();
-    if (trimmed === 'character_dict:' || trimmed.endsWith(' character_dict:')) {
+    if (!inDict && trimmed.endsWith(' character_dict:')) {
       inDict = true;
       continue;
     }
     if (inDict) {
-      // End of dict: lines no longer start with `- ` at the dict indentation
-      if (!trimmed.startsWith('- ')) break;
+      // YAML list items: optional spaces + "- " + value
+      const match = trimmed.match(/^(\s*)- (.+)$/);
+      if (!match) break; // end of list
 
-      // Extract value after `- `
-      let value = trimmed.slice(2);
+      let value = match[2];
 
       // Handle YAML single-quoted strings
-      if (value.startsWith("'") && value.endsWith("'")) {
+      if (value.length >= 2 && value[0] === "'" && value[value.length - 1] === "'") {
         value = value.slice(1, -1);
         // YAML escaping: '' inside single quotes → '
         value = value.replace(/''/g, "'");
@@ -243,6 +244,7 @@ function buildServer(
   recModelPath: string,
   charsFilePath: string,
   configFilePath: string,
+  cwd: string,
 ): McpServerConfig {
   // Write config to a JSON file instead of using environment variables
   const config = { detModelPath, recModelPath, charsFilePath, language, tier };
@@ -252,6 +254,7 @@ function buildServer(
     name: SERVER_NAME,
     command: 'node',
     args: ['dist/mcp-server.js', configFilePath],
+    cwd,
     description: `PP-OCRv6 ${tier} OCR server (${language}).`,
   };
 }
@@ -347,7 +350,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
 
       // Write MCP server config
       const configFilePath = join(mdlDir, 'mcp-config.json');
-      const server = buildServer(tier, language, detDest, recDest, charsFilePath, configFilePath);
+      const server = buildServer(tier, language, detDest, recDest, charsFilePath, configFilePath, ctx.extension.extensionPath);
       const file = mcpServersFile(ctx);
 
       try {
@@ -543,7 +546,7 @@ export function activate(ctx: finch.ExtensionContext): void {
     if (existsSync(detDest) && existsSync(recDest) && existsSync(charsDest)) {
       ctx.logger.info(`models cached for tier=${tier}, auto-configuring MCP server`);
       try {
-        const server = buildServer(tier as Tier, language, detDest, recDest, charsDest, configPath);
+        const server = buildServer(tier as Tier, language, detDest, recDest, charsDest, configPath, ctx.extension.extensionPath);
         const file = mcpServersFile(ctx);
         upsertServer(file, server);
         ctx.logger.info('MCP server auto-configured from settings');
