@@ -336,9 +336,15 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
   // PaddleOCR PP-OCRv6 default: limit_type='min', limit_side_len=64
   // This means: resize so min(H,W) >= 64. For typical screenshots,
   // min side is already >> 64, so NO resize happens — model gets full resolution.
+  // Also cap max side to 4000 to prevent memory issues on very large images.
   const limitSideLen = 64;
+  const maxSideLimit = 4000;
   const minSide = Math.min(origH, origW);
-  const ratio = minSide < limitSideLen ? limitSideLen / minSide : 1.0;
+  const maxSide = Math.max(origH, origW);
+  let ratio = minSide < limitSideLen ? limitSideLen / minSide : 1.0;
+  if (maxSide * ratio > maxSideLimit) {
+    ratio = maxSideLimit / maxSide;
+  }
   const resizedH = Math.round(origH * ratio);
   const resizedW = Math.round(origW * ratio);
   const paddedH = Math.ceil(resizedH / 32) * 32;
