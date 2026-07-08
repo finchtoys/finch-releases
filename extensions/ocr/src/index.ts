@@ -1,8 +1,11 @@
 import type * as finch from 'finch';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const SERVER_NAME = 'ocr';
+
+// Stored during activate() for use in deactivate()
+let activeCtx: finch.ExtensionContext | null = null;
 const HF_BASE = 'https://huggingface.co/PaddlePaddle';
 const HF_MIRROR = 'https://hf-mirror.com/PaddlePaddle';
 
@@ -234,6 +237,22 @@ async function verifyWithMcpClient(ctx: finch.ExtensionContext): Promise<string>
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return `Saved, but connection validation did not complete: ${message}`;
+  }
+}
+
+/** Remove a named server entry from servers.json, or delete the file if empty. */
+function removeServer(file: string, name: string): void {
+  if (!existsSync(file)) return;
+  let data: { servers: McpServerConfig[] } = { servers: [] };
+  try {
+    data = JSON.parse(readFileSync(file, 'utf-8'));
+  } catch { return; }
+  if (!Array.isArray(data.servers)) return;
+  data.servers = data.servers.filter((s) => s.name !== name);
+  if (data.servers.length === 0) {
+    unlinkSync(file);
+  } else {
+    writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf-8');
   }
 }
 
@@ -525,6 +544,7 @@ function registerOcrImageTool(ctx: finch.ExtensionContext): void {
 // ── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(ctx: finch.ExtensionContext): void {
+  activeCtx = ctx;
   ctx.logger.info('PP-OCRv6 extension activating...');
 
   // Always register tools
@@ -564,5 +584,15 @@ export function activate(ctx: finch.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  // ctx.subscriptions.dispose handles cleanup
+  // Remove ocr entry from servers.json so MCP Client disconnects and kills the process
+  if (activeCtx) {
+    try {
+      const file = mcpServersFile(activeCtx);
+      removeServer(file, SERVER_NAME);
+      activeCtx.logger.info('Removed OCR MCP server from servers.json');
+    } catch (err) {
+      activeCtx.logger.warn('Failed to remove OCR MCP server on deactivate', err);
+    }
+  }
+  activeCtx = null;
 }
