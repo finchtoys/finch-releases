@@ -74,9 +74,9 @@
     "package.json"
   ],
   "devDependencies": {
+    "@finch.app/minitool-api": "^0.1.13",
     "@types/node": "^26.1.0",
     "esbuild": "^0.28.1",
-    "@finch.app/minitool-api": "^0.1.10",
     "typescript": "^5.6.0"
   }
 }
