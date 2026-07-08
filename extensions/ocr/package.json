@@ -16,7 +16,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "tsc -p tsconfig.json"
   },
   "finch": {
     "manifestVersion": 1,
