@@ -27,5 +27,5 @@
   "error.noImagePath": "未提供图片路径。",
   "error.fileNotFound": "文件不存在: {path}",
   "error.ocrFailed": "OCR 识别失败: {message}",
-  "error.ocrNoResult": "OCR 未返回结果。",
+  "error.ocrNoResult": "OCR 未返回结果。"
 }

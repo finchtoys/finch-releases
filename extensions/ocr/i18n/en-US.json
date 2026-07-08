@@ -27,5 +27,5 @@
   "error.noImagePath": "No image path provided.",
   "error.fileNotFound": "File not found: {path}",
   "error.ocrFailed": "OCR recognition failed: {message}",
-  "error.ocrNoResult": "OCR returned no result.",
+  "error.ocrNoResult": "OCR returned no result."
 }
