@@ -37,13 +37,20 @@
       }
     ],
     "main": "dist/index.js",
-    "activationEvents": ["onStartup"],
+    "activationEvents": [
+      "onStartup"
+    ],
     "extensionType": "official",
-    "categories": ["productivity", "research"],
+    "categories": [
+      "productivity",
+      "research"
+    ],
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",
     "requires": {
-      "capabilities": ["mcp.client"]
+      "capabilities": [
+        "mcp.client"
+      ]
     },
     "contributes": {
       "tools": true,
@@ -52,7 +59,9 @@
         {
           "name": "ocr",
           "command": "node",
-          "args": ["dist/mcp-server.js"],
+          "args": [
+            "dist/mcp-server.js"
+          ],
           "description": "PP-OCRv6 MCP server — provides ocr_image, ocr_languages, ocr_status tools."
         }
       ]
@@ -65,6 +74,7 @@
     }
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "onnxruntime-node": "^1.22.0",
     "sharp": "^0.34.0"
   },
