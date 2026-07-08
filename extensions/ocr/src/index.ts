@@ -322,7 +322,7 @@ interface DetPreprocessed {
  * PP-OCRv6 detection preprocessing:
  * 1. Load RGB, keep original dimensions
  * 2. Auto-detect dark theme and invert if needed
- * 3. Resize keeping aspect ratio: long side ≤ 960
+ * 3. Resize: ensure minimum side ≥ 64 (limit_type=min, limit_side_len=64)
  * 4. Pad to make both dimensions divisible by 32
  * 5. Normalize (pixel/255 - mean) / std, with RGB→BGR swap, HWC→CHW
  */
@@ -333,8 +333,12 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
   const origH = metadata.height ?? 0;
   const isDark = await detectDarkTheme(imagePath);
 
-  const limitSideLen = 960;
-  const ratio = Math.min(limitSideLen / Math.max(origH, origW), 1.0);
+  // PaddleOCR PP-OCRv6 default: limit_type='min', limit_side_len=64
+  // This means: resize so min(H,W) >= 64. For typical screenshots,
+  // min side is already >> 64, so NO resize happens — model gets full resolution.
+  const limitSideLen = 64;
+  const minSide = Math.min(origH, origW);
+  const ratio = minSide < limitSideLen ? limitSideLen / minSide : 1.0;
   const resizedH = Math.round(origH * ratio);
   const resizedW = Math.round(origW * ratio);
   const paddedH = Math.ceil(resizedH / 32) * 32;
@@ -358,14 +362,14 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
 
   const tensor = rgbToNormalizedCHW(buffer, paddedH, paddedW, DET_MEAN, DET_STD);
 
-  // DB model typically downsamples by 4x; scale from output coords to original
-  const stride = 4;
+  // PP-OCRv6 detection model outputs same spatial dims as input (no downsampling).
+  // Scale maps from padded-model coords back to original image coords.
   return {
     tensor,
     paddedH,
     paddedW,
-    scaleX: (origW / paddedW) * stride,
-    scaleY: (origH / paddedH) * stride,
+    scaleX: origW / paddedW,
+    scaleY: origH / paddedH,
   };
 }
 
@@ -506,15 +510,15 @@ function dbPostProcess(
 
       const boxW = maxX - minX + 1;
       const boxH = maxY - minY + 1;
-      const expandX = boxW * (unclipRatio - 1) / 2;
-      const expandY = boxH * (unclipRatio - 1) / 2;
+      // Match PaddleOCR pyclipper unclip: distance = ratio * area / perimeter
+      const dist = unclipRatio * boxW * boxH / (2 * (boxW + boxH));
 
       boxes.push({
         bbox: [
-          Math.max(0, (minX - expandX) * scaleX),
-          Math.max(0, (minY - expandY) * scaleY),
-          (maxX + expandX) * scaleX,
-          (maxY + expandY) * scaleY,
+          Math.max(0, (minX - dist) * scaleX),
+          Math.max(0, (minY - dist) * scaleY),
+          (maxX + dist) * scaleX,
+          (maxY + dist) * scaleY,
         ],
         score: avgScore,
       });
