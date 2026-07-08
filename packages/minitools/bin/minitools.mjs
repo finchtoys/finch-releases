@@ -2,19 +2,22 @@
 /**
  * @finch.app/minitools — install Finch extensions to the correct location.
  *
- * Zero npm dependencies. npm sources are fetched with `npm install --ignore-scripts`
- * so third-party install scripts never run during CLI install.
+ * Zero npm dependencies. npm sources are installed by downloading the registry
+ * dist.tarball (.tgz) directly, so third-party install scripts never run.
  */
 import {
   existsSync, mkdirSync, readdirSync, cpSync, rmSync,
-  readFileSync, writeFileSync, statSync,
+  readFileSync, writeFileSync,
 } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { isAbsolute, join, resolve, basename } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 const LOCK_FILE = '.plugins-lock.json';
+const SUPPORTED_MANIFEST_VERSION = 1;
+const EXTENSION_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+const KNOWN_EXTENSION_TYPES = new Set(['official', 'community', 'local']);
 const LEGACY_NPM_PACKAGE_RENAMES = new Map([
   ['@finch.app/mcp-bridge', '@finch.app/mcp-client'],
 ]);
@@ -56,6 +59,9 @@ function targetDir(opts) {
 function pluginsStatePath() {
   return join(finchRuntimeHome(), 'extensions.json');
 }
+function miniToolCacheDir() {
+  return join(finchRuntimeHome(), 'cache', 'minitools');
+}
 function lockPath(dir) {
   return join(dir, LOCK_FILE);
 }
@@ -90,30 +96,221 @@ function readPackageJson(dir) {
   try { return JSON.parse(readFileSync(file, 'utf-8')); } catch { return null; }
 }
 
-function pluginInfo(dir) {
+function localizedValue(value, fallback = '') {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    return value.default ?? value['en-US'] ?? value['zh-CN'] ?? fallback;
+  }
+  return fallback;
+}
+
+function isLocalizedString(value) {
+  if (value == null) return true;
+  if (typeof value === 'string') return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.entries(value).every(([locale, text]) => (
+    typeof locale === 'string' && typeof text === 'string'
+  ));
+}
+
+function validateStringField(value, field, diagnostics, { required = false, localized = false } = {}) {
+  if (value == null) {
+    if (required) diagnostics.fatal.push(`${field} 缺失`);
+    return;
+  }
+  const ok = localized ? isLocalizedString(value) : typeof value === 'string';
+  if (!ok) diagnostics.fatal.push(`${field} 必须是${localized ? '字符串或本地化字符串对象' : '字符串'}`);
+}
+
+function validateStringArray(value, field, diagnostics) {
+  if (value == null) return;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item.trim())) {
+    diagnostics.warning.push(`${field} 应为非空字符串数组`);
+  }
+}
+
+function validateObject(value, field, diagnostics) {
+  if (value == null) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    diagnostics.warning.push(`${field} 应为对象`);
+    return false;
+  }
+  return true;
+}
+
+function validateContributes(contributes, diagnostics) {
+  if (contributes == null) return;
+  if (!validateObject(contributes, 'finch.contributes', diagnostics)) return;
+
+  if (contributes.tools != null && typeof contributes.tools !== 'boolean') {
+    diagnostics.warning.push('finch.contributes.tools 应为 boolean');
+  }
+  if (contributes.skills != null && typeof contributes.skills !== 'boolean') {
+    diagnostics.warning.push('finch.contributes.skills 应为 boolean');
+  }
+  if (contributes.composerActions != null) {
+    if (!Array.isArray(contributes.composerActions)) {
+      diagnostics.fatal.push('finch.contributes.composerActions 必须是数组');
+    } else {
+      for (const [index, action] of contributes.composerActions.entries()) {
+        const prefix = `finch.contributes.composerActions[${index}]`;
+        if (!action || typeof action !== 'object' || Array.isArray(action)) {
+          diagnostics.fatal.push(`${prefix} 必须是对象`);
+          continue;
+        }
+        if (typeof action.id !== 'string' || !action.id.trim()) {
+          diagnostics.fatal.push(`${prefix}.id 缺失或不是字符串`);
+        }
+        validateStringField(action.icon, `${prefix}.icon`, diagnostics);
+        validateStringField(action.tooltip, `${prefix}.tooltip`, diagnostics, { localized: true });
+      }
+    }
+  }
+  if (contributes.iconPacks != null) {
+    if (!Array.isArray(contributes.iconPacks)) {
+      diagnostics.fatal.push('finch.contributes.iconPacks 必须是数组');
+    } else {
+      for (const [index, pack] of contributes.iconPacks.entries()) {
+        const prefix = `finch.contributes.iconPacks[${index}]`;
+        if (!pack || typeof pack !== 'object' || Array.isArray(pack)) {
+          diagnostics.fatal.push(`${prefix} 必须是对象`);
+          continue;
+        }
+        if (typeof pack.id !== 'string' || !pack.id.trim()) diagnostics.fatal.push(`${prefix}.id 缺失或不是字符串`);
+        validateStringField(pack.label, `${prefix}.label`, diagnostics, { localized: true });
+        validateStringField(pack.description, `${prefix}.description`, diagnostics, { localized: true });
+      }
+    }
+  }
+  if (contributes.icons != null && validateObject(contributes.icons, 'finch.contributes.icons', diagnostics)) {
+    for (const [iconId, icon] of Object.entries(contributes.icons)) {
+      if (!icon || typeof icon !== 'object' || Array.isArray(icon)) {
+        diagnostics.fatal.push(`finch.contributes.icons.${iconId} 必须是对象`);
+        continue;
+      }
+      if (typeof icon.svg !== 'string' || !icon.svg.trim()) diagnostics.fatal.push(`finch.contributes.icons.${iconId}.svg 缺失或不是字符串`);
+    }
+  }
+  if (contributes.mcpServers != null && !Array.isArray(contributes.mcpServers)) {
+    diagnostics.fatal.push('finch.contributes.mcpServers 必须是数组');
+  }
+}
+
+function validatePermissions(permissions, diagnostics) {
+  if (permissions == null) return;
+  if (!validateObject(permissions, 'finch.permissions', diagnostics)) return;
+  if (permissions.filesystem != null && !['none', 'read', 'write'].includes(permissions.filesystem)) {
+    diagnostics.warning.push('finch.permissions.filesystem 建议使用 none/read/write');
+  }
+  if (permissions.network != null && typeof permissions.network !== 'boolean') {
+    diagnostics.warning.push('finch.permissions.network 应为 boolean');
+  }
+  if (permissions.shell != null && typeof permissions.shell !== 'boolean') {
+    diagnostics.warning.push('finch.permissions.shell 应为 boolean');
+  }
+}
+
+function validateCapabilitySpec(spec, field, diagnostics) {
+  if (spec == null) return;
+  if (!validateObject(spec, field, diagnostics)) return;
+  validateStringArray(spec.capabilities, `${field}.capabilities`, diagnostics);
+}
+
+function validateMiniToolPackage(dir, { lintSource = false } = {}) {
+  const diagnostics = { fatal: [], warning: [] };
   const pkg = readPackageJson(dir);
-  const manifest = pkg?.finch;
-  if (!pkg || !manifest || typeof manifest !== 'object') return null;
+  if (!pkg) {
+    diagnostics.fatal.push('缺少 package.json，或 package.json 不是合法 JSON');
+    return { diagnostics, info: null };
+  }
+
+  const manifest = pkg.finch;
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    diagnostics.fatal.push('缺少 package.json#finch，或 finch manifest 不是对象');
+    return { diagnostics, info: null };
+  }
+
   const id = String(manifest.id ?? pkg.name ?? '').trim();
-  if (!id) return { error: 'package.json#finch 缺少 id' };
-  const main = String(manifest.main ?? pkg.main ?? 'dist/index.js');
-  if (!existsSync(join(dir, main))) return { error: `入口文件不存在: ${main}（请先构建插件）`, id };
-  // `name` is the current preferred manifest field; `displayName` is kept only
-  // for backward compatibility with older extensions.
+  if (!id) {
+    diagnostics.fatal.push('package.json#finch 缺少 id');
+  } else if (!EXTENSION_ID_RE.test(id) || id === '.' || id === '..') {
+    diagnostics.fatal.push(`package.json#finch.id 不合法: ${id}（只能使用字母、数字、点、下划线、短横线，且不能包含路径分隔符）`);
+  }
+
+  if (manifest.manifestVersion !== undefined && manifest.manifestVersion !== SUPPORTED_MANIFEST_VERSION) {
+    diagnostics.fatal.push(`不支持的 manifestVersion: ${manifest.manifestVersion}（当前 Finch 支持 ${SUPPORTED_MANIFEST_VERSION}）`);
+  }
+
+  validateStringField(manifest.name, 'finch.name', diagnostics, { localized: true });
+  validateStringField(manifest.displayName, 'finch.displayName', diagnostics, { localized: true });
+  validateStringField(manifest.description, 'finch.description', diagnostics, { localized: true });
+  validateStringField(manifest.systemPrompt, 'finch.systemPrompt', diagnostics, { localized: true });
+  validateStringArray(manifest.categories, 'finch.categories', diagnostics);
+
+  const extensionType = manifest.miniToolType ?? manifest.extensionType;
+  if (extensionType != null && (typeof extensionType !== 'string' || !extensionType.trim())) {
+    diagnostics.warning.push('finch.miniToolType/extensionType 应为字符串');
+  } else if (typeof extensionType === 'string' && !KNOWN_EXTENSION_TYPES.has(extensionType)) {
+    diagnostics.warning.push(`未知 extensionType: ${extensionType}（常见值为 official/community/local）`);
+  }
+
+  if (manifest.install != null && validateObject(manifest.install, 'finch.install', diagnostics)) {
+    const scope = manifest.install.preferredScope;
+    if (scope != null && scope !== 'global' && scope !== 'personal') {
+      diagnostics.warning.push('finch.install.preferredScope 应为 global 或 personal');
+    }
+  }
+
+  validatePermissions(manifest.permissions, diagnostics);
+  validateCapabilitySpec(manifest.provides, 'finch.provides', diagnostics);
+  validateCapabilitySpec(manifest.requires, 'finch.requires', diagnostics);
+  validateContributes(manifest.contributes, diagnostics);
+
+  const mainValue = manifest.main ?? pkg.main ?? 'dist/index.js';
+  if (typeof mainValue !== 'string' || !mainValue.trim()) {
+    diagnostics.fatal.push('入口 main 必须是非空字符串（finch.main 或 package.json#main）');
+  }
+  const main = typeof mainValue === 'string' && mainValue.trim() ? mainValue.trim() : 'dist/index.js';
+  const entry = isAbsolute(main) ? main : join(dir, main);
+  if (!existsSync(entry)) diagnostics.fatal.push(`入口文件不存在: ${main}（请先构建小工具）`);
+
+  const recommended = [];
+  if (manifest.name == null && manifest.displayName == null) recommended.push('name');
+  if (manifest.description == null) recommended.push('description');
+  if (manifest.miniToolType == null && manifest.extensionType == null) recommended.push('miniToolType');
+  if (recommended.length) diagnostics.warning.push(`manifest 建议补充字段: ${recommended.join(', ')}`);
+
+  if (lintSource) diagnostics.warning.push(...lintExtensionSource(dir));
+
   const nameField = manifest.name ?? manifest.displayName;
+  const displayName = localizedValue(nameField, pkg.name ?? id).trim() || id;
   return {
-    id,
-    name: pkg.name ?? id,
-    version: pkg.version ?? '0.0.0',
-    displayName: typeof nameField === 'string'
-      ? nameField
-      : nameField?.default ?? nameField?.['en-US'] ?? nameField?.['zh-CN'] ?? id,
-    main,
+    diagnostics,
+    info: {
+      id,
+      name: pkg.name ?? id,
+      version: pkg.version ?? '0.0.0',
+      displayName,
+      main,
+    },
   };
+}
+
+function pluginInfo(dir) {
+  const result = validateMiniToolPackage(dir);
+  if (!result.info && result.diagnostics.fatal.length > 0) {
+    const pkg = readPackageJson(dir);
+    return pkg && Object.prototype.hasOwnProperty.call(pkg, 'finch')
+      ? { error: result.diagnostics.fatal[0] }
+      : null;
+  }
+  if (result.diagnostics.fatal.length > 0) return { error: result.diagnostics.fatal[0], id: result.info?.id };
+  return result.info;
 }
 
 function findPluginDirs(root, maxDepth = 4) {
   const found = [];
+  const invalid = [];
   const seen = new Set();
   function visit(dir, depth) {
     const key = dir.toLowerCase();
@@ -121,6 +318,7 @@ function findPluginDirs(root, maxDepth = 4) {
     seen.add(key);
     const info = pluginInfo(dir);
     if (info && !info.error) found.push(dir);
+    else if (info?.error) invalid.push({ dir, error: info.error });
     if (depth <= 0) return;
     let entries = [];
     try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -131,6 +329,7 @@ function findPluginDirs(root, maxDepth = 4) {
     }
   }
   visit(root, maxDepth);
+  found.invalid = invalid;
   return found;
 }
 
@@ -143,73 +342,25 @@ function installExtensionDir(srcDir, destRoot, lockSource) {
   cpSync(srcDir, dest, { recursive: true, force: true, dereference: false });
   recordInstall(destRoot, info.id, lockSource);
   console.log(`✓ Added "${info.displayName}" (${info.id}) → ${dest}`);
-  console.log('  Installed only. Open Finch → Toolcase → Extensions to review permissions and enable.');
+  console.log('  Installed only. Open Finch → Toolcase → Mini Tool to review permissions and enable.');
   return info.id;
 }
 
-/**
- * Look for an executable on PATH (via `which`/`where`), falling back to a
- * handful of common install locations that don't always make it onto the
- * PATH inherited by a GUI-launched app (Homebrew, nvm, Volta, Windows
- * installer). Returns the resolved path, or null if not found anywhere.
- */
-function findExecutable(name) {
-  const finder = process.platform === 'win32' ? 'where' : 'which';
-  const found = spawnSync(finder, [name], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf-8' });
-  if (found.status === 0) {
-    const first = found.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
-    if (first) return first;
-  }
-
-  const candidateDirs = process.platform === 'win32'
-    ? [
-        join(process.env.ProgramFiles ?? 'C:\\Program Files', 'nodejs'),
-        join(process.env.APPDATA ?? '', 'npm'),
-      ]
-    : (() => {
-        const dirs = ['/opt/homebrew/bin', '/usr/local/bin', join(homedir(), '.volta', 'bin')];
-        const nvmRoot = join(homedir(), '.nvm', 'versions', 'node');
-        try {
-          for (const version of readdirSync(nvmRoot)) dirs.push(join(nvmRoot, version, 'bin'));
-        } catch { /* nvm not installed */ }
-        return dirs;
-      })();
-  const exeName = process.platform === 'win32' ? `${name}.cmd` : name;
-  for (const dir of candidateDirs) {
-    const candidate = join(dir, exeName);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-const NODEJS_INSTALL_HINT = 'Install Node.js (which bundles npm) from https://nodejs.org, then try again.';
-
-function npmInstallToTemp(spec, tmp) {
-  const npmPath = findExecutable('npm');
-  if (!npmPath) {
-    throw new Error(`This extension is an npm package, but no "npm" executable was found on this machine.\n${NODEJS_INSTALL_HINT}`);
-  }
-  mkdirSync(tmp, { recursive: true });
-  const r = spawnSync(npmPath, ['install', '--ignore-scripts', '--omit=dev', '--prefix', tmp, spec], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    encoding: 'utf-8',
-  });
-  if (r.error) {
-    throw new Error(`Failed to run npm (${npmPath}): ${r.error.message}\n${NODEJS_INSTALL_HINT}`);
-  }
-  if (r.status !== 0) {
-    throw new Error(`npm install failed:\n${r.stderr || r.stdout || `exit code ${r.status}`}`);
-  }
-}
-
 function isLocalSource(src) {
-  return src.startsWith('./') || src.startsWith('../') || src.startsWith('/') || src.startsWith('~');
+  return src.startsWith('./') || src.startsWith('../') || src.startsWith('/') || src.startsWith('~') || /^[a-zA-Z]:[\\/]/.test(src);
 }
 function isZipUrl(src) {
   return /^https?:\/\/.+\.zip(\?.*)?$/i.test(src);
 }
 function isZipFile(src) {
   return src.toLowerCase().endsWith('.zip');
+}
+function isTgzUrl(src) {
+  return /^https?:\/\/.+\.(?:tgz|tar\.gz)(\?.*)?$/i.test(src);
+}
+function isTgzFile(src) {
+  const lower = src.toLowerCase();
+  return lower.endsWith('.tgz') || lower.endsWith('.tar.gz');
 }
 function expandHome(path) {
   return path.replace(/^~(?=\/|$)/, homedir());
@@ -219,17 +370,73 @@ function expandHome(path) {
  * Download a URL to a local file path using Node's built-in fetch (Node 18+).
  * Falls back to curl/wget if fetch is unavailable.
  */
+function downloadWithSystemTool(url, destPath, fetchError) {
+  const curlExe = process.platform === 'win32' ? 'curl.exe' : 'curl';
+  const curl = spawnSync(curlExe, ['-fL', '--retry', '2', '--connect-timeout', '20', '-o', destPath, url], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf-8',
+  });
+  if (curl.status === 0 && !curl.error) return;
+  if (process.platform === 'win32') {
+    const ps = spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Invoke-WebRequest -Uri $args[0] -OutFile $args[1]', url, destPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+    });
+    if (ps.status === 0 && !ps.error) return;
+    throw new Error(`Download failed: ${fetchError?.message ?? fetchError}\n${curl.stderr || curl.stdout || curl.error?.message || 'curl failed'}\n${ps.stderr || ps.stdout || ps.error?.message || 'powershell failed'}`);
+  }
+  throw new Error(`Download failed: ${fetchError?.message ?? fetchError}\n${curl.stderr || curl.stdout || curl.error?.message || 'curl failed'}`);
+}
+
 async function downloadFile(url, destPath) {
-  if (typeof fetch === 'function') {
+  try {
     const res = await fetch(url, { redirect: 'follow' });
-    if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText} — ${url}`);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     const buf = Buffer.from(await res.arrayBuffer());
     writeFileSync(destPath, buf);
-  } else {
-    // Fallback: curl (macOS / Linux always has it)
-    const r = spawnSync('curl', ['-fsSL', '-o', destPath, url], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf-8' });
-    if (r.status !== 0) throw new Error(`curl failed:\n${r.stderr || r.stdout}`);
+  } catch (err) {
+    downloadWithSystemTool(url, destPath, err);
   }
+}
+
+function communityMiniToolFromUrl(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'community.finchwork.app') return null;
+  const parts = parsed.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
+  if (parts[0] !== 'download' || parts[1] !== 'minitool' || parts.length < 4) return null;
+  const version = parts.at(-1);
+  const packageName = parts.slice(2, -1).join('/');
+  if (!packageName || !version || version === 'latest') return null;
+  return { packageName, version };
+}
+
+function safeCacheSegment(value) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function communityMiniToolCachePath(meta) {
+  return join(miniToolCacheDir(), `${safeCacheSegment(meta.packageName)}-${safeCacheSegment(meta.version)}.tgz`);
+}
+
+async function downloadFileWithCache(url, destPath) {
+  const communityMeta = communityMiniToolFromUrl(url);
+  if (!communityMeta) {
+    await downloadFile(url, destPath);
+    return;
+  }
+
+  const cachePath = communityMiniToolCachePath(communityMeta);
+  if (existsSync(cachePath)) {
+    cpSync(cachePath, destPath);
+    console.log(`  Using cached package ${communityMeta.packageName}@${communityMeta.version}`);
+    return;
+  }
+
+  await downloadFile(url, destPath);
+  mkdirSync(miniToolCacheDir(), { recursive: true });
+  cpSync(destPath, cachePath);
+  console.log(`  Cached package ${communityMeta.packageName}@${communityMeta.version}`);
 }
 
 /**
@@ -237,6 +444,21 @@ async function downloadFile(url, destPath) {
  */
 function extractZip(zipPath, destDir) {
   mkdirSync(destDir, { recursive: true });
+  if (process.platform === 'win32') {
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force', zipPath, destDir], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+    });
+    if (r.status === 0 && !r.error) return;
+    const tar = spawnSync('tar.exe', ['-xf', zipPath, '-C', destDir], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+    });
+    if (tar.status !== 0 || tar.error) {
+      throw new Error(`zip extract failed:\n${r.stderr || tar.stderr || r.stdout || tar.stdout || tar.error?.message || 'unknown error'}`);
+    }
+    return;
+  }
   const r = spawnSync('unzip', ['-q', '-o', zipPath, '-d', destDir], {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf-8',
@@ -245,6 +467,83 @@ function extractZip(zipPath, destDir) {
     throw new Error(`No "unzip" command found on this machine: ${r.error.message}`);
   }
   if (r.status !== 0) throw new Error(`unzip failed:\n${r.stderr || r.stdout || `exit code ${r.status}`}`);
+}
+
+/**
+ * Extract a .tgz/.tar.gz archive using the system tar command. macOS/Linux ship
+ * it by default; modern Windows includes bsdtar as tar.exe.
+ */
+function extractTgz(tgzPath, destDir) {
+  mkdirSync(destDir, { recursive: true });
+  const tarExe = process.platform === 'win32' ? 'tar.exe' : 'tar';
+  const r = spawnSync(tarExe, ['-xzf', tgzPath, '-C', destDir], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf-8',
+  });
+  if (r.error) {
+    throw new Error(`No "tar" command found on this machine: ${r.error.message}`);
+  }
+  if (r.status !== 0) throw new Error(`tar extract failed:\n${r.stderr || r.stdout || `exit code ${r.status}`}`);
+}
+
+function parseNpmSpec(spec) {
+  const trimmed = String(spec ?? '').trim();
+  if (!trimmed) throw new Error('missing npm package name');
+  if (trimmed.startsWith('@')) {
+    const versionSep = trimmed.indexOf('@', 1);
+    return versionSep > 0
+      ? { name: trimmed.slice(0, versionSep), version: trimmed.slice(versionSep + 1) || 'latest' }
+      : { name: trimmed, version: 'latest' };
+  }
+  const versionSep = trimmed.lastIndexOf('@');
+  return versionSep > 0
+    ? { name: trimmed.slice(0, versionSep), version: trimmed.slice(versionSep + 1) || 'latest' }
+    : { name: trimmed, version: 'latest' };
+}
+
+let registryOverride = null;
+
+function configuredRegistryUrl() {
+  return (registryOverride || process.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/+$/, '');
+}
+
+function npmMetadataUrl(packageName, version) {
+  return `${configuredRegistryUrl()}/${encodeURIComponent(packageName)}/${encodeURIComponent(version || 'latest')}`;
+}
+
+function officialMiniToolDownloadUrl(packageName, version) {
+  return `https://community.finchwork.app/download/minitool/${packageName}/${encodeURIComponent(version)}`;
+}
+
+async function resolveNpmTarball(spec) {
+  const { name, version } = parseNpmSpec(spec);
+  if (version && version !== 'latest') {
+    return {
+      package: name,
+      version,
+      tarball: officialMiniToolDownloadUrl(name, version),
+    };
+  }
+
+  const url = npmMetadataUrl(name, version);
+  let meta;
+  try {
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    meta = await res.json();
+  } catch (err) {
+    throw new Error(`npm metadata fetch failed: ${err instanceof Error ? err.message : String(err)} — ${url}`);
+  }
+  const resolvedVersion = String(meta.version ?? version);
+  const tarball = meta?.dist?.tarball;
+  if (typeof tarball !== 'string' || !tarball) {
+    throw new Error(`No dist.tarball found for ${name}@${version}`);
+  }
+  return {
+    package: name,
+    version: resolvedVersion,
+    tarball: officialMiniToolDownloadUrl(name, resolvedVersion),
+  };
 }
 
 /**
@@ -259,17 +558,20 @@ async function installFromZip(src, dest, isUrl) {
   try {
     if (isUrl) {
       console.log(`  Downloading ${src} …`);
-      await downloadFile(src, zipPath);
+      await downloadFileWithCache(src, zipPath);
     } else {
       // Local zip — copy to tmp so we have a consistent path
       const abs = resolve(expandHome(src));
       if (!existsSync(abs)) throw new Error(`file not found: ${abs}`);
       cpSync(abs, zipPath);
     }
-    console.log('  Extracting …');
+    // console.log('  Extracting …');
     extractZip(zipPath, extractDir);
     const found = findPluginDirs(extractDir, 5);
-    if (found.length === 0) throw new Error('No Finch extension found inside the zip archive.');
+    if (found.length === 0) {
+      if (found.invalid?.length) throw new Error(`Invalid Finch extension inside the zip archive: ${found.invalid[0].error}`);
+      throw new Error('No Finch extension found inside the zip archive.');
+    }
     const lockSource = isUrl
       ? { type: 'zip', url: src }
       : { type: 'zip', localPath: resolve(expandHome(src)) };
@@ -279,12 +581,46 @@ async function installFromZip(src, dest, isUrl) {
   }
 }
 
+async function installFromTgz(src, dest, { isUrl, lockSource }) {
+  const tmp = join(tmpdir(), `finch-ext-${randomUUID()}`);
+  const tgzPath = join(tmp, 'extension.tgz');
+  const extractDir = join(tmp, 'extracted');
+  mkdirSync(tmp, { recursive: true });
+  try {
+    if (isUrl) {
+      console.log(`  Downloading ${src} …`);
+      await downloadFileWithCache(src, tgzPath);
+    } else {
+      const abs = resolve(expandHome(src));
+      if (!existsSync(abs)) throw new Error(`file not found: ${abs}`);
+      cpSync(abs, tgzPath);
+    }
+    // console.log('  Extracting …');
+    extractTgz(tgzPath, extractDir);
+    const found = findPluginDirs(extractDir, 5);
+    if (found.length === 0) {
+      if (found.invalid?.length) throw new Error(`Invalid Finch extension inside the tgz archive: ${found.invalid[0].error}`);
+      throw new Error('No Finch extension found inside the tgz archive.');
+    }
+    const source = lockSource ?? (isUrl
+      ? { type: 'tgz', url: src }
+      : { type: 'tgz', localPath: resolve(expandHome(src)) });
+    for (const dir of found) installExtensionDir(dir, dest, source);
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
 async function cmdAdd(src, opts) {
   const dest = targetDir(opts);
 
-  // --- zip URL (e.g. https://github.com/.../archive/main.zip) ---
+  // --- archive URL (e.g. https://github.com/.../archive/main.zip or npm tarball .tgz) ---
   if (isZipUrl(src)) {
     await installFromZip(src, dest, true);
+    return;
+  }
+  if (isTgzUrl(src)) {
+    await installFromTgz(src, dest, { isUrl: true });
     return;
   }
 
@@ -293,9 +629,13 @@ async function cmdAdd(src, opts) {
     const abs = resolve(expandHome(src));
     if (!existsSync(abs)) throw new Error(`path not found: ${abs}`);
 
-    // Local zip file
+    // Local archive file
     if (isZipFile(src)) {
       await installFromZip(src, dest, false);
+      return;
+    }
+    if (isTgzFile(src)) {
+      await installFromTgz(src, dest, { isUrl: false });
       return;
     }
 
@@ -306,23 +646,20 @@ async function cmdAdd(src, opts) {
       return;
     }
     const found = findPluginDirs(abs, 3);
-    if (found.length === 0) throw new Error('No Finch extension found in the given directory.');
+    if (found.length === 0) {
+      if (found.invalid?.length) throw new Error(`Invalid Finch extension in the given directory: ${found.invalid[0].error}`);
+      throw new Error('No Finch extension found in the given directory.');
+    }
     for (const dir of found) installExtensionDir(dir, dest, { type: 'local', localPath: dir });
     return;
   }
 
-  // --- npm package ---
-  const tmp = join(tmpdir(), `finch-ext-${randomUUID()}`);
-  try {
-    npmInstallToTemp(src, tmp);
-    const found = findPluginDirs(join(tmp, 'node_modules'), 5);
-    if (found.length === 0) throw new Error('No package with package.json#finch found in the npm package.');
-    // Prefer the top-level package matching the requested spec when possible.
-    const first = found[0];
-    installExtensionDir(first, dest, { type: 'npm', package: src });
-  } finally {
-    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
-  }
+  // --- npm package: fetch registry metadata, download dist.tarball, then extract locally. ---
+  const resolved = await resolveNpmTarball(src);
+  await installFromTgz(resolved.tarball, dest, {
+    isUrl: true,
+    lockSource: { type: 'npm', package: resolved.package, version: resolved.version },
+  });
 }
 
 function listInstalled(dir) {
@@ -451,22 +788,20 @@ function lintExtensionSource(root) {
 
 function cmdDoctor(src = '.') {
   const abs = resolve(expandHome(src));
-  const info = pluginInfo(abs);
-  if (!info) throw new Error('Not a Finch extension package (missing package.json#finch).');
-  if (info.error) throw new Error(info.error);
-  console.log(`✓ Finch extension: ${info.displayName}`);
-  console.log(`  id:      ${info.id}`);
-  console.log(`  version: ${info.version}`);
-  console.log(`  main:    ${info.main}`);
+  const { diagnostics, info } = validateMiniToolPackage(abs, { lintSource: true });
+
+  if (info) {
+    console.log(`Finch mini tool: ${info.displayName}`);
+    console.log(`  id:      ${info.id || '(missing)'}`);
+    console.log(`  version: ${info.version}`);
+    console.log(`  main:    ${info.main}`);
+  } else {
+    console.log(`Finch mini tool: ${abs}`);
+  }
 
   const pkg = readPackageJson(abs);
   const manifest = pkg?.finch ?? {};
-  // Surface recommended manifest metadata that's missing (non-fatal).
-  const recommended = ['name', 'description'];
-  const missing = recommended.filter((k) => manifest[k] == null);
-  if (manifest.miniToolType == null && manifest.extensionType == null) missing.push('miniToolType');
-  if (missing.length) console.log(`  hint: manifest 建议补充字段: ${missing.join(', ')}`);
-  if (manifest.permissions) {
+  if (manifest.permissions && typeof manifest.permissions === 'object') {
     const p = manifest.permissions;
     const decl = [
       p.filesystem && p.filesystem !== 'none' ? `filesystem=${p.filesystem}` : null,
@@ -476,13 +811,20 @@ function cmdDoctor(src = '.') {
     if (decl.length) console.log(`  permissions: ${decl.join(', ')}（启用时会向用户展示）`);
   }
 
-  const warnings = lintExtensionSource(abs);
-  if (warnings.length === 0) {
-    console.log('✓ No issues found.');
-    return;
+  if (diagnostics.fatal.length > 0) {
+    console.log(`\n✖ ${diagnostics.fatal.length} fatal issue(s):`);
+    for (const issue of diagnostics.fatal) console.log(`  - ${issue}`);
   }
-  console.log(`\n⚠ ${warnings.length} warning(s):`);
-  for (const w of warnings) console.log(`  - ${w}`);
+  if (diagnostics.warning.length > 0) {
+    console.log(`\n⚠ ${diagnostics.warning.length} warning(s):`);
+    for (const issue of diagnostics.warning) console.log(`  - ${issue}`);
+  }
+  if (diagnostics.fatal.length === 0 && diagnostics.warning.length === 0) {
+    console.log('✓ No issues found.');
+  }
+  if (diagnostics.fatal.length > 0) {
+    throw new Error('mini tool package validation failed');
+  }
 }
 
 async function cmdUpdate(id, opts) {
@@ -517,7 +859,7 @@ async function cmdUpdate(id, opts) {
     return;
   }
 
-  // zip source: re-download / re-extract from the recorded URL or local path.
+  // zip/tgz source: re-download / re-extract from the recorded URL or local path.
   if (source.type === 'zip') {
     if (source.url) {
       await installFromZip(source.url, dir, true);
@@ -528,34 +870,39 @@ async function cmdUpdate(id, opts) {
     }
     return;
   }
-
-  // npm source: reinstall the latest published version.
-  const spec = source.package ?? id;
-  const tmp = join(tmpdir(), `finch-ext-${randomUUID()}`);
-  try {
-    npmInstallToTemp(spec, tmp);
-    const found = findPluginDirs(join(tmp, 'node_modules'), 5).filter((d) => pluginInfo(d)?.id === id);
-    const fresh = found[0] ?? findPluginDirs(join(tmp, 'node_modules'), 5)[0];
-    if (!fresh) throw new Error('No matching Finch extension found in npm package.');
-    const info = pluginInfo(fresh);
-    rmSync(target, { recursive: true, force: true });
-    cpSync(fresh, target, { recursive: true, force: true, dereference: false });
-    recordInstall(dir, id, source);
-    console.log(`✓ Updated "${info.displayName}" (${id}) → v${info.version}`);
-  } finally {
-    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+  if (source.type === 'tgz') {
+    if (source.url) {
+      await installFromTgz(source.url, dir, { isUrl: true, lockSource: source });
+    } else if (source.localPath) {
+      await installFromTgz(source.localPath, dir, { isUrl: false, lockSource: source });
+    } else {
+      throw new Error(`tgz install record for "${id}" has no url or localPath; reinstall with \`add\`.`);
+    }
+    return;
   }
+
+  // npm source: reinstall the latest published version by downloading dist.tarball directly.
+  const resolved = await resolveNpmTarball(source.package ?? id);
+  await installFromTgz(resolved.tarball, dir, {
+    isUrl: true,
+    lockSource: { type: 'npm', package: resolved.package, version: resolved.version },
+  });
 }
 
 function parseArgs(argv) {
   const args = [...argv];
   const cmd = args.shift();
-  const opts = { global: false };
+  const opts = { global: false, registry: null };
   const rest = [];
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
     if (a === '--global' || a === '-g') opts.global = true;
-    else if (a === '--cwd') {
+    else if (a === '--registry') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) throw new Error('--registry requires a URL');
+      opts.registry = value;
+      i += 1;
+    } else if (a === '--cwd') {
       // Removed: extensions no longer support project/--cwd scope. Consume any
       // following path argument so old invocations fail loudly instead of
       // silently being parsed as the install source.
@@ -566,12 +913,13 @@ function parseArgs(argv) {
 }
 
 function help() {
-  console.log(`npx @finch.app/minitools\n\nUsage:\n  add <npm-package|local-path|url.zip> [--global]\n  update <id> [--global]\n  list [--global]\n  remove <id> [--global]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/  (personal — default)\n  --global   ~/.finch/extensions/                              (global)\n\nThere is no project/--cwd scope — extensions only install to personal or global.\n`);
+  console.log(`npx @finch.app/minitools\n\nUsage:\n  add <npm-package|local-path|url.zip|url.tgz> [--global] [--registry <url>]\n  update <id> [--global] [--registry <url>]\n  list [--global]\n  remove <id> [--global]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/  (personal — default)\n  --global   ~/.finch/extensions/                              (global)\n\nRegistry:\n  --registry <url> overrides npm registry for npm package metadata/tarball downloads.\n  If omitted, npm_config_registry is used, then https://registry.npmjs.org.\n\nThere is no project/--cwd scope — extensions only install to personal or global.\n`);
 }
 
 (async () => {
   try {
     const { cmd, rest, opts } = parseArgs(process.argv.slice(2));
+    registryOverride = opts.registry;
     if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return help();
     if (cmd === 'add') {
       if (!rest[0]) throw new Error('missing source');

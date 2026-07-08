@@ -96,7 +96,7 @@ finch-releases/
 cd ../../..
 
 # 新增扩展（中英文同时）
-python3 .finch/skills/community-manager/scripts/manage_registry.py add extension '{
+python3 .finch/skills/community-manager/scripts/manage_registry.py add mini-tool '{
   "id": "my-ext",
   "name": "My Extension",
   "author": "Me",
@@ -118,8 +118,6 @@ python3 .finch/skills/community-manager/scripts/manage_registry.py remove skill 
 # 全量校验
 python3 .finch/skills/community-manager/scripts/validate.py
 
-# 同步 npm 版本（拉取最新版本到 version 字段）
-python3 .finch/skills/community-manager/scripts/sync_npm_versions.py
 ```
 
 ### 格式规则
@@ -129,7 +127,6 @@ python3 .finch/skills/community-manager/scripts/sync_npm_versions.py
 - 新增条目时**必须同时提供中英文 name 和 description**
 - `extensionType` 默认 `"community"`，官方扩展设为 `"official"`
 - `featured: true` 标记为精选推荐，客户端会以此过滤；所有官方推荐默认为 `true`
-- 有 `npm` 字段的扩展条目，`version` 由 `sync_npm_versions.py` 自动拉取更新
 - 永远不要直接删除条目后不更新 zh-CN 覆盖
 
 ### 校验

@@ -15,26 +15,21 @@ npx @finch.app/minitools add ./my-tool
 npx @finch.app/minitools add ./my-tool.zip
 npx @finch.app/minitools add https://github.com/user/repo/archive/refs/heads/main.zip
 
-# Install to the current project
-npx @finch.app/minitools add @finch.app/mcp-client --cwd
-
-# Install to a specific project path
-npx @finch.app/minitools add @finch.app/mcp-client --cwd /path/to/project
-
 # Install globally (~/.finch/extensions/)
+# Default installs go to the personal Finch workspace extension directory.
 npx @finch.app/minitools add @finch.app/mcp-client --global
 
 # List installed mini tools (id, version, enabled/disabled, name, path)
 npx @finch.app/minitools list
 npx @finch.app/minitools list --global
 
-# Remove an mini tool
+# Remove a mini tool
 npx @finch.app/minitools remove mcp-client
 
 # Show install paths
 npx @finch.app/minitools where
 
-# Validate an mini tool package
+# Validate a mini tool package
 npx @finch.app/minitools doctor ./my-tool
 ```
 
@@ -42,12 +37,14 @@ npx @finch.app/minitools doctor ./my-tool
 
 | Flag | Path | Scope |
 |---|---|---|
-| *(default)* | `<workspace.json#finchHomeDir>/.finch/extensions/<id>/` | Current Finch workspace |
-| `--cwd` | `<process.cwd()>/.finch/extensions/<id>/` | Current project |
-| `--cwd path` | `<path>/.finch/extensions/<id>/` | Specific project |
+| *(default)* | `<workspace.json#finchHomeDir>/.finch/extensions/<id>/` | Personal Finch workspace |
 | `--global` | `~/.finch/extensions/<id>/` | All Finch sessions |
 
-The default workspace path is read from `~/.finch/workspace.json#finchHomeDir`.
+The default workspace path is read from `~/.finch/workspace.json#finchHomeDir`. There is no project/`--cwd` scope for mini tools; use the personal default or `--global`.
+
+## Registry and downloads
+
+Pinned npm specs such as `@scope/tool@1.2.3` skip npm registry metadata and download directly from `https://community.finchwork.app/download/minitool/<package>/<version>`. Unpinned specs such as `@scope/tool` or `@scope/tool@latest` still use npm registry metadata to resolve the concrete version first; `--registry <url>` only affects that metadata lookup, not the final package download.
 
 ## Mini tool package
 
@@ -62,11 +59,15 @@ A Finch mini tool is an npm-style package with `package.json#finch`:
   "finch": {
     "manifestVersion": 1,
     "id": "my-tool",
-    "displayName": "My Tool",
+    "name": "My Tool",
     "main": "dist/index.js",
     "activationEvents": ["onStartup"]
   }
 }
 ```
+
+`doctor` reports fatal issues and warnings. `add` / `update` block packages with fatal validation issues such as a missing `package.json#finch`, invalid `id`, unsupported `manifestVersion`, malformed contribution declarations, or a missing entry file.
+
+Downloads served by `https://community.finchwork.app/download/minitool/<package>/<version>` are cached under `~/.finch/cache/minitools/` by package and version, so reinstalling or updating the same version avoids another network download.
 
 `add` installs the mini tool but does not enable or grant permissions. Open Finch → Toolcase → Tools to review permissions and enable it.

@@ -46,11 +46,13 @@ REPO_ROOT = os.environ.get("REPO_ROOT", os.path.join(os.path.dirname(__file__), 
 COMMUNITY_DIR = os.path.join(REPO_ROOT, "community")
 
 EN_FILE = {
-    "extension": "extensions.json",
+    "extension": "mini-tools.json",
+    "mini-tool": "mini-tools.json",
     "skill": "skills.json",
 }
 ZH_FILE = {
-    "extension": "extensions.zh-CN.json",
+    "extension": "mini-tools.zh-CN.json",
+    "mini-tool": "mini-tools.zh-CN.json",
     "skill": "skills.zh-CN.json",
 }
 
@@ -241,8 +243,8 @@ def main():
     cmd = sys.argv[1]
     reg_type = sys.argv[2]
 
-    if reg_type not in ("extension", "skill"):
-        print(f"ERROR: Type must be 'extension' or 'skill', got '{reg_type}'")
+    if reg_type not in ("extension", "skill", "mini-tool"):
+        print(f"ERROR: Type must be 'extension', 'mini-tool', or 'skill', got '{reg_type}'")
         sys.exit(1)
 
     if cmd in ("add", "update"):

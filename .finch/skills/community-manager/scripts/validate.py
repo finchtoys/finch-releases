@@ -123,15 +123,15 @@ def check_extension_id_consistency(entries, filename):
 print("## 校验报告\n")
 
 # 1. Validate extensions.json
-ext_data = validate_json_file(os.path.join(community_dir, "extensions.json"), "extension")
+ext_data = validate_json_file(os.path.join(community_dir, "mini-tools.json"), "mini-tool")
 if ext_data:
-    check_id_format(ext_data, "extensions.json")
-    check_id_uniqueness(ext_data, "extensions.json")
-    check_required_fields(ext_data, "extensions.json",
+    check_id_format(ext_data, "mini-tools.json")
+    check_id_uniqueness(ext_data, "mini-tools.json")
+    check_required_fields(ext_data, "mini-tools.json",
         ["id", "name", "author", "description", "repo"])
-    check_categories(ext_data, "extensions.json")
-    check_alphabetical_order(ext_data, "extensions.json")
-    check_extension_id_consistency(ext_data, "extensions.json")
+    check_categories(ext_data, "mini-tools.json")
+    check_alphabetical_order(ext_data, "mini-tools.json")
+    check_extension_id_consistency(ext_data, "mini-tools.json")
 
 # 2. Validate skills.json
 skill_data = validate_json_file(os.path.join(community_dir, "skills.json"), "skill")
@@ -144,11 +144,11 @@ if skill_data:
     check_alphabetical_order(skill_data, "skills.json")
 
 # 3. Validate zh-CN files
-ext_zh_data = validate_json_file(os.path.join(community_dir, "extensions.zh-CN.json"), "extension zh-CN")
+ext_zh_data = validate_json_file(os.path.join(community_dir, "mini-tools.zh-CN.json"), "mini-tool zh-CN")
 skill_zh_data = validate_json_file(os.path.join(community_dir, "skills.zh-CN.json"), "skill zh-CN")
 
 if ext_data and ext_zh_data:
-    check_zh_coverage(ext_zh_data, ext_data, "extensions.zh-CN.json", "extensions.json")
+    check_zh_coverage(ext_zh_data, ext_data, "mini-tools.zh-CN.json", "mini-tools.json")
 if skill_data and skill_zh_data:
     check_zh_coverage(skill_zh_data, skill_data, "skills.zh-CN.json", "skills.json")
 

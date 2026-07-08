@@ -104,29 +104,28 @@ function readSkillName(skillDir) {
   return basename(skillDir);
 }
 
-/** Scan root (3 levels deep) for directories containing SKILL.md. */
-function scanForSkills(root) {
+/** Scan root recursively for directories containing SKILL.md. */
+function scanForSkills(root, maxDepth = 5) {
   const found = [];
   const seen = new Set();
-  function tryDir(dir) {
+  function visit(dir, depth) {
     const key = dir.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    if (existsSync(join(dir, "SKILL.md"))) found.push(dir);
+    if (existsSync(join(dir, "SKILL.md"))) {
+      found.push(dir);
+      return;
+    }
+    if (depth <= 0) return;
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      if (e.name === ".git" || e.name === "node_modules" || e.name === ".cache") continue;
+      visit(join(dir, e.name), depth - 1);
+    }
   }
-  tryDir(root);
-  let top = [];
-  try { top = readdirSync(root, { withFileTypes: true }); } catch { return found; }
-  for (const e of top) {
-    if (!e.isDirectory()) continue;
-    const child = join(root, e.name);
-    tryDir(child);
-    try {
-      for (const sub of readdirSync(child, { withFileTypes: true })) {
-        if (sub.isDirectory()) tryDir(join(child, sub.name));
-      }
-    } catch { /* ignore */ }
-  }
+  visit(root, maxDepth);
   return found;
 }
 
@@ -137,88 +136,156 @@ function listInstalledSkills(dir) {
     .map((e) => ({ dir: e.name, name: readSkillName(join(dir, e.name)) ?? e.name }));
 }
 
-// ── Source parser ─────────────────────────────────────────────────────────────
+// ── Source parser / archives ─────────────────────────────────────────────────
+
+function isLocalSource(src) {
+  return src.startsWith("./") || src.startsWith("../") || src.startsWith("/") || src.startsWith("~") || /^[a-zA-Z]:[\\/]/.test(src);
+}
+function isZipUrl(src) { return /^https?:\/\/.+\.zip(\?.*)?$/i.test(src); }
+function isTgzUrl(src) { return /^https?:\/\/.+\.(?:tgz|tar\.gz)(\?.*)?$/i.test(src); }
+function isZipFile(src) { return src.toLowerCase().endsWith(".zip"); }
+function isTgzFile(src) {
+  const lower = src.toLowerCase();
+  return lower.endsWith(".tgz") || lower.endsWith(".tar.gz");
+}
+function stripGitSuffix(value) { return value.replace(/\.git\/?$/, "").replace(/\/+$/, ""); }
+function repoName(repo) { return repo.split("/").pop()?.replace(/\.git$/, "") ?? "repo"; }
+
+function officialSkillDownloadUrl(repo) {
+  const normalized = stripGitSuffix(repo);
+  return `https://community.finchwork.app/download/skill/${normalized}`;
+}
+
+function githubArchiveUrl(repo, branch) {
+  return branch
+    ? `https://codeload.github.com/${repo}/zip/refs/heads/${branch}`
+    : `https://codeload.github.com/${repo}/zip/HEAD`;
+}
+
+function gitlabArchiveUrl(repo, branch) {
+  const name = repoName(repo);
+  return branch
+    ? `https://gitlab.com/${repo}/-/archive/${branch}/${name}-${branch}.zip`
+    : `https://gitlab.com/${repo}/-/archive/HEAD/${name}-HEAD.zip`;
+}
 
 function parseSource(src) {
-  if (src.startsWith("./") || src.startsWith("../") || src.startsWith("/") || src.startsWith("~")) {
-    return { type: "local", path: src };
-  }
-  if (src.startsWith("git@") || src.startsWith("git://")) {
-    return { type: "git", url: src };
-  }
+  if (isLocalSource(src)) return { type: "local", path: src };
+  if (isZipUrl(src)) return { type: "archive", archive: "zip", url: src };
+  if (isTgzUrl(src)) return { type: "archive", archive: "tgz", url: src };
+
   // GitHub tree URL: https://github.com/owner/repo/tree/branch/path
   const treeGH = src.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+)\/tree\/([^/]+)\/(.+)$/);
   if (treeGH) {
-    return { type: "git-subpath", url: `https://github.com/${treeGH[1]}`, branch: treeGH[2], subpath: treeGH[3].replace(/\/$/, "") };
+    return { type: "archive", archive: "zip", url: githubArchiveUrl(stripGitSuffix(treeGH[1]), treeGH[2]), subpath: treeGH[3].replace(/\/$/, "") };
   }
   // GitLab tree URL: https://gitlab.com/org/repo/-/tree/branch/path
   const treeGL = src.match(/^https?:\/\/gitlab\.com\/([^/]+\/[^/]+?)\/-\/tree\/([^/]+)\/(.+)$/);
   if (treeGL) {
-    return { type: "git-subpath", url: `https://gitlab.com/${treeGL[1]}`, branch: treeGL[2], subpath: treeGL[3].replace(/\/$/, "") };
+    return { type: "archive", archive: "zip", url: gitlabArchiveUrl(stripGitSuffix(treeGL[1]), treeGL[2]), subpath: treeGL[3].replace(/\/$/, "") };
   }
-  // Full GitHub / GitLab repo URL
-  if (/^https?:\/\/(github|gitlab)\.com\/[^/]+\/[^/]+?(\.git)?\/?$/.test(src)) {
-    return { type: "git", url: src.replace(/\.git\/?$/, "") };
+  // Full GitHub / GitLab repo URL: download archive instead of requiring git.
+  const repoGH = src.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+  if (repoGH) return { type: "archive", archive: "zip", url: githubArchiveUrl(stripGitSuffix(repoGH[1])) };
+  const repoGL = src.match(/^https?:\/\/gitlab\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+  if (repoGL) return { type: "archive", archive: "zip", url: gitlabArchiveUrl(stripGitSuffix(repoGL[1])) };
+
+  if (src.startsWith("git@") || src.startsWith("git://")) {
+    throw new Error("SSH/git protocol sources require Git and are no longer supported by this installer. Use an https GitHub/GitLab URL or a .zip/.tgz archive URL instead.");
   }
   if (src.startsWith("http://") || src.startsWith("https://")) {
-    return { type: "git", url: src };
+    throw new Error("Unsupported URL. Use a GitHub/GitLab repository URL, a /tree/... URL, or a direct .zip/.tgz archive URL.");
   }
-  // GitHub shorthand: owner/repo
+  // Finch community shorthand: owner/repo. Use the official Cloudflare download proxy by default.
   if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(src)) {
-    return { type: "git", url: `https://github.com/${src}` };
+    return { type: "archive", archive: "zip", url: officialSkillDownloadUrl(src) };
   }
   return { type: "local", path: src };
 }
 
-// ── Git helpers ───────────────────────────────────────────────────────────────
-
-/**
- * Look for an executable on PATH (via `which`/`where`), falling back to a
- * handful of common install locations that don't always make it onto the
- * PATH inherited by a GUI-launched app (Homebrew, Xcode Command Line Tools,
- * Windows installer). Returns the resolved path, or null if not found.
- */
-function findExecutable(name) {
-  const finder = process.platform === "win32" ? "where" : "which";
-  const found = spawnSync(finder, [name], { stdio: ["ignore", "pipe", "ignore"], encoding: "utf-8" });
-  if (found.status === 0) {
-    const first = found.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
-    if (first) return first;
-  }
-  const candidateDirs = process.platform === "win32"
-    ? [join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "cmd")]
-    : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
-  const exeName = process.platform === "win32" ? `${name}.exe` : name;
-  for (const dir of candidateDirs) {
-    const candidate = join(dir, exeName);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+function createCliError(code, message, detail) {
+  const err = new Error(message);
+  err.code = code;
+  err.detail = detail;
+  return err;
 }
 
-const GIT_INSTALL_HINT = process.platform === "darwin"
-  ? 'Install Git by running "xcode-select --install", or download it from https://git-scm.com/downloads.'
-  : "Install Git from https://git-scm.com/downloads, then try again.";
+function classifyDownloadError(url, statusOrError, detail) {
+  const raw = `${statusOrError ?? ""}\n${detail ?? ""}`;
+  const isGithub = /(^|\.)github\.com|codeload\.github\.com/i.test(url);
+  if (/\b429\b|Too Many Requests/i.test(raw)) {
+    return createCliError(
+      "DOWNLOAD_RATE_LIMITED",
+      isGithub
+        ? "GitHub 下载暂时被限流了，请稍后重试；如果反复失败，建议使用打包好的 ZIP/TGZ 下载源。"
+        : "下载源暂时限流了，请稍后重试。",
+      `HTTP 429 while downloading ${url}`,
+    );
+  }
+  if (/timeout|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT|ENOTFOUND|ECONNRESET|network/i.test(raw)) {
+    return createCliError(
+      "DOWNLOAD_NETWORK_ERROR",
+      "下载失败，请检查网络或代理设置后重试。",
+      `Download failed for ${url}: ${raw.trim()}`,
+    );
+  }
+  return createCliError(
+    "DOWNLOAD_FAILED",
+    "下载失败，请稍后重试或换用 ZIP/TGZ 下载源。",
+    `Download failed for ${url}: ${raw.trim()}`,
+  );
+}
 
-function gitClone(url, dest, { branch, depth = 1 } = {}) {
-  const gitPath = findExecutable("git");
-  if (!gitPath) {
-    console.error(`  No "git" executable found on this machine. ${GIT_INSTALL_HINT}`);
-    return false;
+function downloadWithSystemTool(url, destPath, fetchError) {
+  const curlExe = process.platform === "win32" ? "curl.exe" : "curl";
+  const curl = spawnSync(curlExe, ["-fL", "--retry", "2", "--connect-timeout", "20", "-o", destPath, url], {
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf-8",
+  });
+  if (curl.status === 0 && !curl.error) return;
+  if (process.platform === "win32") {
+    const ps = spawnSync("powershell.exe", ["-NoProfile", "-Command", "Invoke-WebRequest -Uri $args[0] -OutFile $args[1]", url, destPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf-8",
+    });
+    if (ps.status === 0 && !ps.error) return;
+    throw classifyDownloadError(url, fetchError?.message ?? fetchError, `${curl.stderr || curl.stdout || curl.error?.message || "curl failed"}\n${ps.stderr || ps.stdout || ps.error?.message || "powershell failed"}`);
   }
-  const args = ["clone", `--depth=${depth}`];
-  if (branch) args.push("--branch", branch);
-  args.push(url, dest);
-  const r = spawnSync(gitPath, args, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
-  if (r.error) {
-    console.error(`  Failed to run git (${gitPath}): ${r.error.message}`);
-    return false;
+  throw classifyDownloadError(url, fetchError?.message ?? fetchError, curl.stderr || curl.stdout || curl.error?.message || "curl failed");
+}
+
+async function downloadFile(url, destPath) {
+  try {
+    const res = await fetch(url, { redirect: "follow" });
+    if (!res.ok) throw classifyDownloadError(url, `${res.status} ${res.statusText}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    writeFileSync(destPath, buf);
+  } catch (err) {
+    if (err?.code === "DOWNLOAD_RATE_LIMITED") throw err;
+    downloadWithSystemTool(url, destPath, err);
   }
-  if (r.status !== 0) {
-    console.error(`  git clone failed:\n  ${(r.stderr || r.stdout || `exit code ${r.status}`).trim()}`);
-    return false;
+}
+
+function extractZip(zipPath, destDir) {
+  mkdirSync(destDir, { recursive: true });
+  if (process.platform === "win32") {
+    const r = spawnSync("powershell.exe", ["-NoProfile", "-Command", "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force", zipPath, destDir], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
+    if (r.status === 0 && !r.error) return;
+    const tar = spawnSync("tar.exe", ["-xf", zipPath, "-C", destDir], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
+    if (tar.status !== 0 || tar.error) throw new Error(`zip extract failed:\n${r.stderr || tar.stderr || r.stdout || tar.stdout || tar.error?.message || "unknown error"}`);
+    return;
   }
-  return true;
+  const r = spawnSync("unzip", ["-q", "-o", zipPath, "-d", destDir], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
+  if (r.error) throw new Error(`No "unzip" command found on this machine: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`unzip failed:\n${r.stderr || r.stdout || `exit code ${r.status}`}`);
+}
+
+function extractTgz(tgzPath, destDir) {
+  mkdirSync(destDir, { recursive: true });
+  const tarExe = process.platform === "win32" ? "tar.exe" : "tar";
+  const r = spawnSync(tarExe, ["-xzf", tgzPath, "-C", destDir], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf-8" });
+  if (r.error) throw new Error(`No "tar" command found on this machine: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`tar extract failed:\n${r.stderr || r.stdout || `exit code ${r.status}`}`);
 }
 
 // ── Install core ──────────────────────────────────────────────────────────────
@@ -241,14 +308,82 @@ function installSkillDir(srcAbs, destRoot, { lockSource, verb = "Added" } = {}) 
   return dirName;
 }
 
-function installAll(skillDirs, destRoot, lockSource) {
-  let count = 0;
-  for (const dir of skillDirs) {
-    // For multi-install, subpath is per-skill
-    const src = lockSource ? { ...lockSource, subpath: relative(lockSource._cloneRoot ?? "", dir) } : undefined;
-    if (installSkillDir(dir, destRoot, { lockSource: src })) count++;
+function archiveSubpathRoot(extractDir, subpath) {
+  if (!subpath) return extractDir;
+  const direct = join(extractDir, subpath);
+  if (existsSync(direct)) return direct;
+  let entries = [];
+  try { entries = readdirSync(extractDir, { withFileTypes: true }); } catch { return direct; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = join(extractDir, entry.name, subpath);
+    if (existsSync(candidate)) return candidate;
   }
-  return count;
+  return direct;
+}
+
+async function extractArchiveSource(source, extractDir) {
+  const archivePath = join(extractDir, source.archive === "tgz" ? "source.tgz" : "source.zip");
+  const outDir = join(extractDir, "out");
+  mkdirSync(extractDir, { recursive: true });
+  if (source.url) {
+    console.log(`Downloading ${source.url} …`);
+    await downloadFile(source.url, archivePath);
+  } else if (source.localPath) {
+    if (!existsSync(source.localPath)) throw new Error(`file not found: ${source.localPath}`);
+    cpSync(source.localPath, archivePath);
+  } else {
+    throw new Error("archive source missing url/localPath");
+  }
+  console.log("Extracting …");
+  if (source.archive === "tgz") extractTgz(archivePath, outDir);
+  else extractZip(archivePath, outDir);
+  return outDir;
+}
+
+function installFoundSkills(found, dest, lockBase, skillFilter, extractRoot, verb = "Added") {
+  if (found.length === 0) throw new Error("No SKILL.md found in the archive.");
+  let selected = found;
+  if (skillFilter) {
+    const match = found.find((p) => {
+      const dir = basename(p);
+      const name = readSkillName(p) ?? dir;
+      return dir === skillFilter || name === skillFilter;
+    });
+    if (!match) {
+      console.error(`Skill "${skillFilter}" not found. Available:`);
+      for (const p of found) console.error(`  • ${readSkillName(p) ?? basename(p)}`);
+      process.exit(1);
+    }
+    selected = [match];
+  } else if (found.length > 1) {
+    console.log(`\nFound ${found.length} skill(s) — installing all:\n`);
+  }
+
+  for (const p of selected) {
+    installSkillDir(p, dest, {
+      verb,
+      lockSource: { ...lockBase, subpath: relative(extractRoot, p) },
+    });
+  }
+}
+
+async function installArchive(source, dest, { skillFilter, verb = "Added", dirNameHint } = {}) {
+  const tmp = join(tmpdir(), `finch-skill-${randomUUID()}`);
+  try {
+    const extractRoot = await extractArchiveSource(source, tmp);
+    const root = archiveSubpathRoot(extractRoot, source.subpath);
+    if (!existsSync(root)) throw new Error(`Path "${source.subpath}" not found in archive.`);
+    const found = existsSync(join(root, "SKILL.md")) ? [root] : scanForSkills(root);
+    if (dirNameHint && !skillFilter) {
+      const match = found.find((p) => basename(p) === dirNameHint) ?? found[0];
+      installSkillDir(match, dest, { verb, lockSource: { ...source, subpath: relative(extractRoot, match) } });
+      return;
+    }
+    installFoundSkills(found, dest, source, skillFilter, extractRoot, verb);
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
 }
 
 // ── Command: add ─────────────────────────────────────────────────────────────
@@ -256,133 +391,74 @@ function installAll(skillDirs, destRoot, lockSource) {
 async function cmdAdd(src, { opts, skillFilter }) {
   const parsed = parseSource(src);
   const dest = targetDir(opts);
-  const tmp = join(tmpdir(), `finch-skill-${randomUUID()}`);
 
-  try {
-    // ── Local ──────────────────────────────────────────────────────────────
-    if (parsed.type === "local") {
-      const abs = resolve(parsed.path.replace(/^~/, homedir()));
-      if (!existsSync(abs)) { console.error(`Error: path not found: ${abs}`); process.exit(1); }
+  if (parsed.type === "local") {
+    const abs = resolve(expandHomePath(parsed.path));
+    if (!existsSync(abs)) { console.error(`Error: path not found: ${abs}`); process.exit(1); }
 
-      if (existsSync(join(abs, "SKILL.md"))) {
-        installSkillDir(abs, dest, { lockSource: { type: "local", localPath: abs } });
-        console.log("\nTip: Open Finch → Toolcase to see your new skill.");
-        return;
-      }
-      const found = scanForSkills(abs);
-      if (found.length === 0) { console.error("No SKILL.md found in the given directory."); process.exit(1); }
-      for (const p of found) installSkillDir(p, dest, { lockSource: { type: "local", localPath: p } });
-      console.log("\nTip: Open Finch → Toolcase to see your new skills.");
+    if (isZipFile(abs) || isTgzFile(abs)) {
+      await installArchive({ type: "archive", archive: isTgzFile(abs) ? "tgz" : "zip", localPath: abs }, dest, { skillFilter });
+      console.log("\nTip: Open Finch → Toolcase to see your new skill(s).");
       return;
     }
 
-    // ── git-subpath (tree URL) ─────────────────────────────────────────────
-    if (parsed.type === "git-subpath") {
-      console.log(`Cloning ${parsed.url} (branch: ${parsed.branch})…`);
-      if (!gitClone(parsed.url, tmp, { branch: parsed.branch })) process.exit(1);
-
-      const subAbs = join(tmp, parsed.subpath);
-      if (!existsSync(subAbs)) { console.error(`  Path "${parsed.subpath}" not found in repo.`); process.exit(1); }
-
-      const lockBase = { type: "git-subpath", url: parsed.url, branch: parsed.branch };
-
-      if (existsSync(join(subAbs, "SKILL.md"))) {
-        installSkillDir(subAbs, dest, { lockSource: { ...lockBase, subpath: parsed.subpath } });
-        console.log("\nTip: Open Finch → Toolcase to see your new skill.");
-        return;
-      }
-      const found = scanForSkills(subAbs);
-      if (found.length === 0) { console.error(`No SKILL.md found under "${parsed.subpath}".`); process.exit(1); }
-      for (const p of found) {
-        installSkillDir(p, dest, { lockSource: { ...lockBase, subpath: join(parsed.subpath, basename(p)) } });
-      }
-      console.log("\nTip: Open Finch → Toolcase to see your new skills.");
-      return;
-    }
-
-    // ── git (repo root) ────────────────────────────────────────────────────
-    console.log(`Cloning ${parsed.url}…`);
-    if (!gitClone(parsed.url, tmp)) process.exit(1);
-
-    const found = scanForSkills(tmp);
-    if (found.length === 0) { console.error("No skills (SKILL.md) found in this repository."); process.exit(1); }
-
-    if (skillFilter) {
-      const match = found.find((p) => {
-        const dir = basename(p); const name = readSkillName(p) ?? dir;
-        return dir === skillFilter || name === skillFilter;
-      });
-      if (!match) {
-        console.error(`Skill "${skillFilter}" not found. Available:`);
-        for (const p of found) console.error(`  • ${readSkillName(p) ?? basename(p)}`);
-        process.exit(1);
-      }
-      const subpath = relative(tmp, match);
-      installSkillDir(match, dest, { lockSource: { type: "git-subpath", url: parsed.url, subpath } });
+    if (existsSync(join(abs, "SKILL.md"))) {
+      installSkillDir(abs, dest, { lockSource: { type: "local", localPath: abs } });
       console.log("\nTip: Open Finch → Toolcase to see your new skill.");
       return;
     }
-
-    if (found.length === 1) {
-      const subpath = relative(tmp, found[0]);
-      installSkillDir(found[0], dest, { lockSource: { type: "git-subpath", url: parsed.url, subpath } });
-      console.log("\nTip: Open Finch → Toolcase to see your new skill.");
-      return;
-    }
-
-    console.log(`\nFound ${found.length} skill(s) — installing all:\n`);
-    for (const p of found) {
-      const subpath = relative(tmp, p);
-      installSkillDir(p, dest, { lockSource: { type: "git-subpath", url: parsed.url, subpath } });
-    }
+    const found = scanForSkills(abs);
+    if (found.length === 0) { console.error("No SKILL.md found in the given directory."); process.exit(1); }
+    installFoundSkills(found, dest, { type: "local", localPath: abs }, skillFilter, abs);
     console.log("\nTip: Open Finch → Toolcase to see your new skills.");
-
-  } finally {
-    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+    return;
   }
+
+  await installArchive(parsed, dest, { skillFilter });
+  console.log("\nTip: Open Finch → Toolcase to see your new skill(s).");
 }
 
 // ── Command: update ───────────────────────────────────────────────────────────
 
+function normalizeLockSource(entry) {
+  if (entry.type === "archive") return entry;
+  if (entry.type === "zip") return { type: "archive", archive: "zip", url: entry.url, localPath: entry.localPath, subpath: entry.subpath };
+  if (entry.type === "tgz") return { type: "archive", archive: "tgz", url: entry.url, localPath: entry.localPath, subpath: entry.subpath };
+  if (entry.type === "git-subpath" || entry.type === "git") {
+    const parsed = parseSource(entry.url);
+    if (parsed.type !== "archive") throw new Error(`cannot convert legacy git source: ${entry.url}`);
+    return { ...parsed, subpath: entry.subpath ?? parsed.subpath };
+  }
+  return entry;
+}
+
 /** Re-install a skill from its recorded lock entry. Returns true on success. */
 async function reinstallFromLock(dirName, entry, destRoot) {
-  const tmp = join(tmpdir(), `finch-skill-${randomUUID()}`);
   const name = readSkillName(join(destRoot, dirName)) ?? dirName;
 
   try {
-    if (entry.type === "local") {
-      const abs = entry.localPath;
-      if (!existsSync(join(abs, "SKILL.md"))) {
+    const source = normalizeLockSource(entry);
+    if (source.type === "local") {
+      const base = source.localPath;
+      const abs = source.subpath ? join(base, source.subpath) : base;
+      if (!abs || !existsSync(join(abs, "SKILL.md"))) {
         console.error(`  ✗ "${name}": local path no longer exists (${abs})`);
         return false;
       }
-      installSkillDir(abs, destRoot, { lockSource: entry, verb: "Updated" });
+      installSkillDir(abs, destRoot, { lockSource: source, verb: "Updated" });
       return true;
     }
 
-    // git or git-subpath — both stored as git-subpath now
-    const { url, branch, subpath } = entry;
-    console.log(`  Cloning ${url}${branch ? ` (${branch})` : ""}…`);
-    if (!gitClone(url, tmp, { branch })) return false;
-
-    const skillAbs = subpath ? join(tmp, subpath) : null;
-    if (skillAbs && existsSync(join(skillAbs, "SKILL.md"))) {
-      installSkillDir(skillAbs, destRoot, { lockSource: entry, verb: "Updated" });
+    if (source.type === "archive") {
+      await installArchive(source, destRoot, { verb: "Updated", dirNameHint: dirName });
       return true;
     }
 
-    // Subpath might have moved — scan and match by dirName
-    const found = scanForSkills(tmp);
-    const match = found.find((p) => basename(p) === dirName);
-    if (!match) {
-      console.error(`  ✗ "${name}": skill directory "${dirName}" not found in repo anymore.`);
-      return false;
-    }
-    installSkillDir(match, destRoot, { lockSource: { ...entry, subpath: relative(tmp, match) }, verb: "Updated" });
-    return true;
-
-  } finally {
-    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+    console.error(`  ✗ "${name}": unsupported install source (${source.type ?? "unknown"})`);
+    return false;
+  } catch (err) {
+    console.error(`  ✗ "${name}": ${err instanceof Error ? err.message : String(err)}`);
+    return false;
   }
 }
 
@@ -496,7 +572,9 @@ function cmdList(opts) {
   for (const s of skills) {
     const src = lock[s.dir];
     const srcHint = src
-      ? (src.type === "local" ? `local: ${src.localPath}` : src.url)
+      ? (src.type === "local"
+        ? `local: ${src.localPath}${src.subpath ? `/${src.subpath}` : ""}`
+        : src.url ?? src.localPath ?? `${src.type}:${src.subpath ?? ""}`)
       : "no source recorded";
     console.log(`  • ${s.name !== s.dir ? `${s.name} (${s.dir})` : s.name}  — ${srcHint}`);
   }
@@ -537,12 +615,14 @@ function printUsage() {
 npx @finch.app/skills — Install Finch skills from anywhere
 
 Usage:
-  add owner/repo                                  GitHub shorthand
-  add https://github.com/owner/repo               Full repo URL
+  add owner/repo                                  GitHub shorthand (downloads archive)
+  add https://github.com/owner/repo               Full repo URL (downloads archive)
   add https://github.com/owner/repo/tree/main/skills/my-skill
-  add https://gitlab.com/org/repo                 GitLab URL
-  add git@github.com:owner/repo.git               SSH URL
+  add https://gitlab.com/org/repo                 GitLab URL (downloads archive)
+  add https://example.com/skills.zip              ZIP archive URL
+  add https://example.com/skills.tgz              TGZ archive URL
   add ./my-local-skill                            Local path
+  add ./skills.zip                                Local ZIP/TGZ archive
 
   update                              Update all (interactive scope)
   update my-skill                    Update one skill
@@ -565,52 +645,70 @@ Default location:
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-const args = process.argv.slice(2);
-const opts = { global: false, cwd: undefined };
-let skillFlag = null;
-const positional = [];
-for (let i = 0; i < args.length; i += 1) {
-  const a = args[i];
-  if (a === "--global") opts.global = true;
-  else if (a === "--cwd") {
-    const next = args[i + 1];
-    if (next && !next.startsWith("-")) {
-      opts.cwd = next;
-      i += 1;
-    } else {
-      opts.cwd = "";
-    }
-  } else if (a === "--skill") {
-    skillFlag = args[i + 1] ?? null;
-    i += 1;
-  } else positional.push(a);
+function printCliError(err) {
+  const payload = {
+    code: err?.code || "SKILL_INSTALL_FAILED",
+    message: err instanceof Error ? err.message : String(err),
+    detail: err?.detail,
+  };
+  console.error(`FINCH_CLI_ERROR_JSON:${JSON.stringify(payload)}`);
+  console.error(`Error: ${payload.message}`);
+  if (payload.detail && process.env.FINCH_CLI_DEBUG === "1") console.error(payload.detail);
 }
-const [command, ...rest] = positional;
 
-switch (command) {
-  case "add":
-  case "install": {
-    const src = rest[0];
-    if (!src) { console.error("Error: missing <source>"); printUsage(); process.exit(1); }
-    await cmdAdd(src, { opts, skillFilter: skillFlag });
-    break;
+async function main() {
+  const args = process.argv.slice(2);
+  const opts = { global: false, cwd: undefined };
+  let skillFlag = null;
+  const positional = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === "--global") opts.global = true;
+    else if (a === "--cwd") {
+      const next = args[i + 1];
+      if (next && !next.startsWith("-")) {
+        opts.cwd = next;
+        i += 1;
+      } else {
+        opts.cwd = "";
+      }
+    } else if (a === "--skill") {
+      skillFlag = args[i + 1] ?? null;
+      i += 1;
+    } else positional.push(a);
   }
-  case "update":
-    await cmdUpdate(rest, opts);
-    break;
-  case "list":
-    cmdList(opts);
-    break;
-  case "remove":
-  case "rm": {
-    if (rest.length === 0) { console.error("Error: missing <skill-name>"); printUsage(); process.exit(1); }
-    cmdRemove(rest, opts);
-    break;
+  const [command, ...rest] = positional;
+
+  switch (command) {
+    case "add":
+    case "install": {
+      const src = rest[0];
+      if (!src) { console.error("Error: missing <source>"); printUsage(); process.exit(1); }
+      await cmdAdd(src, { opts, skillFilter: skillFlag });
+      break;
+    }
+    case "update":
+      await cmdUpdate(rest, opts);
+      break;
+    case "list":
+      cmdList(opts);
+      break;
+    case "remove":
+    case "rm": {
+      if (rest.length === 0) { console.error("Error: missing <skill-name>"); printUsage(); process.exit(1); }
+      cmdRemove(rest, opts);
+      break;
+    }
+    case "where":
+      cmdWhere();
+      break;
+    default:
+      printUsage();
+      if (command) process.exit(1);
   }
-  case "where":
-    cmdWhere();
-    break;
-  default:
-    printUsage();
-    if (command) process.exit(1);
 }
+
+main().catch((err) => {
+  printCliError(err);
+  process.exit(1);
+});
