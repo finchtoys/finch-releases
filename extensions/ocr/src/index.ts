@@ -5,6 +5,7 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { execSync } from 'node:child_process';
 
 // ── Python Version Management ───────────────────────────────────────────────
 
@@ -33,8 +34,6 @@ function isVersionInRange(versionStr: string): boolean {
  * Priority: venv > python3.12 > python3.11 > python3.10 > python3 (if in range) > python (if in range)
  */
 async function findPythonCommand(): Promise<{ cmd: string; version: string } | null> {
-  const { execSync } = await import('node:child_process');
-
   // Try venv first
   const venvPaths = ['/tmp/ocr-venv/bin/python3.12', '/tmp/ocr-venv/bin/python3'];
   for (const cmd of venvPaths) {
@@ -76,7 +75,6 @@ async function findPythonCommand(): Promise<{ cmd: string; version: string } | n
  */
 async function getPythonVersion(cmd: string): Promise<string | null> {
   try {
-    const { execSync } = await import('node:child_process');
     return execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
   } catch {
     return null;
@@ -89,8 +87,6 @@ async function getPythonVersion(cmd: string): Promise<string | null> {
  * OCR using Python PaddleOCR with adaptive preprocessing.
  */
 async function ocrImageViaPython(imagePath: string, extensionPath: string): Promise<{ text: string; confidence: number }> {
-  const { execSync } = await import('node:child_process');
-
   // Find the Python script
   const scriptPath = join(extensionPath, 'scripts', 'ocr.py');
   if (!existsSync(scriptPath)) {
@@ -142,8 +138,6 @@ function registerSetupTool(ctx: any): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute(_input: any, exec: any) {
-      const { execSync } = await import('node:child_process');
-
       const lines: string[] = ['## PP-OCRv6 Setup\n'];
 
       // Step 1: Find valid Python (3.10 - 3.12)
@@ -316,8 +310,6 @@ function registerStatusTool(ctx: any): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'low',
     async execute() {
-      const { execSync } = await import('node:child_process');
-
       const lines: string[] = ['## PP-OCRv6 Status\n'];
 
       // Check Python
