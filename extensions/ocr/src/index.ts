@@ -592,9 +592,10 @@ async function detectText(imagePath: string): Promise<TextBox[]> {
   const outH = dims[2];
   const outW = dims[3];
 
-  // Adjust scale for actual output dimensions (4x is approximate)
-  const effScaleX = pp.scaleX * (pp.paddedW / 4) / outW;
-  const effScaleY = pp.scaleY * (pp.paddedH / 4) / outH;
+  // PP-OCRv6 detection model outputs same spatial dims as input (no downsampling).
+  // Scale maps from output coords to original image coords.
+  const effScaleX = pp.scaleX;
+  const effScaleY = pp.scaleY;
 
   return dbPostProcess(outputData, outH, outW, effScaleX, effScaleY);
 }
