@@ -94,45 +94,34 @@ function recYmlMirrorUrl(tier: Tier): string {
 async function downloadFile(url: string, dest: string, logger: finch.Logger, fallbackUrl?: string): Promise<void> {
   mkdirSync(dirname(dest), { recursive: true });
 
-  logger.info(`downloading: ${url}`);
-
-  let response: Response;
-  try {
-    response = await fetch(url);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (err) {
-    if (fallbackUrl) {
-      logger.warn(`primary URL unreachable, trying mirror: ${fallbackUrl}`);
-      response = await fetch(fallbackUrl);
-      if (!response.ok) {
-        throw new Error(`Mirror download failed: ${response.status} ${response.statusText}`);
-      }
-      const buffer = await response.arrayBuffer();
-      writeFileSync(dest, Buffer.from(buffer));
-      logger.info(`saved to ${dest} (${buffer.byteLength} bytes) from mirror`);
-      return;
-    }
-    throw err;
+  // Try primary with a 15s timeout — if it hangs (common in China), fast-fail to mirror
+  async function tryFetch(u: string, signal?: AbortSignal): Promise<Response> {
+    const resp = await fetch(u, { signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp;
   }
 
-  if (!response.ok) {
-    if (fallbackUrl) {
-      logger.warn(`primary URL failed (${response.status}), trying mirror: ${fallbackUrl}`);
-      const fallbackResponse = await fetch(fallbackUrl);
-      if (!fallbackResponse.ok) {
-        throw new Error(`Primary failed (${response.status}) and mirror failed (${fallbackResponse.status})`);
-      }
-      const buffer = await fallbackResponse.arrayBuffer();
-      writeFileSync(dest, Buffer.from(buffer));
-      logger.info(`saved to ${dest} (${buffer.byteLength} bytes) from mirror`);
-      return;
+  async function tryDownload(u: string, label: string): Promise<boolean> {
+    logger.info(`downloading (${label}): ${u}`);
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      const resp = await tryFetch(u, controller.signal);
+      clearTimeout(timer);
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      writeFileSync(dest, buffer);
+      logger.info(`saved to ${dest} (${buffer.byteLength} bytes) from ${label}`);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`${label} failed: ${msg}`);
+      return false;
     }
-    throw new Error(`Failed to download: ${response.status} ${response.statusText}`);
   }
 
-  const buffer = await response.arrayBuffer();
-  writeFileSync(dest, Buffer.from(buffer));
-  logger.info(`saved to ${dest} (${buffer.byteLength} bytes)`);
+  if (await tryDownload(url, 'primary')) return;
+  if (fallbackUrl && (await tryDownload(fallbackUrl, 'mirror'))) return;
+  throw new Error(`Failed to download from both primary and mirror`);
 }
 
 /**
@@ -186,26 +175,35 @@ async function ensureCharsJson(modelsDir: string, tier: Tier, logger: finch.Logg
   const ymlMirrorUrl = recYmlMirrorUrl(tier);
   const ymlDest = join(modelsDir, 'inference.yml');
 
-  logger.info(`downloading inference.yml from ${ymlUrl}`);
-  let response: Response;
-  try {
-    response = await fetch(ymlUrl);
-  } catch {
-    logger.warn(`inference.yml primary unreachable, trying mirror: ${ymlMirrorUrl}`);
-    response = await fetch(ymlMirrorUrl);
+  async function tryFetchYml(u: string, signal?: AbortSignal): Promise<Response> {
+    const resp = await fetch(u, { signal });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp;
   }
 
-  if (!response.ok) {
-    logger.warn(`inference.yml primary failed (${response.status}), trying mirror: ${ymlMirrorUrl}`);
-    response = await fetch(ymlMirrorUrl);
+  async function tryDownloadYml(u: string, label: string): Promise<boolean> {
+    logger.info(`downloading inference.yml (${label}): ${u}`);
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15_000);
+      const resp = await tryFetchYml(u, controller.signal);
+      clearTimeout(timer);
+      const text = await resp.text();
+      writeFileSync(ymlDest, text);
+      logger.info(`inference.yml saved from ${label}`);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`inference.yml ${label} failed: ${msg}`);
+      return false;
+    }
   }
 
-  if (!response.ok) {
-    throw new Error(`Failed to download inference.yml from both sources: ${response.status} ${response.statusText}`);
-  }
+  let ymlOk = await tryDownloadYml(ymlUrl, 'primary');
+  if (!ymlOk && ymlMirrorUrl) ymlOk = await tryDownloadYml(ymlMirrorUrl, 'mirror');
+  if (!ymlOk) throw new Error('Failed to download inference.yml from both sources');
 
-  const yamlContent = await response.text();
-  writeFileSync(ymlDest, yamlContent);
+  const yamlContent = readFileSync(ymlDest, 'utf-8');
 
   const chars = extractCharacterDict(yamlContent);
   logger.info(`extracted ${chars.length} characters from character_dict`);
