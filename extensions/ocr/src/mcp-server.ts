@@ -116,15 +116,20 @@ function loadCharset(): string[] {
 
 // ── Normalization constants (from PP-OCRv6 inference.yml) ───────────────────
 
-const MEAN = [0.485, 0.456, 0.406];
-const STD = [0.229, 0.224, 0.225];
+// Detection normalization (ImageNet) — matches PP-OCRv6 det inference.yml
+const DET_MEAN = [0.485, 0.456, 0.406];
+const DET_STD  = [0.229, 0.224, 0.225];
+
+// Recognition normalization — (pixel/255 - 0.5) / 0.5, maps [0,255] → [-1,1]
+const REC_MEAN = [0.5, 0.5, 0.5];
+const REC_STD  = [0.5, 0.5, 0.5];
 
 /**
  * Convert an RGB raw buffer to a normalized CHW float32 tensor.
  * Performs RGB → BGR channel swap during the conversion.
  * Formula: (pixel / 255.0 - mean[c]) / std[c]
  */
-function rgbToNormalizedCHW(rgb: Buffer, height: number, width: number): Float32Array {
+function rgbToNormalizedCHW(rgb: Buffer, height: number, width: number, mean: number[], std: number[]): Float32Array {
   const tensor = new Float32Array(3 * height * width);
   const area = height * width;
   for (let h = 0; h < height; h++) {
@@ -133,9 +138,9 @@ function rgbToNormalizedCHW(rgb: Buffer, height: number, width: number): Float32
       const r = rgb[idx];
       const g = rgb[idx + 1];
       const b = rgb[idx + 2];
-      tensor[0 * area + h * width + w] = (b / 255.0 - MEAN[0]) / STD[0]; // B
-      tensor[1 * area + h * width + w] = (g / 255.0 - MEAN[1]) / STD[1]; // G
-      tensor[2 * area + h * width + w] = (r / 255.0 - MEAN[2]) / STD[2]; // R
+      tensor[0 * area + h * width + w] = (b / 255.0 - mean[0]) / std[0]; // B
+      tensor[1 * area + h * width + w] = (g / 255.0 - mean[1]) / std[1]; // G
+      tensor[2 * area + h * width + w] = (r / 255.0 - mean[2]) / std[2]; // R
     }
   }
   return tensor;
@@ -184,7 +189,7 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
     .raw()
     .toBuffer();
 
-  const tensor = rgbToNormalizedCHW(buffer, paddedH, paddedW);
+  const tensor = rgbToNormalizedCHW(buffer, paddedH, paddedW, DET_MEAN, DET_STD);
 
   // DB model typically downsamples by 4x; scale from output coords to original
   const stride = 4;
@@ -239,7 +244,7 @@ async function preprocessForRecognition(
     .raw()
     .toBuffer();
 
-  return rgbToNormalizedCHW(buffer, targetH, targetW);
+  return rgbToNormalizedCHW(buffer, targetH, targetW, REC_MEAN, REC_STD);
 }
 
 // ── DB Post-Processing ──────────────────────────────────────────────────────
@@ -390,7 +395,8 @@ function decodeRecOutput(data: Float32Array, dims: number[]): string {
   const seqLen = dims[1];
   const numClasses = dims[2];
   const chars = loadCharset();
-  const blankIdx = numClasses - 1;
+  // PP-OCR CTC: blank at index 0, charset at indices 1..N
+  const blankIdx = 0;
 
   let result = '';
   let prevCharIdx = -1;
@@ -404,7 +410,9 @@ function decodeRecOutput(data: Float32Array, dims: number[]): string {
       if (val > maxVal) { maxVal = val; maxIdx = c; }
     }
     if (maxIdx !== blankIdx && maxIdx !== prevCharIdx) {
-      if (maxIdx < chars.length) result += chars[maxIdx];
+      // maxIdx-1 because charset doesn't include blank at index 0
+      const charIdx = maxIdx - 1;
+      if (charIdx >= 0 && charIdx < chars.length) result += chars[charIdx];
     }
     prevCharIdx = maxIdx;
   }

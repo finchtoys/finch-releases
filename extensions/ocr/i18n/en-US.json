@@ -16,12 +16,8 @@
     }
   },
   "form.setup.title": "Set up PP-OCRv6 OCR",
-  "form.setup.description": "Select model tier and language. Models will be downloaded on first use.",
+  "form.setup.description": "Select recognition language. Models (~132 MB) will be downloaded on first use.",
   "form.setup.submit": "Download & Start",
-  "form.setup.tier.label": "Model Tier",
-  "form.setup.tier.options.tiny": "Tiny (~6 MB) — Fast & Lightweight",
-  "form.setup.tier.options.small": "Small (~30 MB) — Balanced",
-  "form.setup.tier.options.medium": "Medium (~132 MB) — Highest Accuracy (recommended)",
   "form.setup.language.label": "Language",
   "form.setup.language.options.ch+en": "Chinese + English",
   "form.setup.language.options.en": "English",
@@ -35,7 +31,6 @@
   "status.charsCount": "Character dictionary: {count} entries",
   "status.mcpServer": "**OCR MCP Server:** {status}",
   "status.availableTools": "**Available tools:** {tools}",
-  "error.invalidTier": "Invalid tier: {tier}",
   "error.downloadFailed": "Failed to download OCR models: {message}",
   "error.nativeDepsFailed": "Failed to install native dependencies (onnxruntime-node / sharp): {message}",
   "error.configSaveFailed": "Failed to save OCR MCP config: {message}",
@@ -50,6 +45,5 @@
   "error.mcpUnavailable": "MCP Client is not available. Please enable the MCP Client extension first.",
   "error.ocrFailed": "OCR recognition failed: {message}",
   "error.ocrNoResult": "OCR returned no result.",
-  "settings.tier.label": "Model Tier",
   "settings.language.label": "Language"
 }

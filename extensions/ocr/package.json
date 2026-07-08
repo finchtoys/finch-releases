@@ -68,26 +68,6 @@
     "settings": {
       "fields": [
         {
-          "key": "tier",
-          "type": "select",
-          "label": "Model Tier",
-          "default": "medium",
-          "options": [
-            {
-              "value": "tiny",
-              "label": "Tiny (~6 MB) — Fast & Lightweight"
-            },
-            {
-              "value": "small",
-              "label": "Small (~30 MB) — Balanced"
-            },
-            {
-              "value": "medium",
-              "label": "Medium (~132 MB) — Highest Accuracy (recommended)"
-            }
-          ]
-        },
-        {
           "key": "language",
           "type": "select",
           "label": "Language",

@@ -16,12 +16,8 @@
     }
   },
   "form.setup.title": "设置 PP-OCRv6 OCR",
-  "form.setup.description": "选择模型档位和识别语言，首次使用需要下载模型",
+  "form.setup.description": "选择识别语言，首次使用会下载模型（约132MB）",
   "form.setup.submit": "下载并启动",
-  "form.setup.tier.label": "模型档位",
-  "form.setup.tier.options.tiny": "Tiny (~6 MB) — 快速轻量",
-  "form.setup.tier.options.small": "Small (~30 MB) — 平衡",
-  "form.setup.tier.options.medium": "Medium (~132 MB) — 最高精度（推荐）",
   "form.setup.language.label": "识别语言",
   "form.setup.language.options.ch+en": "中文 + 英文",
   "form.setup.language.options.en": "英文",
@@ -35,7 +31,6 @@
   "status.charsCount": "字符字典: {count} 个条目",
   "status.mcpServer": "**OCR MCP 服务:** {status}",
   "status.availableTools": "**可用工具:** {tools}",
-  "error.invalidTier": "无效的模型档位: {tier}",
   "error.downloadFailed": "下载 OCR 模型失败: {message}",
   "error.nativeDepsFailed": "安装原生依赖失败（onnxruntime-node / sharp）: {message}",
   "error.configSaveFailed": "保存 OCR MCP 配置失败: {message}",
@@ -50,6 +45,5 @@
   "error.mcpUnavailable": "MCP Client 未启用。请先启用 MCP Client 扩展。",
   "error.ocrFailed": "OCR 识别失败: {message}",
   "error.ocrNoResult": "OCR 未返回结果。",
-  "settings.tier.label": "模型档位",
   "settings.language.label": "识别语言"
 }
