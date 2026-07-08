@@ -6,6 +6,83 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
+// ── Python Version Management ───────────────────────────────────────────────
+
+const PYTHON_MIN_VERSION = [3, 10];
+const PYTHON_MAX_VERSION = [3, 12];
+
+/**
+ * Check if a Python version is within the supported range (3.10 - 3.12).
+ */
+function isVersionInRange(versionStr: string): boolean {
+  const match = versionStr.match(/(\d+)\.(\d+)/);
+  if (!match) return false;
+  const major = parseInt(match[1]);
+  const minor = parseInt(match[2]);
+  if (major < PYTHON_MIN_VERSION[0] || (major === PYTHON_MIN_VERSION[0] && minor < PYTHON_MIN_VERSION[1])) {
+    return false;
+  }
+  if (major > PYTHON_MAX_VERSION[0] || (major === PYTHON_MAX_VERSION[0] && minor > PYTHON_MAX_VERSION[1])) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Find a valid Python command (3.10 - 3.12).
+ * Priority: venv > python3.12 > python3.11 > python3.10 > python3 (if in range) > python (if in range)
+ */
+function findPythonCommand(): { cmd: string; version: string } | null {
+  const { execSync } = require('node:child_process');
+
+  // Try venv first
+  const venvPaths = ['/tmp/ocr-venv/bin/python3.12', '/tmp/ocr-venv/bin/python3'];
+  for (const cmd of venvPaths) {
+    try {
+      const version = execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
+      if (isVersionInRange(version)) {
+        return { cmd, version };
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Try specific versions
+  const specificVersions = ['python3.12', 'python3.11', 'python3.10'];
+  for (const cmd of specificVersions) {
+    try {
+      const version = execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
+      if (isVersionInRange(version)) {
+        return { cmd, version };
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Try generic python3 and python
+  const genericCmds = ['python3', 'python'];
+  for (const cmd of genericCmds) {
+    try {
+      const version = execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
+      if (isVersionInRange(version)) {
+        return { cmd, version };
+      }
+    } catch { /* ignore */ }
+  }
+
+  return null;
+}
+
+/**
+ * Get the version of a Python command.
+ */
+function getPythonVersion(cmd: string): string | null {
+  try {
+    const { execSync } = require('node:child_process');
+    return execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
 // ── Python OCR ──────────────────────────────────────────────────────────────
 
 /**
@@ -20,47 +97,39 @@ async function ocrImageViaPython(imagePath: string, extensionPath: string): Prom
     throw new Error('OCR script not found. Please reinstall the extension.');
   }
 
-  // Try to find Python with paddleocr installed
-  const pythonCmds = [
-    '/tmp/ocr-venv/bin/python3.12',
-    '/tmp/ocr-venv/bin/python3',
-    'python3',
-    'python',
-  ];
-
-  let lastError: Error | null = null;
-  for (const cmd of pythonCmds) {
-    try {
-      const result = execSync(`${cmd} "${scriptPath}" "${imagePath}"`, {
-        timeout: 120_000,
-        stdio: 'pipe',
-        encoding: 'utf-8',
-      });
-
-      // Parse JSON output (last line, ignore warnings/logs)
-      const lines = result.trim().split('\n');
-      const jsonLine = lines[lines.length - 1];
-      const parsed = JSON.parse(jsonLine);
-
-      if (parsed.error) {
-        throw new Error(parsed.error);
-      }
-
-      if (parsed.lines && parsed.lines.length > 0) {
-        return {
-          text: parsed.lines.join('\n'),
-          confidence: parsed.confidence || 0,
-        };
-      }
-
-      return { text: 'No text detected in the image.', confidence: 0 };
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      continue;
-    }
+  // Find valid Python command (3.10 - 3.12)
+  const python = findPythonCommand();
+  if (!python) {
+    throw new Error('Python 3.10-3.12 not found. Please install Python 3.12: brew install python@3.12');
   }
 
-  throw lastError || new Error('No Python interpreter found. Please install Python 3.12+ with paddleocr.');
+  try {
+    const result = execSync(`${python.cmd} "${scriptPath}" "${imagePath}"`, {
+      timeout: 120_000,
+      stdio: 'pipe',
+      encoding: 'utf-8',
+    });
+
+    // Parse JSON output (last line, ignore warnings/logs)
+    const lines = result.trim().split('\n');
+    const jsonLine = lines[lines.length - 1];
+    const parsed = JSON.parse(jsonLine);
+
+    if (parsed.error) {
+      throw new Error(parsed.error);
+    }
+
+    if (parsed.lines && parsed.lines.length > 0) {
+      return {
+        text: parsed.lines.join('\n'),
+        confidence: parsed.confidence || 0,
+      };
+    }
+
+    return { text: 'No text detected in the image.', confidence: 0 };
+  } catch (err) {
+    throw err instanceof Error ? err : new Error(String(err));
+  }
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────
@@ -77,64 +146,69 @@ function registerSetupTool(ctx: any): void {
 
       const lines: string[] = ['## PP-OCRv6 Setup\n'];
 
-      // Step 1: Check Python availability
-      const pythonCmds = ['/tmp/ocr-venv/bin/python3.12', '/tmp/ocr-venv/bin/python3', 'python3', 'python'];
-      let pythonCmd: string | null = null;
-      let pythonVersion = 'unknown';
+      // Step 1: Find valid Python (3.10 - 3.12)
+      const python = findPythonCommand();
 
-      for (const cmd of pythonCmds) {
-        try {
-          pythonVersion = execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
-          pythonCmd = cmd;
-          break;
-        } catch {
-          continue;
+      if (!python) {
+        // Check if Python exists but wrong version
+        const allPythonCmds = ['python3', 'python', 'python3.14', 'python3.13', 'python3.9', 'python3.8'];
+        let foundWrongVersion: { cmd: string; version: string } | null = null;
+
+        for (const cmd of allPythonCmds) {
+          const version = getPythonVersion(cmd);
+          if (version) {
+            foundWrongVersion = { cmd, version };
+            break;
+          }
         }
-      }
 
-      if (!pythonCmd) {
-        lines.push('❌ **Python not found**');
-        lines.push('');
-        lines.push('**Required:** Python 3.10 - 3.12');
-        lines.push('');
-        lines.push('**Install Python 3.12:**');
-        lines.push('- **macOS:** `brew install python@3.12`');
-        lines.push('- **Ubuntu/Debian:** `sudo apt install python3.12`');
-        lines.push('- **Windows:** Download from https://www.python.org/downloads/');
+        if (foundWrongVersion) {
+          const match = foundWrongVersion.version.match(/(\d+)\.(\d+)/);
+          const major = match ? parseInt(match[1]) : 0;
+          const minor = match ? parseInt(match[2]) : 0;
+
+          if (major > 3 || (major === 3 && minor > 12)) {
+            lines.push(`❌ **Python version too new:** ${foundWrongVersion.version}`);
+            lines.push('');
+            lines.push('**Required:** Python 3.10 - 3.12');
+            lines.push('PaddlePaddle does not support Python 3.13+ yet.');
+            lines.push('');
+            lines.push('**Install Python 3.12:**');
+            lines.push('```bash');
+            lines.push('brew install python@3.12');
+            lines.push('```');
+          } else {
+            lines.push(`❌ **Python version too old:** ${foundWrongVersion.version}`);
+            lines.push('');
+            lines.push('**Required:** Python 3.10 - 3.12');
+            lines.push('');
+            lines.push('**Install Python 3.12:**');
+            lines.push('```bash');
+            lines.push('brew install python@3.12');
+            lines.push('```');
+          }
+        } else {
+          lines.push('❌ **Python not found**');
+          lines.push('');
+          lines.push('**Required:** Python 3.10 - 3.12');
+          lines.push('');
+          lines.push('**Install Python 3.12:**');
+          lines.push('- **macOS:** `brew install python@3.12`');
+          lines.push('- **Ubuntu/Debian:** `sudo apt install python3.12`');
+          lines.push('- **Windows:** Download from https://www.python.org/downloads/');
+        }
         lines.push('');
         lines.push('After installing Python, run `setup_ocr` again.');
         return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
       }
 
-      lines.push(`✅ **Python:** ${pythonCmd} (${pythonVersion})`);
-
-      // Check Python version (need 3.10 - 3.12)
-      const versionMatch = pythonVersion.match(/(\d+)\.(\d+)/);
-      if (versionMatch) {
-        const major = parseInt(versionMatch[1]);
-        const minor = parseInt(versionMatch[2]);
-        if (major < 3 || (major === 3 && minor < 10)) {
-          lines.push('');
-          lines.push(`❌ **Python version too old:** ${pythonVersion}`);
-          lines.push('**Required:** Python 3.10 - 3.12');
-          lines.push('Please upgrade Python and try again.');
-          return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
-        }
-        if (major > 3 || (major === 3 && minor > 12)) {
-          lines.push('');
-          lines.push(`❌ **Python version too new:** ${pythonVersion}`);
-          lines.push('**Required:** Python 3.10 - 3.12');
-          lines.push('PaddlePaddle does not support Python 3.13+ yet.');
-          lines.push('Please install Python 3.12: `brew install python@3.12`');
-          return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
-        }
-      }
+      lines.push(`✅ **Python:** ${python.cmd} (${python.version})`);
 
       // Step 2: Check PaddleOCR
       let paddleocrInstalled = false;
       let paddleocrVersion = 'unknown';
       try {
-        paddleocrVersion = execSync(`${pythonCmd} -c "import paddleocr; print(paddleocr.__version__)"`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
+        paddleocrVersion = execSync(`${python.cmd} -c "import paddleocr; print(paddleocr.__version__)"`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
         paddleocrInstalled = true;
         lines.push(`✅ **PaddleOCR:** installed (v${paddleocrVersion})`);
       } catch {
@@ -156,23 +230,14 @@ function registerSetupTool(ctx: any): void {
         lines.push('⏳ **Installing...** (this may take 2-5 minutes on first run)');
 
         try {
-          // Try to install in the venv first
-          if (pythonCmd.includes('ocr-venv')) {
-            lines.push('Installing in existing virtual environment...');
-            execSync(`${pythonCmd} -m pip install paddleocr paddlepaddle --timeout 120`, {
-              timeout: 300_000,
-              stdio: 'pipe',
-            });
-          } else {
-            // Create venv and install
-            lines.push('Creating virtual environment...');
-            execSync('python3 -m venv /tmp/ocr-venv', { timeout: 60_000, stdio: 'pipe' });
-            lines.push('Installing PaddleOCR in virtual environment...');
-            execSync('/tmp/ocr-venv/bin/python3 -m pip install paddleocr paddlepaddle --timeout 120', {
-              timeout: 300_000,
-              stdio: 'pipe',
-            });
-          }
+          // Create venv with the valid Python
+          lines.push(`Creating virtual environment with ${python.cmd}...`);
+          execSync(`${python.cmd} -m venv /tmp/ocr-venv`, { timeout: 60_000, stdio: 'pipe' });
+          lines.push('Installing PaddleOCR in virtual environment...');
+          execSync('/tmp/ocr-venv/bin/python3 -m pip install paddleocr paddlepaddle --timeout 120', {
+            timeout: 300_000,
+            stdio: 'pipe',
+          });
 
           // Verify installation
           paddleocrVersion = execSync('/tmp/ocr-venv/bin/python3 -c "import paddleocr; print(paddleocr.__version__)"', {
@@ -198,11 +263,13 @@ function registerSetupTool(ctx: any): void {
             lines.push('1. **Use a faster network** (WiFi instead of mobile)');
             lines.push('2. **Use a mirror** (for China users):');
             lines.push('   ```bash');
+            lines.push(`   ${python.cmd} -m venv /tmp/ocr-venv`);
+            lines.push('   source /tmp/ocr-venv/bin/activate');
             lines.push('   pip install paddleocr paddlepaddle -i https://pypi.tuna.tsinghua.edu.cn/simple');
             lines.push('   ```');
             lines.push('3. **Install manually** in terminal:');
             lines.push('   ```bash');
-            lines.push('   python3 -m venv /tmp/ocr-venv');
+            lines.push(`   ${python.cmd} -m venv /tmp/ocr-venv`);
             lines.push('   source /tmp/ocr-venv/bin/activate');
             lines.push('   pip install paddleocr paddlepaddle');
             lines.push('   ```');
@@ -211,7 +278,7 @@ function registerSetupTool(ctx: any): void {
             lines.push('');
             lines.push('**Please install manually:**');
             lines.push('```bash');
-            lines.push('python3 -m venv /tmp/ocr-venv');
+            lines.push(`${python.cmd} -m venv /tmp/ocr-venv`);
             lines.push('source /tmp/ocr-venv/bin/activate');
             lines.push('pip install paddleocr paddlepaddle');
             lines.push('```');
@@ -254,27 +321,14 @@ function registerStatusTool(ctx: any): void {
       const lines: string[] = ['## PP-OCRv6 Status\n'];
 
       // Check Python
-      const pythonCmds = ['/tmp/ocr-venv/bin/python3.12', 'python3', 'python'];
-      let pythonCmd: string | null = null;
-      let pythonVersion = 'unknown';
-
-      for (const cmd of pythonCmds) {
-        try {
-          pythonVersion = execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
-          pythonCmd = cmd;
-          break;
-        } catch {
-          continue;
-        }
-      }
-
-      lines.push(`**Python:** ${pythonCmd ? `✅ ${pythonCmd}` : '❌ not found'}`);
-      if (pythonCmd) {
-        lines.push(`**Version:** ${pythonVersion}`);
+      const python = findPythonCommand();
+      lines.push(`**Python:** ${python ? `✅ ${python.cmd}` : '❌ not found (3.10-3.12 required)'}`);
+      if (python) {
+        lines.push(`**Version:** ${python.version}`);
 
         // Check PaddleOCR
         try {
-          execSync(`${pythonCmd} -c "import paddleocr; print(paddleocr.__version__)"`, { stdio: 'pipe' });
+          execSync(`${python.cmd} -c "import paddleocr; print(paddleocr.__version__)"`, { stdio: 'pipe' });
           lines.push('**PaddleOCR:** ✅ installed');
         } catch {
           lines.push('**PaddleOCR:** ❌ not installed');
