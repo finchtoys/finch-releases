@@ -10,8 +10,7 @@
     "categories": [
       "developer"
     ],
-    "featured": true,
-    "version": "0.2.5"
+    "featured": true
   },
   {
     "id": "mcp",
@@ -25,8 +24,7 @@
     "categories": [
       "developer"
     ],
-    "featured": true,
-    "version": "1.1.18"
+    "featured": true
   },
   {
     "id": "mini-tool-demo",
@@ -38,8 +36,7 @@
     "extensionType": "official",
     "categories": [
       "developer"
-    ],
-    "version": "0.1.1"
+    ]
   },
   {
     "id": "tavily-search",
@@ -52,7 +49,6 @@
     "categories": [
       "research"
     ],
-    "featured": true,
-    "version": "0.1.7"
+    "featured": true
   }
 ]
