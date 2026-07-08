@@ -437,6 +437,16 @@ declare module 'finch' {
      * ]
      */
     readonly width?: 'full' | '1/2' | '1/3' | '2/3';
+    /**
+     * 可选引导链接，渲染在字段下方（`description` 之后）。用于把用户引到服务商注册页
+     * 获取 API Key 等外部页面，例如 password 字段下的「去注册获取 Key」。点击通过系统
+     * 默认浏览器打开外部 URL。
+     *
+     * @example
+     * { key: 'apiKey', label: 'API Key', type: 'password', secret: true,
+     *   link: { label: '去 Tavily 注册获取 Key', url: 'https://app.tavily.com' } }
+     */
+    readonly link?: { readonly label: string; readonly url: string };
   }
 
   /**

@@ -92,9 +92,13 @@ Recommended field types:
 
 Tips:
 
-- Use `secret: true` for sensitive values.
+- Use `secret: true` for sensitive values. Password fields render a built-in
+  show/hide (eye) toggle so users can verify what they typed.
 - Use `width` for side-by-side layout.
 - Keep `textarea` for longer freeform content.
+- Use `link: { label, url }` to add a guidance link under a field — e.g. point
+  users to a provider's signup page to obtain an API key. Clicking opens the URL
+  in the system browser.
 - Let the user cancel or timeout cleanly.
 
 Example:
@@ -107,7 +111,13 @@ const result = await exec.ui.requestForm({
     { key: 'name', label: 'Name', type: 'text', required: true },
     { key: 'host', label: 'Host', type: 'text', width: '2/3' },
     { key: 'port', label: 'Port', type: 'number', width: '1/3' },
-    { key: 'apiKey', label: 'API Key', type: 'password', secret: true }
+    {
+      key: 'apiKey',
+      label: 'API Key',
+      type: 'password',
+      secret: true,
+      link: { label: 'Get an API key', url: 'https://app.tavily.com' }
+    }
   ]
 });
 ```
