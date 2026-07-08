@@ -1,7 +1,7 @@
 {
   "name": "@finch.app/ext-ocr",
   "version": "0.1.0",
-  "description": "OCR extension powered by PP-OCRv6 — extract text from images locally.",
+  "description": "OCR extension powered by PP-OCRv6 — extract text from images using Python PaddleOCR.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
@@ -16,14 +16,13 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "node build.mjs",
-    "postinstall": "node scripts/clean-platforms.mjs"
+    "build": "node build.mjs"
   },
   "finch": {
     "manifestVersion": 1,
     "id": "PP-OCRv6",
     "name": "PP-OCRv6",
-    "description": "Extract text from images using PP-OCRv6 ONNX models — supports 50 languages with high accuracy, fully local.",
+    "description": "Extract text from images using PP-OCRv6 via Python PaddleOCR — supports 50 languages with high accuracy.",
     "toolMeta": {
       "name": "PP-OCRv6"
     },
@@ -63,10 +62,7 @@
       "secrets": []
     }
   },
-  "dependencies": {
-    "onnxruntime-node": "^1.22.0",
-    "sharp": "^0.34.0"
-  },
+  "dependencies": {},
   "files": [
     "dist/",
     "i18n/",
@@ -79,10 +75,5 @@
     "@types/node": "^26.1.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.6.0"
-  },
-  "allowScripts": {
-    "esbuild@0.28.1": true,
-    "onnxruntime-node@1.27.0": true,
-    "sharp@0.34.5": true
   }
 }

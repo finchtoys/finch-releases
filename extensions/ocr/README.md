@@ -1,67 +1,91 @@
 # PP-OCRv6
 
-PP-OCRv6 uses PP-OCRv6 medium ONNX models for fully local OCR — no cloud API calls, no data leaves your machine. Inference runs directly in the extension process via onnxruntime-node.
+PP-OCRv6 uses Python PaddleOCR for high-accuracy OCR — supports 50+ languages with adaptive preprocessing and retry logic.
 
 ## Architecture
 
 ```
-setup_ocr ──→ download models from HuggingFace → cache to extension-data/ocr/models/
-                                ↓
-                         onnxruntime-node InferenceSession
-                                ↓
- ocr_image ──→ sharp decode → det model (text region detection)
-                                ↓
-                         rec model (character recognition)
-                                ↓
-                         CTC decode → recognized text
+ocr_image ──→ Python PaddleOCR (high-accuracy params)
+                    │
+                    ├── First attempt: default preprocessing
+                    │
+                    ├── If confidence < 0.85 or few lines:
+                    │       └── Enhanced preprocessing (upscale 2x, normalize, sharpen)
+                    │       └── Second OCR attempt
+                    │
+                    └── Return best result
 ```
 
-No MCP server. No child process. All inference is in-process.
+Uses Python PaddleOCR for inference. JS handles the extension interface and calls Python via subprocess.
 
-## Download mirror
+## Prerequisites
 
-This extension downloads models from HuggingFace on first use (~132 MB for medium, cached to `extension-data/ocr/models/`). For users in mainland China, the download auto-falls back to `hf-mirror.com` if `huggingface.co` is unreachable (>15s timeout):
+Python 3.12+ with PaddleOCR installed:
 
-```
-primary (huggingface.co) ── 15s timeout → fallback (hf-mirror.com)
+```bash
+# Option 1: Virtual environment (recommended)
+python3 -m venv /tmp/ocr-venv
+source /tmp/ocr-venv/bin/activate
+pip install paddleocr paddlepaddle
+
+# Option 2: System-wide
+pip install paddleocr paddlepaddle
 ```
 
 ## Usage
 
 1. Enable the **PP-OCRv6** extension.
-2. (Optional) Set your preferred language in the extension's Settings panel.
-3. Ask Finch: `帮我设置 OCR`. The `setup_ocr` tool will download models and load them into memory.
-4. Send an image and ask: `识别这张图里的文字`. The `ocr_image` tool extracts text with bounding boxes.
+2. (Optional) Run `setup_ocr` to check Python environment.
+3. Send an image and ask: `识别这张图里的文字`. The `ocr_image` tool extracts text.
 
 ## Tools
 
-- `setup_ocr`: select recognition language, download ONNX models from HuggingFace, load models into memory.
-- `ocr_status`: check cached models and in-memory model loading status.
-- `ocr_image`: detect text regions and recognize characters from an image (shows a file-picker form).
+- `setup_ocr`: Check Python environment and PaddleOCR installation.
+- `ocr_status`: Check Python and PaddleOCR availability.
+- `ocr_image`: Extract text from an image using PP-OCRv6.
 
-## Settings
+## High-Accuracy Parameters
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `language` | select | `ch+en` | Recognition language: ch+en / en / ch / ch+en+ja |
+The Python script uses optimized parameters for better accuracy:
 
-Configure in Finch → Toolcase → Extensions → PP-OCRv6 → Settings.
+| Parameter | Default | Our Value | Description |
+|-----------|---------|-----------|-------------|
+| `text_det_limit_side_len` | 960 | 1536 | Higher resolution for better detection |
+| `text_det_thresh` | 0.3 | 0.2 | Lower threshold for more sensitive detection |
+| `text_det_box_thresh` | 0.6 | 0.4 | Lower threshold for box filtering |
+
+## Adaptive Preprocessing
+
+When OCR confidence is low (< 85%) or few text lines are detected, the extension automatically:
+
+1. Upscales small images (2x for images < 1500px)
+2. Normalizes contrast
+3. Applies light sharpening
+4. Runs OCR again and uses the better result
 
 ## Permissions
 
-- `filesystem: readwrite`: writes model files to `extension-data/ocr/models/` and config to `extension-data/ocr/models/ocr-config.json`.
-- `network: true`: downloads ONNX models from HuggingFace (or mirror) on first use.
-- `shell: true`: runs `npm install` to install native dependencies (onnxruntime-node, sharp) on first setup.
+- `filesystem: readwrite`: reads image files for OCR.
+- `shell: true`: calls Python PaddleOCR via subprocess.
 
 ## Image formats
 
-PNG, JPG, WebP, TIFF, AVIF are supported via `sharp`. PDF is not supported directly — convert to images first.
+PNG, JPG, WebP, TIFF, BMP are supported. PDF is not supported directly — convert to images first.
 
 ## Privacy
 
-All OCR inference runs locally. No images or extracted text are sent to any cloud service. Network access is only used for model downloads.
+All OCR inference runs locally via Python PaddleOCR. No images or extracted text are sent to any cloud service.
 
 ## Dependencies
 
-- `onnxruntime-node` — ONNX Runtime for Node.js (native binary)
-- `sharp` — high-performance image processing (native binary)
+- Python 3.12+
+- `paddleocr` — PaddleOCR Python package
+- `paddlepaddle` — PaddlePaddle deep learning framework
+
+## Troubleshooting
+
+If OCR fails with "No Python interpreter found":
+
+1. Check Python is installed: `python3 --version`
+2. Check PaddleOCR is installed: `python3 -c "import paddleocr"`
+3. If using venv, make sure it's activated or use full path: `/tmp/ocr-venv/bin/python3`
