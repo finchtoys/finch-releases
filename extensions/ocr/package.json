@@ -20,7 +20,7 @@
   },
   "finch": {
     "manifestVersion": 1,
-    "id": "ocr",
+    "id": "PP-OCRv6",
     "name": "PP-OCRv6",
     "description": "Extract text from images using PP-OCRv6 ONNX models — supports 50 languages with high accuracy, fully local.",
     "toolMeta": {
