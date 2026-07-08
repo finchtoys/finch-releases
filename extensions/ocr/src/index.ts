@@ -37,7 +37,10 @@ interface McpClientCapability {
 }
 
 function mcpServersFile(ctx: finch.ExtensionContext): string {
-  return join(dirname(ctx.storagePath), 'mcp', 'servers.json');
+  // MCP Client's storagePath is ~/.finch/mcp/ — servers.json lives there.
+  // Our storagePath is ~/.finch/extension-data/ocr/, so go up two levels
+  // to reach ~/.finch/, then into mcp/servers.json.
+  return join(dirname(dirname(ctx.storagePath)), 'mcp', 'servers.json');
 }
 
 function readServers(file: string): ServersFile {
