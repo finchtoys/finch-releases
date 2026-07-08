@@ -32,8 +32,8 @@ function isVersionInRange(versionStr: string): boolean {
  * Find a valid Python command (3.10 - 3.12).
  * Priority: venv > python3.12 > python3.11 > python3.10 > python3 (if in range) > python (if in range)
  */
-function findPythonCommand(): { cmd: string; version: string } | null {
-  const { execSync } = require('node:child_process');
+async function findPythonCommand(): Promise<{ cmd: string; version: string } | null> {
+  const { execSync } = await import('node:child_process');
 
   // Try venv first
   const venvPaths = ['/tmp/ocr-venv/bin/python3.12', '/tmp/ocr-venv/bin/python3'];
@@ -74,9 +74,9 @@ function findPythonCommand(): { cmd: string; version: string } | null {
 /**
  * Get the version of a Python command.
  */
-function getPythonVersion(cmd: string): string | null {
+async function getPythonVersion(cmd: string): Promise<string | null> {
   try {
-    const { execSync } = require('node:child_process');
+    const { execSync } = await import('node:child_process');
     return execSync(`${cmd} --version`, { stdio: 'pipe', encoding: 'utf-8' }).trim();
   } catch {
     return null;
@@ -98,7 +98,7 @@ async function ocrImageViaPython(imagePath: string, extensionPath: string): Prom
   }
 
   // Find valid Python command (3.10 - 3.12)
-  const python = findPythonCommand();
+  const python = await findPythonCommand();
   if (!python) {
     throw new Error('Python 3.10-3.12 not found. Please install Python 3.12: brew install python@3.12');
   }
@@ -147,7 +147,7 @@ function registerSetupTool(ctx: any): void {
       const lines: string[] = ['## PP-OCRv6 Setup\n'];
 
       // Step 1: Find valid Python (3.10 - 3.12)
-      const python = findPythonCommand();
+      const python = await findPythonCommand();
 
       if (!python) {
         // Check if Python exists but wrong version
@@ -155,7 +155,7 @@ function registerSetupTool(ctx: any): void {
         let foundWrongVersion: { cmd: string; version: string } | null = null;
 
         for (const cmd of allPythonCmds) {
-          const version = getPythonVersion(cmd);
+          const version = await getPythonVersion(cmd);
           if (version) {
             foundWrongVersion = { cmd, version };
             break;
@@ -321,7 +321,7 @@ function registerStatusTool(ctx: any): void {
       const lines: string[] = ['## PP-OCRv6 Status\n'];
 
       // Check Python
-      const python = findPythonCommand();
+      const python = await findPythonCommand();
       lines.push(`**Python:** ${python ? `✅ ${python.cmd}` : '❌ not found (3.10-3.12 required)'}`);
       if (python) {
         lines.push(`**Version:** ${python.version}`);
