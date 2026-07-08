@@ -7,7 +7,7 @@
     "rootDir": "src",
     "strict": true,
     "paths": {
-      "finch": ["../../packages/extension-api/finch.d.ts"]
+      "finch": ["./node_modules/@finch.app/minitool-api/finch.d.ts"]
     }
   },
   "include": ["src"]
