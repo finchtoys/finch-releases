@@ -1,0 +1,31 @@
+{
+  "name": "PP-OCRv6",
+  "description": "使用 PP-OCRv6 从图片中提取文字——支持 50 种语言，完全本地运行。",
+  "systemPrompt": "当用户上传图片、截图或要求提取图片中的文字时，调用 ocr_image 工具并传入图片文件路径。如果 PP-OCRv6 尚未配置，先调用 setup_ocr 下载模型。",
+  "toolMeta": { "name": "PP-OCRv6" },
+  "promptGuides": {
+    "setup-ocr": {
+      "title": "设置 OCR",
+      "description": "下载 PP-OCRv6 模型并配置 OCR",
+      "prompt": "帮我设置 OCR，下载模型并启动 OCR 服务"
+    },
+    "ocr-image": {
+      "title": "提取图片文字",
+      "description": "使用 PP-OCRv6 识别图片中的文字",
+      "prompt": "帮我识别这张图片里的文字"
+    }
+  },
+  "toast.saved.title": "OCR 配置已保存",
+  "toast.saved.description": "PP-OCRv6 模型已就绪，已加载到内存。",
+  "status.noModels": "**没有缓存的模型。** 运行 setup_ocr 下载模型。",
+  "status.cachedModels": "**已缓存的模型:**",
+  "status.charsCount": "字符字典: {count} 个条目",
+  "error.downloadFailed": "下载 OCR 模型失败: {message}",
+  "error.nativeDepsFailed": "安装原生依赖失败（onnxruntime-node / sharp）: {message}",
+  "error.configSaveFailed": "保存 OCR 配置失败: {message}",
+  "error.notConfigured": "PP-OCRv6 尚未配置，请先运行 setup_ocr。",
+  "error.noImagePath": "未提供图片路径。",
+  "error.fileNotFound": "文件不存在: {path}",
+  "error.ocrFailed": "OCR 识别失败: {message}",
+  "error.ocrNoResult": "OCR 未返回结果。",
+}
