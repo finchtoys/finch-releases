@@ -91,6 +91,7 @@
   "form.all-fields.bio.description": "支持多行文本",
   "form.all-fields.subscribe.label": "订阅通知",
   "form.all-fields.subscribe.description": "是否接收通知",
+  "form.all-fields.link.label": "访问 Finch 官网 →",
   "result.all-fields.cancelled": "表单已取消（原因：{reason}）",
   "result.all-fields.success": "✅ 表单提交成功！以下是填写的内容：",
 

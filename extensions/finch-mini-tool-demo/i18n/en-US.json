@@ -91,6 +91,7 @@
   "form.all-fields.bio.description": "Supports multi-line text",
   "form.all-fields.subscribe.label": "Subscribe to Notifications",
   "form.all-fields.subscribe.description": "Whether to receive notifications",
+  "form.all-fields.link.label": "Visit Finch Website →",
   "result.all-fields.cancelled": "Form cancelled (reason: {reason})",
   "result.all-fields.success": "✅ Form submitted! Here's what you entered:",
 

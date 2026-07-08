@@ -89,16 +89,18 @@ Recommended field types:
 - `number`
 - `select`
 - `boolean`
+- `link` — display-only clickable link (not an input); opens `url` in the system
+  browser. Produces no value and is not part of the submitted result.
 
 Tips:
 
 - Use `secret: true` for sensitive values. Password fields render a built-in
   show/hide (eye) toggle so users can verify what they typed.
-- Use `width` for side-by-side layout.
+- Use `width` for side-by-side layout — `link` fields honor `width` too, so you
+  can place a "Get an API key" link right next to the key input.
 - Keep `textarea` for longer freeform content.
-- Use `link: { label, url }` to add a guidance link under a field — e.g. point
-  users to a provider's signup page to obtain an API key. Clicking opens the URL
-  in the system browser.
+- Use a `type: 'link'` field to guide users to a provider's signup/API-key page.
+  Set `label` as the link text and `url` as the destination.
 - Let the user cancel or timeout cleanly.
 
 Example:
@@ -111,13 +113,9 @@ const result = await exec.ui.requestForm({
     { key: 'name', label: 'Name', type: 'text', required: true },
     { key: 'host', label: 'Host', type: 'text', width: '2/3' },
     { key: 'port', label: 'Port', type: 'number', width: '1/3' },
-    {
-      key: 'apiKey',
-      label: 'API Key',
-      type: 'password',
-      secret: true,
-      link: { label: 'Get an API key', url: 'https://app.tavily.com' }
-    }
+    { key: 'apiKey', label: 'API Key', type: 'password', secret: true, width: '2/3' },
+    { key: 'signup', label: 'Get an API key', type: 'link',
+      url: 'https://app.tavily.com', width: '1/3' } // sits next to apiKey
   ]
 });
 ```

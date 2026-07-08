@@ -82,6 +82,7 @@ function registerAllFieldsTool(ctx: finch.ExtensionContext) {
               ] },
             { key: 'bio', label: i.t('form.all-fields.bio.label'), type: 'textarea', placeholder: i.t('form.all-fields.bio.placeholder'), description: i.t('form.all-fields.bio.description') },
             { key: 'subscribe', label: i.t('form.all-fields.subscribe.label'), type: 'boolean', description: i.t('form.all-fields.subscribe.description'), default: true },
+            { key: 'finchLink', label: i.t('form.all-fields.link.label'), type: 'link', href: 'https://finchwork.app', width: 'full' } as any,
           ],
           timeoutMs: 120_000,
         });

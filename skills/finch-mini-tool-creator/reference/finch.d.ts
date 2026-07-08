@@ -411,7 +411,7 @@ declare module 'finch' {
     /** 表单值映射中的唯一 key。 */
     readonly key: string;
     readonly label: string;
-    readonly type: 'text' | 'password' | 'textarea' | 'number' | 'select' | 'boolean';
+    readonly type: 'text' | 'password' | 'textarea' | 'number' | 'select' | 'boolean' | 'link';
     readonly placeholder?: string;
     readonly description?: string;
     readonly required?: boolean;
@@ -438,15 +438,18 @@ declare module 'finch' {
      */
     readonly width?: 'full' | '1/2' | '1/3' | '2/3';
     /**
-     * 可选引导链接，渲染在字段下方（`description` 之后）。用于把用户引到服务商注册页
-     * 获取 API Key 等外部页面，例如 password 字段下的「去注册获取 Key」。点击通过系统
-     * 默认浏览器打开外部 URL。
+     * 仅 `type: 'link'` 字段使用：点击后由系统默认浏览器打开的外部 URL。link 字段是
+     * 纯展示元素（渲染为可点击链接，`label` 为显示文字），不产生表单值、不参与提交。
+     * 用于把用户引到服务商注册页获取 API Key 等外部页面，可配合 `width` 与其他字段并排。
      *
      * @example
-     * { key: 'apiKey', label: 'API Key', type: 'password', secret: true,
-     *   link: { label: '去 Tavily 注册获取 Key', url: 'https://app.tavily.com' } }
+     * fields: [
+     *   { key: 'apiKey', label: 'API Key', type: 'password', secret: true, width: '2/3' },
+     *   { key: 'signup', label: '去注册获取 Key', type: 'link',
+     *     url: 'https://app.tavily.com', width: '1/3' }, // 与 apiKey 同一行
+     * ]
      */
-    readonly link?: { readonly label: string; readonly url: string };
+    readonly url?: string;
   }
 
   /**
