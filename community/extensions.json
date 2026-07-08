@@ -11,7 +11,7 @@
       "developer"
     ],
     "featured": true,
-    "version": "0.2.3"
+    "version": "0.2.5"
   },
   {
     "id": "mcp",
@@ -38,7 +38,8 @@
     "extensionType": "official",
     "categories": [
       "developer"
-    ]
+    ],
+    "version": "0.1.1"
   },
   {
     "id": "tavily-search",
