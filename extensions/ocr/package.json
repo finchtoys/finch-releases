@@ -54,7 +54,6 @@
     },
     "contributes": {
       "tools": true,
-      "skills": true,
       "mcpServers": [
         {
           "name": "ocr",
