@@ -61,6 +61,7 @@
           "args": [
             "dist/mcp-server.js"
           ],
+          "cwd": "/Users/jinhan/finchnest/.finch/extensions/ocr",
           "description": "PP-OCRv6 MCP server — provides ocr_image, ocr_languages, ocr_status tools."
         }
       ]

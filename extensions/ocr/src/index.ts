@@ -1,11 +1,8 @@
 import type * as finch from 'finch';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const SERVER_NAME = 'ocr';
-
-// Stored during activate() for use in deactivate()
-let activeCtx: finch.ExtensionContext | null = null;
 const HF_BASE = 'https://huggingface.co/PaddlePaddle';
 const HF_MIRROR = 'https://hf-mirror.com/PaddlePaddle';
 
@@ -17,49 +14,10 @@ const TIER_INFO: Record<Tier, { detRepo: string; recRepo: string; detSize: strin
   medium: { detRepo: 'PP-OCRv6_medium_det_onnx', recRepo: 'PP-OCRv6_medium_rec_onnx', detSize: '59 MB',  recSize: '73 MB' },
 };
 
-interface McpServerConfig {
-  name: string;
-  command: string;
-  args?: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  description?: string;
-}
-
-interface ServersFile {
-  servers?: McpServerConfig[];
-}
-
 interface McpClientCapability {
   listServers(): Promise<string[]>;
   getServerStatuses?(): Promise<Array<{ name: string; status: string; toolCount: number }>>;
   listTools(server: string): Promise<Array<{ name: string }>>;
-}
-
-function mcpServersFile(ctx: finch.ExtensionContext): string {
-  // MCP Client's storagePath is ~/.finch/mcp/ — servers.json lives there.
-  // Our storagePath is ~/.finch/extension-data/ocr/, so go up two levels
-  // to reach ~/.finch/, then into mcp/servers.json.
-  return join(dirname(dirname(ctx.storagePath)), 'mcp', 'servers.json');
-}
-
-function readServers(file: string): ServersFile {
-  if (!existsSync(file)) return { servers: [] };
-  try {
-    const parsed = JSON.parse(readFileSync(file, 'utf-8')) as ServersFile;
-    return { servers: Array.isArray(parsed.servers) ? parsed.servers : [] };
-  } catch {
-    return { servers: [] };
-  }
-}
-
-function upsertServer(file: string, server: McpServerConfig): void {
-  mkdirSync(dirname(file), { recursive: true });
-  const data = readServers(file);
-  const next = (data.servers ?? []).filter((item) => item.name !== server.name);
-  next.push(server);
-  next.sort((a, b) => a.name.localeCompare(b.name));
-  writeFileSync(file, JSON.stringify({ servers: next }, null, 2) + '\n', 'utf-8');
 }
 
 function modelsDir(ctx: finch.ExtensionContext): string {
@@ -243,44 +201,6 @@ async function verifyWithMcpClient(ctx: finch.ExtensionContext): Promise<string>
   }
 }
 
-/** Remove a named server entry from servers.json, or delete the file if empty. */
-function removeServer(file: string, name: string): void {
-  if (!existsSync(file)) return;
-  let data: { servers: McpServerConfig[] } = { servers: [] };
-  try {
-    data = JSON.parse(readFileSync(file, 'utf-8'));
-  } catch { return; }
-  if (!Array.isArray(data.servers)) return;
-  data.servers = data.servers.filter((s) => s.name !== name);
-  if (data.servers.length === 0) {
-    unlinkSync(file);
-  } else {
-    writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-  }
-}
-
-function buildServer(
-  tier: Tier,
-  language: string,
-  detModelPath: string,
-  recModelPath: string,
-  charsFilePath: string,
-  configFilePath: string,
-  cwd: string,
-): McpServerConfig {
-  // Write config to a JSON file instead of using environment variables
-  const config = { detModelPath, recModelPath, charsFilePath, language, tier };
-  writeFileSync(configFilePath, JSON.stringify(config, null, 2), 'utf-8');
-
-  return {
-    name: SERVER_NAME,
-    command: 'node',
-    args: ['dist/mcp-server.js', configFilePath],
-    cwd,
-    description: `PP-OCRv6 ${tier} OCR server (${language}).`,
-  };
-}
-
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 function registerSetupTool(ctx: finch.ExtensionContext): void {
@@ -370,20 +290,10 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
         };
       }
 
-      // Write MCP server config
+      // Write MCP server config (read by mcp-server.js at startup)
       const configFilePath = join(mdlDir, 'mcp-config.json');
-      const server = buildServer(tier, language, detDest, recDest, charsFilePath, configFilePath, ctx.extension.extensionPath);
-      const file = mcpServersFile(ctx);
-
-      try {
-        upsertServer(file, server);
-      } catch (err) {
-        ctx.logger.error('failed to save OCR MCP config', err);
-        return {
-          content: [{ type: 'text', text: ctx.i18n.t('error.configSaveFailed', { message: err instanceof Error ? err.message : String(err) }) }],
-          isError: true,
-        };
-      }
+      const config = { detModelPath: detDest, recModelPath: recDest, charsFilePath, language, tier };
+      writeFileSync(configFilePath, JSON.stringify(config, null, 2), 'utf-8');
 
       await ctx.ui.showToast({
         title: ctx.i18n.t('toast.saved.title'),
@@ -547,7 +457,6 @@ function registerOcrImageTool(ctx: finch.ExtensionContext): void {
 // ── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(ctx: finch.ExtensionContext): void {
-  activeCtx = ctx;
   ctx.logger.info('PP-OCRv6 extension activating...');
 
   // Always register tools
@@ -567,14 +476,13 @@ export function activate(ctx: finch.ExtensionContext): void {
     const configPath = join(mdlDir, 'mcp-config.json');
 
     if (existsSync(detDest) && existsSync(recDest) && existsSync(charsDest)) {
-      ctx.logger.info(`models cached for tier=${tier}, auto-configuring MCP server`);
+      ctx.logger.info(`models cached for tier=${tier}, writing MCP config`);
       try {
-        const server = buildServer(tier as Tier, language, detDest, recDest, charsDest, configPath, ctx.extension.extensionPath);
-        const file = mcpServersFile(ctx);
-        upsertServer(file, server);
-        ctx.logger.info('MCP server auto-configured from settings');
+        const cfg = { detModelPath: detDest, recModelPath: recDest, charsFilePath: charsDest, language, tier };
+        writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
+        ctx.logger.info('MCP config written');
       } catch (err) {
-        ctx.logger.warn('auto-config failed', err);
+        ctx.logger.warn('config write failed', err);
       }
     } else {
       ctx.logger.info(`models not yet cached for tier=${tier}, run setup_ocr to download`);
@@ -587,15 +495,5 @@ export function activate(ctx: finch.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  // Remove ocr entry from servers.json so MCP Client disconnects and kills the process
-  if (activeCtx) {
-    try {
-      const file = mcpServersFile(activeCtx);
-      removeServer(file, SERVER_NAME);
-      activeCtx.logger.info('Removed OCR MCP server from servers.json');
-    } catch (err) {
-      activeCtx.logger.warn('Failed to remove OCR MCP server on deactivate', err);
-    }
-  }
-  activeCtx = null;
+  // MCP Client handles server lifecycle via contributes.mcpServers — no cleanup needed.
 }

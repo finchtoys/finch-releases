@@ -18,10 +18,16 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
-// ── Config from CLI arg (JSON file path) ─────────────────────────────────────
+// ── Config ──────────────────────────────────────────────────────────────────
 
-const CONFIG_PATH = process.argv[2];
+// Canonical config path: ~/.finch/extension-data/ocr/models/mcp-config.json
+// Also accepts argv[2] for manual testing.
+const CANONICAL_CONFIG = join(homedir(), '.finch', 'extension-data', 'ocr', 'models', 'mcp-config.json');
+const CONFIG_PATH = process.argv[2] || CANONICAL_CONFIG;
+
 interface McpConfig {
   detModelPath: string;
   recModelPath: string;
@@ -32,7 +38,6 @@ interface McpConfig {
 
 function loadConfig(): McpConfig {
   if (!CONFIG_PATH || !existsSync(CONFIG_PATH)) {
-    // No config file → return defaults (setup_ocr hasn't been run yet)
     return {
       detModelPath: '',
       recModelPath: '',
@@ -44,7 +49,7 @@ function loadConfig(): McpConfig {
   return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
 }
 
-const config = loadConfig();
+let config = loadConfig();
 const DET_MODEL_PATH = config.detModelPath;
 const REC_MODEL_PATH = config.recModelPath;
 const CHARS_PATH = config.charsFilePath;
@@ -406,6 +411,8 @@ function decodeRecOutput(data: Float32Array, dims: number[]): string {
 // ── Tool handlers ───────────────────────────────────────────────────────────
 
 async function handleOcrImage(imagePath: string): Promise<string> {
+  // Re-read config so setup_ocr changes take effect without MCP server restart
+  config = loadConfig();
   const boxes = await detectText(imagePath);
   if (boxes.length === 0) return 'No text detected in the image.';
 
