@@ -560,7 +560,12 @@ function decodeRecOutput(data: Float32Array, dims: number[]): string {
     if (maxIdx !== blankIdx && maxIdx !== prevCharIdx) {
       // maxIdx-1 because charset doesn't include blank at index 0
       const charIdx = maxIdx - 1;
-      if (charIdx >= 0 && charIdx < chars.length) result += chars[charIdx];
+      if (charIdx >= 0 && charIdx < chars.length) {
+        result += chars[charIdx];
+      } else if (charIdx === chars.length) {
+        // Extra class beyond charset = space (PP-OCRv6 has charset_size+1 outputs)
+        result += ' ';
+      }
     }
     prevCharIdx = maxIdx;
   }
