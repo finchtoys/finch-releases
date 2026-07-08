@@ -1,0 +1,34 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 0,
+  "workspaces": {
+    "": {
+      "name": "finch-releases",
+    },
+    "packages/extension-api": {
+      "name": "@finch/extension-api",
+      "version": "0.1.0",
+    },
+    "packages/extensions": {
+      "name": "@finch.app/extensions",
+      "version": "0.1.4",
+      "bin": {
+        "finch-extensions": "bin/extensions.mjs",
+      },
+    },
+    "packages/skills": {
+      "name": "@finch.app/skills",
+      "version": "0.1.7",
+      "bin": {
+        "finch-skills": "bin/skills.mjs",
+      },
+    },
+  },
+  "packages": {
+    "@finch.app/extensions": ["@finch.app/extensions@workspace:packages/extensions"],
+
+    "@finch.app/skills": ["@finch.app/skills@workspace:packages/skills"],
+
+    "@finch/extension-api": ["@finch/extension-api@workspace:packages/extension-api"],
+  }
+}

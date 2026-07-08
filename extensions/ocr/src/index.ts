@@ -248,7 +248,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       });
 
       if (!result.submitted) {
-        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason }) }] };
+        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason ?? 'cancelled' }) }] };
       }
 
       const tier = String(result.values.tier ?? 'medium') as Tier;
@@ -445,46 +445,46 @@ function registerOcrImageTool(ctx: finch.ExtensionContext): void {
     risk: 'low',
     async execute(_input, exec) {
       const result = await exec.ui.requestForm({
-        title: '选择图片',
-        description: '输入或拖放图片文件路径，PP-OCRv6 将提取其中的文字。',
-        submitLabel: '开始识别',
+        title: ctx.i18n.t('form.ocrImage.title'),
+        description: ctx.i18n.t('form.ocrImage.description'),
+        submitLabel: ctx.i18n.t('form.ocrImage.submit'),
         fields: [
           {
             key: 'imagePath',
-            label: '图片路径',
+            label: ctx.i18n.t('form.ocrImage.imagePath.label'),
             type: 'text',
             required: true,
-            placeholder: '/path/to/image.png 或拖放文件到此处',
+            placeholder: ctx.i18n.t('form.ocrImage.imagePath.placeholder'),
           },
         ],
       });
 
       if (!result.submitted) {
-        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason }) }] };
+        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason ?? 'cancelled' }) }] };
       }
 
       const imagePath = String(result.values.imagePath ?? '').trim();
       if (!imagePath) {
-        return { content: [{ type: 'text', text: '未提供图片路径。' }], isError: true };
+        return { content: [{ type: 'text', text: ctx.i18n.t('error.noImagePath') }], isError: true };
       }
 
       if (!existsSync(imagePath)) {
-        return { content: [{ type: 'text', text: `文件不存在: ${imagePath}` }], isError: true };
+        return { content: [{ type: 'text', text: ctx.i18n.t('error.fileNotFound', { path: imagePath }) }], isError: true };
       }
 
       // Call the MCP server's ocr_image tool via mcp.client capability
       if (!ctx.capabilities.has('mcp.client')) {
-        return { content: [{ type: 'text', text: 'MCP Client 未启用。请先启用 MCP Client 扩展。' }], isError: true };
+        return { content: [{ type: 'text', text: ctx.i18n.t('error.mcpUnavailable') }], isError: true };
       }
 
       const mcp = ctx.capabilities.get<McpClient>('mcp.client');
       try {
         const mcpResult = await mcp.callTool(SERVER_NAME, 'ocr_image', { imagePath }) as any;
-        const text = mcpResult?.content?.[0]?.text ?? 'OCR 未返回结果。';
+        const text = mcpResult?.content?.[0]?.text ?? ctx.i18n.t('error.ocrNoResult');
         return { content: [{ type: 'text', text }] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: 'text', text: `OCR 识别失败: ${msg}` }], isError: true };
+        return { content: [{ type: 'text', text: ctx.i18n.t('error.ocrFailed', { message: msg }) }], isError: true };
       }
     },
   }));

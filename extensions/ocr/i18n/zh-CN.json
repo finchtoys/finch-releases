@@ -40,6 +40,16 @@
   "error.nativeDepsFailed": "安装原生依赖失败（onnxruntime-node / sharp）: {message}",
   "error.configSaveFailed": "保存 OCR MCP 配置失败: {message}",
   "cancelled": "OCR 设置已取消 ({reason})",
+  "form.ocrImage.title": "选择图片",
+  "form.ocrImage.description": "输入或拖放图片文件路径，PP-OCRv6 将提取其中的文字。",
+  "form.ocrImage.submit": "开始识别",
+  "form.ocrImage.imagePath.label": "图片路径",
+  "form.ocrImage.imagePath.placeholder": "/path/to/image.png 或拖放文件到此处",
+  "error.noImagePath": "未提供图片路径。",
+  "error.fileNotFound": "文件不存在: {path}",
+  "error.mcpUnavailable": "MCP Client 未启用。请先启用 MCP Client 扩展。",
+  "error.ocrFailed": "OCR 识别失败: {message}",
+  "error.ocrNoResult": "OCR 未返回结果。",
   "settings.tier.label": "模型档位",
   "settings.language.label": "识别语言"
 }

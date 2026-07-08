@@ -50,11 +50,14 @@ function loadConfig(): McpConfig {
 }
 
 let config = loadConfig();
-const DET_MODEL_PATH = config.detModelPath;
-const REC_MODEL_PATH = config.recModelPath;
-const CHARS_PATH = config.charsFilePath;
-const LANGUAGE = config.language;
-const TIER = config.tier;
+
+// Getter functions — config is reloaded on each ocr_image call via handleOcrImage,
+// so use these functions instead of module-level consts to pick up changes.
+const detModelPath = (): string => config.detModelPath;
+const recModelPath = (): string => config.recModelPath;
+const charsFilePath = (): string => config.charsFilePath;
+const language = (): string => config.language;
+const tier = (): string => config.tier;
 
 // ── Models (lazy-loaded) ────────────────────────────────────────────────────
 
@@ -79,26 +82,26 @@ async function ensureSharp(): Promise<any> {
 }
 
 async function ensureDetSession(): Promise<any> {
-  if (!detSession && DET_MODEL_PATH) {
+  if (!detSession && detModelPath()) {
     const ort_ = await ensureOrt();
-    detSession = await ort_.InferenceSession.create(DET_MODEL_PATH);
+    detSession = await ort_.InferenceSession.create(detModelPath());
   }
   return detSession;
 }
 
 async function ensureRecSession(): Promise<any> {
-  if (!recSession && REC_MODEL_PATH) {
+  if (!recSession && recModelPath()) {
     const ort_ = await ensureOrt();
-    recSession = await ort_.InferenceSession.create(REC_MODEL_PATH);
+    recSession = await ort_.InferenceSession.create(recModelPath());
   }
   return recSession;
 }
 
 function loadCharset(): string[] {
   if (charset.length > 0) return charset;
-  if (CHARS_PATH && existsSync(CHARS_PATH)) {
+  if (charsFilePath() && existsSync(charsFilePath())) {
     try {
-      const raw = readFileSync(CHARS_PATH, 'utf-8');
+      const raw = readFileSync(charsFilePath(), 'utf-8');
       charset = JSON.parse(raw);
       if (Array.isArray(charset)) return charset;
     } catch {
@@ -433,7 +436,7 @@ const server = new McpServer(
 
 // Tool: ocr_image
 server.registerTool('ocr_image', {
-  description: `Extract text from an image using PP-OCRv6. Detects text regions and recognizes characters. Supports ${LANGUAGE}. Call this when the user shares an image, pastes a screenshot, uploads a photo, or asks to "read text from an image" or "OCR this image". Provide the absolute file path to the image. Returns recognized text with per-line bounding boxes.`,
+  description: `Extract text from an image using PP-OCRv6. Detects text regions and recognizes characters. Supports ${language()}. Call this when the user shares an image, pastes a screenshot, uploads a photo, or asks to "read text from an image" or "OCR this image". Provide the absolute file path to the image. Returns recognized text with per-line bounding boxes.`,
   inputSchema: z.object({
     imagePath: z.string().describe('Absolute path to the image file (PNG, JPG, WebP, etc.).'),
   }),
@@ -451,10 +454,10 @@ server.registerTool('ocr_languages', {
     content: [{
       type: 'text' as const,
       text: `Current OCR configuration:
-- Model tier: ${TIER}
-- Languages: ${LANGUAGE}
-- Detection model: ${DET_MODEL_PATH ? 'loaded' : 'not configured'}
-- Recognition model: ${REC_MODEL_PATH ? 'loaded' : 'not configured'}`,
+- Model tier: ${tier()}
+- Languages: ${language()}
+- Detection model: ${detModelPath() ? 'loaded' : 'not configured'}
+- Recognition model: ${recModelPath() ? 'loaded' : 'not configured'}`,
     }],
   };
 });
@@ -469,14 +472,14 @@ server.registerTool('ocr_status', {
     content: [{
       type: 'text' as const,
       text: `PP-OCRv6 Status:
-- Model tier: ${TIER}
-- Languages: ${LANGUAGE}
+- Model tier: ${tier()}
+- Languages: ${language()}
 - Detection model loaded: ${!!detSession}
 - Recognition model loaded: ${!!recSession}
 - Character set size: ${charsLoaded}
-- Det model path: ${DET_MODEL_PATH || 'N/A'}
-- Rec model path: ${REC_MODEL_PATH || 'N/A'}
-- Chars path: ${CHARS_PATH || 'N/A'}`,
+- Det model path: ${detModelPath() || 'N/A'}
+- Rec model path: ${recModelPath() || 'N/A'}
+- Chars path: ${charsFilePath() || 'N/A'}`,
     }],
   };
 });
@@ -487,5 +490,5 @@ await server.connect(transport);
 
 // Startup log via stderr (visible in Finch logs, not on stdout which is MCP transport)
 console.error(
-  `PP-OCRv6 MCP server started (tier=${TIER}, lang=${LANGUAGE}, chars=${loadCharset().length})`,
+  `PP-OCRv6 MCP server started (tier=${tier()}, lang=${language()}, chars=${loadCharset().length})`,
 );

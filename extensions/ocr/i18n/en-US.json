@@ -40,6 +40,16 @@
   "error.nativeDepsFailed": "Failed to install native dependencies (onnxruntime-node / sharp): {message}",
   "error.configSaveFailed": "Failed to save OCR MCP config: {message}",
   "cancelled": "OCR setup was cancelled ({reason})",
+  "form.ocrImage.title": "Select Image",
+  "form.ocrImage.description": "Enter or drag an image file path — PP-OCRv6 will extract text from it.",
+  "form.ocrImage.submit": "Start OCR",
+  "form.ocrImage.imagePath.label": "Image Path",
+  "form.ocrImage.imagePath.placeholder": "/path/to/image.png or drag file here",
+  "error.noImagePath": "No image path provided.",
+  "error.fileNotFound": "File not found: {path}",
+  "error.mcpUnavailable": "MCP Client is not available. Please enable the MCP Client extension first.",
+  "error.ocrFailed": "OCR recognition failed: {message}",
+  "error.ocrNoResult": "OCR returned no result.",
   "settings.tier.label": "Model Tier",
   "settings.language.label": "Language"
 }
