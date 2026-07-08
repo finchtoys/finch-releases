@@ -406,13 +406,18 @@ async function preprocessForRecognition(
   const cropH = Math.max(1, Math.min(Math.round(y2 - y1), imgH - cropY));
   const isDark = await detectDarkTheme(imagePath);
 
-  const propW = Math.round(targetH * (cropW / cropH));
-  const resizeW = Math.min(propW, targetW);
+  // Match PaddleOCR RecResizeImg: resize to height 48, width proportional.
+  // If width exceeds 320, resize to fit width 320 (may stretch aspect ratio).
+  let ratio = targetH / cropH;
+  if (Math.ceil(cropW * ratio) > targetW) {
+    ratio = targetW / cropW;
+  }
+  const resizeW = Math.round(cropW * ratio);
   const padRight = targetW - resizeW;
 
   let pipeline: any = sharp(imagePath)
     .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
-    .resize(targetW, targetH, { fit: 'inside' });
+    .resize(resizeW, targetH);
   if (isDark) {
     pipeline = pipeline.negate();
   }
@@ -467,14 +472,14 @@ function dbPostProcess(
   probMap: Float32Array, probH: number, probW: number,
   scaleX: number, scaleY: number,
 ): TextBox[] {
-  // Align with PP-OCRv6 online API defaults for better accuracy
+  // Align with PP-OCRv6 online API defaults
   const thresh = 0.3;
   const boxThresh = 0.6;
   const unclipRatio = 1.5;
   const maxCandidates = 3000;
+  const minArea = 50;
 
-  // The model may output logits (unbounded) or probabilities [0,1].
-  // If the value range is clearly outside [0,1], apply sigmoid to be safe.
+  // Apply sigmoid if model outputs logits
   let needsSigmoid = false;
   for (let i = 0; i < probMap.length; i++) {
     if (probMap[i] < 0 || probMap[i] > 1) { needsSigmoid = true; break; }
@@ -500,25 +505,66 @@ function dbPostProcess(
       const idx = y * probW + x;
       if (!binary[idx] || visited[idx]) continue;
 
-      const region = floodFill(binary, visited, x, y, probW, probH);
-      if (region.length < 3) continue;
+      // Find contour (boundary pixels) of the connected component
+      const contour: Array<[number, number]> = [];
+      const componentPixels: Array<[number, number]> = [];
+      const stack: Array<[number, number]> = [[x, y]];
+      visited[y * probW + x] = 1;
+      let minX = x, maxX = x, minY = y, maxY = y;
 
-      let minX = probW, minY = probH, maxX = 0, maxY = 0;
-      let sumScore = 0;
-      for (const [px, py] of region) {
-        if (px < minX) minX = px;
-        if (py < minY) minY = py;
-        if (px > maxX) maxX = px;
-        if (py > maxY) maxY = py;
-        sumScore += probMap[py * probW + px];
+      while (stack.length > 0) {
+        const [cx, cy] = stack.pop()!;
+        componentPixels.push([cx, cy]);
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+
+        for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
+          if (nx >= 0 && nx < probW && ny >= 0 && ny < probH) {
+            const nidx = ny * probW + nx;
+            if (binary[nidx] && !visited[nidx]) {
+              visited[nidx] = 1;
+              stack.push([nx, ny]);
+            }
+          }
+        }
       }
-      const avgScore = sumScore / region.length;
-      if (avgScore < boxThresh) continue;
+
+      // Find contour pixels within bounding box
+      for (let cy = minY; cy <= maxY; cy++) {
+        for (let cx = minX; cx <= maxX; cx++) {
+          const cidx = cy * probW + cx;
+          if (!binary[cidx]) continue;
+          const left = cx === 0 || !binary[cy * probW + (cx - 1)];
+          const right = cx === probW - 1 || !binary[cy * probW + (cx + 1)];
+          const top = cy === 0 || !binary[(cy - 1) * probW + cx];
+          const bottom = cy === probH - 1 || !binary[(cy + 1) * probW + cx];
+          if (left || right || top || bottom) {
+            contour.push([cx, cy]);
+          }
+        }
+      }
+
+      const points = contour.length > 0 ? contour : componentPixels;
+      if (points.length < 3) continue;
 
       const boxW = maxX - minX + 1;
       const boxH = maxY - minY + 1;
-      // Match PaddleOCR pyclipper unclip: distance = ratio * area / perimeter
-      const dist = unclipRatio * boxW * boxH / (2 * (boxW + boxH));
+      const area = boxW * boxH;
+      if (area < minArea) continue;
+
+      // Calculate average score
+      let sumScore = 0;
+      for (const [px, py] of points) {
+        sumScore += probMap[py * probW + px];
+      }
+      const avgScore = sumScore / points.length;
+      if (avgScore < boxThresh) continue;
+
+      // Unclip: match PaddleOCR pyclipper algorithm
+      const perimeter = 2 * (boxW + boxH);
+      const dist = unclipRatio * area / perimeter;
 
       boxes.push({
         bbox: [
