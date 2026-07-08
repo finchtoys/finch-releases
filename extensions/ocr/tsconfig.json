@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "paths": {
+      "finch": ["../../packages/extension-api/finch.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

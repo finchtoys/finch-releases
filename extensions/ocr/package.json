@@ -1,0 +1,75 @@
+{
+  "name": "@finch.app/ext-ocr",
+  "version": "0.1.0",
+  "description": "OCR extension powered by PP-OCRv6 — extract text from images locally.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "ocr",
+    "name": "PP-OCRv6",
+    "description": "Extract text from images using PP-OCRv6 ONNX models — supports 50 languages with high accuracy, fully local.",
+    "toolMeta": {
+      "name": "PP-OCRv6"
+    },
+    "systemPrompt": "When the user shares an image, screenshots, or asks to extract text from an image, automatically call the ocr_image tool. If PP-OCRv6 is not set up yet, call setup_ocr first to download models and configure languages.",
+    "promptGuides": [
+      {
+        "id": "setup-ocr",
+        "title": "Set up OCR",
+        "description": "Download PP-OCRv6 models and configure OCR.",
+        "prompt": "/ocr Setup PP-OCRv6 for image text extraction."
+      },
+      {
+        "id": "ocr-image",
+        "title": "Extract text from image",
+        "description": "Recognize text in an image using PP-OCRv6.",
+        "prompt": "/ocr Extract text from this image."
+      }
+    ],
+    "main": "dist/index.js",
+    "activationEvents": ["onStartup"],
+    "extensionType": "official",
+    "categories": ["productivity", "research"],
+    "privacyPolicyUrl": "https://finchwork.app/privacy",
+    "termsOfServiceUrl": "https://finchwork.app/terms",
+    "requires": {
+      "capabilities": ["mcp.client"]
+    },
+    "contributes": {
+      "tools": true,
+      "skills": true,
+      "mcpServers": [
+        {
+          "name": "ocr",
+          "command": "node",
+          "args": ["dist/mcp-server.js"],
+          "description": "PP-OCRv6 MCP server — provides ocr_image, ocr_languages, ocr_status tools."
+        }
+      ]
+    },
+    "permissions": {
+      "filesystem": "read",
+      "network": true,
+      "shell": false,
+      "secrets": []
+    }
+  },
+  "dependencies": {
+    "onnxruntime-node": "^1.22.0",
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "PP-OCRv6",
+  "description": "使用 PP-OCRv6 从图片中提取文字——支持 50 种语言，完全本地运行。",
+  "systemPrompt": "当用户上传图片、截图或要求提取图片中的文字时，自动调用 ocr_image 工具。如果 PP-OCRv6 尚未配置，先调用 setup_ocr 下载模型和配置语言。",
+  "toolMeta": { "name": "PP-OCRv6" },
+  "promptGuides": {
+    "setup-ocr": {
+      "title": "设置 OCR",
+      "description": "下载 PP-OCRv6 模型并配置 OCR",
+      "prompt": "/ocr 帮我配置 PP-OCRv6 来提取图片文字"
+    },
+    "ocr-image": {
+      "title": "提取图片文字",
+      "description": "使用 PP-OCRv6 识别图片中的文字",
+      "prompt": "/ocr 提取这张图片里的文字"
+    }
+  },
+  "form.setup.title": "设置 PP-OCRv6 OCR",
+  "form.setup.description": "选择模型档位和识别语言，首次使用需要下载模型",
+  "form.setup.submit": "下载并启动",
+  "form.setup.tier.label": "模型档位",
+  "form.setup.tier.options.tiny": "Tiny (~6 MB) — 快速轻量",
+  "form.setup.tier.options.small": "Small (~30 MB) — 平衡",
+  "form.setup.tier.options.medium": "Medium (~132 MB) — 最高精度（推荐）",
+  "form.setup.language.label": "识别语言",
+  "form.setup.language.options.che": "中文 + 英文",
+  "form.setup.language.options.en": "英文",
+  "form.setup.language.options.ch": "中文",
+  "form.setup.language.options.chenja": "中文 + 英文 + 日文",
+  "toast.saved.title": "OCR 配置已保存",
+  "toast.saved.description": "PP-OCRv6 模型已就绪，MCP Client 将启动 OCR 服务。"
+}
