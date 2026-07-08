@@ -95,9 +95,9 @@ function registerSetupTool(ctx: any): void {
       if (!pythonCmd) {
         lines.push('❌ **Python not found**');
         lines.push('');
-        lines.push('**Required:** Python 3.10 or higher');
+        lines.push('**Required:** Python 3.10 - 3.12');
         lines.push('');
-        lines.push('**Install Python:**');
+        lines.push('**Install Python 3.12:**');
         lines.push('- **macOS:** `brew install python@3.12`');
         lines.push('- **Ubuntu/Debian:** `sudo apt install python3.12`');
         lines.push('- **Windows:** Download from https://www.python.org/downloads/');
@@ -108,7 +108,7 @@ function registerSetupTool(ctx: any): void {
 
       lines.push(`✅ **Python:** ${pythonCmd} (${pythonVersion})`);
 
-      // Check Python version (need 3.10+)
+      // Check Python version (need 3.10 - 3.12)
       const versionMatch = pythonVersion.match(/(\d+)\.(\d+)/);
       if (versionMatch) {
         const major = parseInt(versionMatch[1]);
@@ -116,8 +116,16 @@ function registerSetupTool(ctx: any): void {
         if (major < 3 || (major === 3 && minor < 10)) {
           lines.push('');
           lines.push(`❌ **Python version too old:** ${pythonVersion}`);
-          lines.push('**Required:** Python 3.10 or higher');
+          lines.push('**Required:** Python 3.10 - 3.12');
           lines.push('Please upgrade Python and try again.');
+          return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
+        }
+        if (major > 3 || (major === 3 && minor > 12)) {
+          lines.push('');
+          lines.push(`❌ **Python version too new:** ${pythonVersion}`);
+          lines.push('**Required:** Python 3.10 - 3.12');
+          lines.push('PaddlePaddle does not support Python 3.13+ yet.');
+          lines.push('Please install Python 3.12: `brew install python@3.12`');
           return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
         }
       }

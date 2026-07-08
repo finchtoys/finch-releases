@@ -24,7 +24,7 @@ Uses Python PaddleOCR for inference. JS handles the extension interface and call
 
 | Requirement | Version | Description |
 |-------------|---------|-------------|
-| **Python** | 3.10+ | Python interpreter for PaddleOCR |
+| **Python** | 3.10 - 3.12 | Python interpreter for PaddleOCR |
 | **paddleocr** | 3.7+ | PaddleOCR Python package |
 | **paddlepaddle** | 3.0+ | PaddlePaddle deep learning framework |
 

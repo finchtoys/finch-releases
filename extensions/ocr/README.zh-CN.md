@@ -24,7 +24,7 @@ ocr_image ──→ Python PaddleOCR（高精度参数）
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
-| **Python** | 3.10+ | Python 解释器 |
+| **Python** | 3.10 - 3.12 | Python 解释器 |
 | **paddleocr** | 3.7+ | PaddleOCR Python 包 |
 | **paddlepaddle** | 3.0+ | PaddlePaddle 深度学习框架 |
 
