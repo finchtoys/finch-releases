@@ -64,25 +64,101 @@ function modelPath(ctx: finch.ExtensionContext, tier: Tier, type: 'det' | 'rec')
   return join(modelsDir(ctx), `${repo}.onnx`);
 }
 
+function charsPath(ctx: finch.ExtensionContext): string {
+  return join(modelsDir(ctx), 'chars.json');
+}
+
 function modelDownloadUrl(tier: Tier, type: 'det' | 'rec'): string {
   const info = TIER_INFO[tier];
   const repo = type === 'det' ? info.detRepo : info.recRepo;
   return `${HF_BASE}/${repo}/resolve/main/inference.onnx?download=1`;
 }
 
-async function downloadModel(url: string, dest: string, logger: finch.Logger): Promise<void> {
+function recYmlUrl(tier: Tier): string {
+  const info = TIER_INFO[tier];
+  return `${HF_BASE}/${info.recRepo}/resolve/main/inference.yml`;
+}
+
+async function downloadFile(url: string, dest: string, logger: finch.Logger): Promise<void> {
   mkdirSync(dirname(dest), { recursive: true });
 
-  logger.info(`downloading model: ${url}`);
+  logger.info(`downloading: ${url}`);
 
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to download model: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to download: ${response.status} ${response.statusText}`);
   }
 
   const buffer = await response.arrayBuffer();
   writeFileSync(dest, Buffer.from(buffer));
-  logger.info(`model saved to ${dest} (${buffer.byteLength} bytes)`);
+  logger.info(`saved to ${dest} (${buffer.byteLength} bytes)`);
+}
+
+/**
+ * Extract the character dictionary from PP-OCRv6 inference.yml.
+ * The YAML has a simple list under PostProcess > character_dict:
+ *   character_dict:
+ *     - '!'
+ *     - '"'
+ *     ...
+ */
+function extractCharacterDict(yamlContent: string): string[] {
+  const chars: string[] = [];
+  const lines = yamlContent.split('\n');
+  let inDict = false;
+
+  for (const line of lines) {
+    const trimmed = line.trimEnd();
+    if (trimmed === 'character_dict:' || trimmed.endsWith(' character_dict:')) {
+      inDict = true;
+      continue;
+    }
+    if (inDict) {
+      // End of dict: lines no longer start with `- ` at the dict indentation
+      if (!trimmed.startsWith('- ')) break;
+
+      // Extract value after `- `
+      let value = trimmed.slice(2);
+
+      // Handle YAML single-quoted strings
+      if (value.startsWith("'") && value.endsWith("'")) {
+        value = value.slice(1, -1);
+        // YAML escaping: '' inside single quotes → '
+        value = value.replace(/''/g, "'");
+      }
+
+      chars.push(value);
+    }
+  }
+
+  return chars;
+}
+
+async function ensureCharsJson(modelsDir: string, tier: Tier, logger: finch.Logger): Promise<string> {
+  const dest = join(modelsDir, 'chars.json');
+  if (existsSync(dest)) {
+    logger.info('chars.json already cached');
+    return dest;
+  }
+
+  const ymlUrl = recYmlUrl(tier);
+  const ymlDest = join(modelsDir, 'inference.yml');
+
+  logger.info(`downloading inference.yml from ${ymlUrl}`);
+  const response = await fetch(ymlUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download inference.yml: ${response.status} ${response.statusText}`);
+  }
+  const yamlContent = await response.text();
+  writeFileSync(ymlDest, yamlContent);
+
+  const chars = extractCharacterDict(yamlContent);
+  logger.info(`extracted ${chars.length} characters from character_dict`);
+
+  writeFileSync(dest, JSON.stringify(chars), 'utf-8');
+  logger.info(`chars.json saved to ${dest}`);
+
+  return dest;
 }
 
 async function verifyWithMcpClient(ctx: finch.ExtensionContext): Promise<string> {
@@ -112,6 +188,7 @@ function buildServer(
   language: string,
   detModelPath: string,
   recModelPath: string,
+  charsFilePath: string,
 ): McpServerConfig {
   return {
     name: SERVER_NAME,
@@ -120,6 +197,7 @@ function buildServer(
     env: {
       OCR_DET_MODEL_PATH: detModelPath,
       OCR_REC_MODEL_PATH: recModelPath,
+      OCR_CHARS_PATH: charsFilePath,
       OCR_LANGUAGE: language,
       OCR_TIER: tier,
     },
@@ -183,22 +261,27 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       // Download models
       const detDest = modelPath(ctx, tier, 'det');
       const recDest = modelPath(ctx, tier, 'rec');
+      const mdlDir = modelsDir(ctx);
+      let charsFilePath = join(mdlDir, 'chars.json');
 
       try {
         // Check if models already exist
         if (!existsSync(detDest)) {
           exec.logger.info('detection model not cached, downloading...');
-          await downloadModel(modelDownloadUrl(tier, 'det'), detDest, exec.logger);
+          await downloadFile(modelDownloadUrl(tier, 'det'), detDest, exec.logger);
         } else {
           exec.logger.info('detection model already cached');
         }
 
         if (!existsSync(recDest)) {
           exec.logger.info('recognition model not cached, downloading...');
-          await downloadModel(modelDownloadUrl(tier, 'rec'), recDest, exec.logger);
+          await downloadFile(modelDownloadUrl(tier, 'rec'), recDest, exec.logger);
         } else {
           exec.logger.info('recognition model already cached');
         }
+
+        // Download and extract character dictionary
+        await ensureCharsJson(mdlDir, tier, exec.logger);
       } catch (err) {
         ctx.logger.error('failed to download OCR models', err);
         return {
@@ -208,7 +291,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       }
 
       // Write MCP server config
-      const server = buildServer(tier, language, detDest, recDest);
+      const server = buildServer(tier, language, detDest, recDest, charsFilePath);
       const file = mcpServersFile(ctx);
 
       try {
@@ -236,7 +319,8 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
             `- 检测模型: ${TIER_INFO[tier].detSize}`,
             `- 识别模型: ${TIER_INFO[tier].recSize}`,
             `- 语言: ${language}`,
-            `- 模型路径: ${modelsDir(ctx)}`,
+            `- 字符集: 已加载 ${charsFilePath}`,
+            `- 模型路径: ${mdlDir}`,
             '',
             validation,
           ].join('\n'),
@@ -259,6 +343,7 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
 
       // Check for cached models
       const cachedModels: string[] = [];
+      let charsCount = 0;
       if (existsSync(modelDir)) {
         const files = readdirSync(modelDir);
         for (const file of files) {
@@ -266,12 +351,22 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
             const stat = statSync(join(modelDir, file));
             cachedModels.push(`- ${file} (${(stat.size / 1024 / 1024).toFixed(1)} MB)`);
           }
+          if (file === 'chars.json') {
+            try {
+              const raw = readFileSync(join(modelDir, file), 'utf-8');
+              const arr = JSON.parse(raw);
+              if (Array.isArray(arr)) charsCount = arr.length;
+            } catch { /* ignore */ }
+          }
         }
       }
 
       if (cachedModels.length > 0) {
         lines.push('**Cached models:**');
         lines.push(...cachedModels);
+        if (charsCount > 0) {
+          lines.push(`- Character dictionary: ${charsCount} entries`);
+        }
       } else {
         lines.push('**No models cached.** Run `setup_ocr` to download models.');
       }

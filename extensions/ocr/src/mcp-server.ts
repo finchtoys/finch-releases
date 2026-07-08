@@ -7,18 +7,19 @@
  * Environment variables (set by the extension host via servers.json env):
  *   OCR_DET_MODEL_PATH  — path to detection ONNX model
  *   OCR_REC_MODEL_PATH  — path to recognition ONNX model
+ *   OCR_CHARS_PATH      — path to chars.json (character dictionary)
  *   OCR_LANGUAGE        — language code (e.g. "ch+en")
  *   OCR_TIER            — model tier (tiny/small/medium)
  */
 
 import { createInterface } from 'node:readline';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 
 // ── Config from env ─────────────────────────────────────────────────────────
 
 const DET_MODEL_PATH = process.env.OCR_DET_MODEL_PATH ?? '';
 const REC_MODEL_PATH = process.env.OCR_REC_MODEL_PATH ?? '';
+const CHARS_PATH = process.env.OCR_CHARS_PATH ?? '';
 const LANGUAGE = process.env.OCR_LANGUAGE ?? 'ch+en';
 const TIER = process.env.OCR_TIER ?? 'medium';
 
@@ -28,6 +29,7 @@ let ort: any = null;
 let detSession: any = null;
 let recSession: any = null;
 let sharpModule: any = null;
+let charset: string[] = [];
 
 async function ensureOrt(): Promise<any> {
   if (!ort) {
@@ -40,7 +42,6 @@ async function ensureSharp(): Promise<any> {
   if (!sharpModule) {
     sharpModule = await import('sharp');
   }
-  // ESM module may have default export
   return sharpModule.default ?? sharpModule;
 }
 
@@ -60,49 +61,294 @@ async function ensureRecSession(): Promise<any> {
   return recSession;
 }
 
-// ── Image preprocessing ─────────────────────────────────────────────────────
-
-interface PreprocessedImage {
-  /** Preprocessed image tensor (CHW float32) for detection model */
-  tensor: Float32Array;
-  /** Original image width */
-  width: number;
-  /** Original image height */
-  height: number;
-  /** Scale factor applied (for mapping boxes back to original) */
-  scale: number;
+function loadCharset(): string[] {
+  if (charset.length > 0) return charset;
+  if (CHARS_PATH && existsSync(CHARS_PATH)) {
+    try {
+      const raw = readFileSync(CHARS_PATH, 'utf-8');
+      charset = JSON.parse(raw);
+      if (Array.isArray(charset)) {
+        return charset;
+      }
+    } catch {
+      // fall through to fallback
+    }
+  }
+  // Fallback minimal charset (ASCII printable + common CJK)
+  const ascii = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
+  charset = ascii.split('');
+  return charset;
 }
 
-async function preprocessForDetection(imagePath: string): Promise<PreprocessedImage> {
-  const sharpInstance = await ensureSharp();
-  const img = sharpInstance(imagePath);
-  const metadata = await img.metadata();
+// ── Normalization constants (from inference.yml) ────────────────────────────
+
+const MEAN = [0.485, 0.456, 0.406];
+const STD = [0.229, 0.224, 0.225];
+
+/**
+ * Convert an RGB raw buffer to a normalized CHW float32 tensor.
+ * Also performs RGB → BGR channel swap during the conversion.
+ * Formula: (pixel / 255.0 - mean[c]) / std[c]
+ */
+function rgbToNormalizedCHW(
+  rgb: Buffer,
+  height: number,
+  width: number,
+): Float32Array {
+  const tensor = new Float32Array(3 * height * width);
+  const area = height * width;
+  for (let h = 0; h < height; h++) {
+    for (let w = 0; w < width; w++) {
+      const idx = (h * width + w) * 3;
+      const r = rgb[idx];
+      const g = rgb[idx + 1];
+      const b = rgb[idx + 2];
+      // CHW layout: channel 0=B, 1=G, 2=R
+      tensor[0 * area + h * width + w] = (b / 255.0 - MEAN[0]) / STD[0];
+      tensor[1 * area + h * width + w] = (g / 255.0 - MEAN[1]) / STD[1];
+      tensor[2 * area + h * width + w] = (r / 255.0 - MEAN[2]) / STD[2];
+    }
+  }
+  return tensor;
+}
+
+// ── Detection preprocessing ─────────────────────────────────────────────────
+
+interface DetPreprocessed {
+  /** Normalized CHW float32 tensor [3, paddedH, paddedW] */
+  tensor: Float32Array;
+  paddedH: number;
+  paddedW: number;
+  /** Scale factor from output-coords to original-image-coords */
+  scaleX: number;
+  scaleY: number;
+}
+
+/**
+ * PP-OCRv6 detection preprocessing:
+ * 1. Load RGB, keep original dimensions
+ * 2. Resize keeping aspect ratio: long side ≤ 960
+ * 3. Pad to make both dimensions divisible by 32
+ * 4. Normalize (pixel/255 - mean) / std, with RGB→BGR swap, HWC→CHW
+ */
+async function preprocessForDetection(imagePath: string): Promise<DetPreprocessed> {
+  const sharp = await ensureSharp();
+  const metadata = await sharp(imagePath).metadata();
   const origW = metadata.width ?? 0;
   const origH = metadata.height ?? 0;
 
-  // Resize to 640x640 (PP-OCRv6 standard input size)
-  const targetSize = 640;
-  const resized = await img
-    .resize(targetSize, targetSize, { fit: 'fill' })
-    .grayscale()
+  // Step 1: compute resize dimensions (DetResizeForTest)
+  const limitSideLen = 960;
+  const ratio = Math.min(limitSideLen / Math.max(origH, origW), 1.0);
+  const resizedH = Math.round(origH * ratio);
+  const resizedW = Math.round(origW * ratio);
+
+  // Step 2: pad to be divisible by 32
+  const paddedH = Math.ceil(resizedH / 32) * 32;
+  const paddedW = Math.ceil(resizedW / 32) * 32;
+
+  // Step 3: load, resize, pad, get raw RGB
+  const buffer = await sharp(imagePath)
+    .resize(resizedW, resizedH, { fit: 'fill' })
+    .extend({
+      top: 0,
+      bottom: paddedH - resizedH,
+      left: 0,
+      right: paddedW - resizedW,
+      background: { r: 0, g: 0, b: 0 },
+    })
+    .raw() // outputs RGB (3 channels)
+    .toBuffer();
+
+  // Step 4: normalize, RGB→BGR, HWC→CHW
+  const tensor = rgbToNormalizedCHW(buffer, paddedH, paddedW);
+
+  // Scale from output tensor coords back to original image coords
+  // Model output is at 1/4 resolution of padded input (DB standard)
+  const stride = 4;
+  const outH = paddedH / stride;
+  const outW = paddedW / stride;
+  // Each output pixel maps to stride pixels in the padded input
+  // padded → original: scale = orig / padded
+  const scaleX = origW / paddedW;
+  const scaleY = origH / paddedH;
+
+  return { tensor, paddedH, paddedW, scaleX: scaleX * stride, scaleY: scaleY * stride };
+}
+
+// ── Recognition preprocessing ───────────────────────────────────────────────
+
+/**
+ * PP-OCRv6 recognition preprocessing for a cropped text region:
+ * 1. Crop the text region from the original image
+ * 2. Resize to height 48, width proportional (capped at 320)
+ * 3. Pad width to 320 with black pixels
+ * 4. Normalize (pixel/255 - mean) / std, with RGB→BGR swap, HWC→CHW
+ */
+async function preprocessForRecognition(
+  imagePath: string,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): Promise<Float32Array> {
+  const sharp = await ensureSharp();
+  const targetH = 48;
+  const targetW = 320;
+
+  // Bounds checking
+  const metadata = await sharp(imagePath).metadata();
+  const imgW = metadata.width ?? 0;
+  const imgH = metadata.height ?? 0;
+  const cropX = Math.max(0, Math.round(x1));
+  const cropY = Math.max(0, Math.round(y1));
+  const cropWidth = Math.max(1, Math.min(Math.round(x2 - x1), imgW - cropX));
+  const cropHeight = Math.max(1, Math.min(Math.round(y2 - y1), imgH - cropY));
+
+  // Compute proportional width (RecResizeImg)
+  const aspectRatio = cropWidth / cropHeight;
+  let propW = Math.round(targetH * aspectRatio);
+  // Cap at targetW (320), otherwise pad to targetW
+  const resizeW = Math.min(propW, targetW);
+  const padRight = targetW - resizeW;
+
+  // Crop, resize, pad, output raw RGB
+  const buffer = await sharp(imagePath)
+    .extract({ left: cropX, top: cropY, width: cropWidth, height: cropHeight })
+    .resize(resizeW, targetH, { fit: 'fill' })
+    .extend({
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: padRight,
+      background: { r: 0, g: 0, b: 0 },
+    })
     .raw()
     .toBuffer();
 
-  // Convert to float32 tensor (1, 1, 640, 640)
-  // Normalize to [0, 1]
-  const tensor = new Float32Array(targetSize * targetSize);
-  for (let i = 0; i < targetSize * targetSize; i++) {
-    tensor[i] = resized[i] / 255.0;
-  }
-
-  const scale = Math.max(origW, origH) / targetSize;
-
-  return { tensor, width: origW, height: origH, scale };
+  // Normalize, RGB→BGR, HWC→CHW
+  return rgbToNormalizedCHW(buffer, targetH, targetW);
 }
+
+// ── DB Post-Processing ──────────────────────────────────────────────────────
 
 interface TextBox {
   bbox: [number, number, number, number]; // [x1, y1, x2, y2] in original image coords
+  score: number;
 }
+
+/**
+ * Simple flood-fill to find connected component pixels from a binary mask.
+ */
+function floodFill(
+  binary: Uint8Array,
+  visited: Uint8Array,
+  startX: number,
+  startY: number,
+  width: number,
+  height: number,
+): Array<[number, number]> {
+  const pixels: Array<[number, number]> = [];
+  const stack: Array<[number, number]> = [[startX, startY]];
+  visited[startY * width + startX] = 1;
+
+  while (stack.length > 0) {
+    const [cx, cy] = stack.pop()!;
+    pixels.push([cx, cy]);
+
+    // 4-connectivity
+    const neighbors: Array<[number, number]> = [
+      [cx - 1, cy], [cx + 1, cy],
+      [cx, cy - 1], [cx, cy + 1],
+    ];
+    for (const [nx, ny] of neighbors) {
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const nIdx = ny * width + nx;
+        if (binary[nIdx] && !visited[nIdx]) {
+          visited[nIdx] = 1;
+          stack.push([nx, ny]);
+        }
+      }
+    }
+  }
+
+  return pixels;
+}
+
+/**
+ * Differentiable Binarization (DB) post-processing.
+ * Converts the model's probability map to bounding boxes.
+ */
+function dbPostProcess(
+  probMap: Float32Array,
+  probH: number,
+  probW: number,
+  scaleX: number,
+  scaleY: number,
+): TextBox[] {
+  const thresh = 0.2;        // DB binarization threshold
+  const boxThresh = 0.45;    // minimum average score per box
+  const unclipRatio = 1.4;   // expand ratio
+  const maxCandidates = 3000;
+
+  // Step 1: threshold to binary mask
+  const binary = new Uint8Array(probH * probW);
+  for (let i = 0; i < probH * probW; i++) {
+    binary[i] = probMap[i] > thresh ? 1 : 0;
+  }
+
+  // Step 2: connected components via flood fill
+  const visited = new Uint8Array(probH * probW);
+  const boxes: TextBox[] = [];
+
+  for (let y = 0; y < probH && boxes.length < maxCandidates; y++) {
+    for (let x = 0; x < probW && boxes.length < maxCandidates; x++) {
+      const idx = y * probW + x;
+      if (!binary[idx] || visited[idx]) continue;
+
+      const region = floodFill(binary, visited, x, y, probW, probH);
+      if (region.length < 3) continue; // too small
+
+      // Step 3: compute bounding box + average score
+      let minX = probW, minY = probH, maxX = 0, maxY = 0;
+      let sumScore = 0;
+      for (const [px, py] of region) {
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+        if (px > maxX) maxX = px;
+        if (py > maxY) maxY = py;
+        sumScore += probMap[py * probW + px];
+      }
+      const avgScore = sumScore / region.length;
+
+      // Step 4: filter by score threshold
+      if (avgScore < boxThresh) continue;
+
+      // Step 5: apply unclip (expand) to the box
+      const boxW = maxX - minX + 1;
+      const boxH = maxY - minY + 1;
+      const expandX = boxW * (unclipRatio - 1) / 2;
+      const expandY = boxH * (unclipRatio - 1) / 2;
+
+      // Step 6: map to original image coordinates
+      const origMinX = Math.max(0, (minX - expandX) * scaleX);
+      const origMinY = Math.max(0, (minY - expandY) * scaleY);
+      const origMaxX = (maxX + expandX) * scaleX;
+      const origMaxY = (maxY + expandY) * scaleY;
+
+      boxes.push({
+        bbox: [origMinX, origMinY, origMaxX, origMaxY],
+        score: avgScore,
+      });
+    }
+  }
+
+  // Sort by score descending, keep the best ones
+  boxes.sort((a, b) => b.score - a.score);
+  return boxes.slice(0, maxCandidates);
+}
+
+// ── OCR Pipeline ────────────────────────────────────────────────────────────
 
 async function detectText(imagePath: string): Promise<TextBox[]> {
   const session = await ensureDetSession();
@@ -111,37 +357,31 @@ async function detectText(imagePath: string): Promise<TextBox[]> {
   }
 
   const preprocessed = await preprocessForDetection(imagePath);
-  const { tensor, width, height, scale } = preprocessed;
+  const { tensor, paddedH, paddedW, scaleX, scaleY } = preprocessed;
 
   // Run inference
   const inputName = session.inputNames[0];
   const feeds: Record<string, any> = {};
-  // Create a 4D tensor: [1, 1, 640, 640]
-  feeds[inputName] = new ort.Tensor('float32', tensor, [1, 1, 640, 640]);
+  const ort_ = await ensureOrt();
+  feeds[inputName] = new ort_.Tensor('float32', tensor, [1, 3, paddedH, paddedW]);
   const results = await session.run(feeds);
 
-  // Parse detection results
-  // Output is typically [1, N, 4] or similar shape for bounding boxes
+  // Get output probability map
   const outputName = session.outputNames[0];
   const outputTensor = results[outputName];
   const outputData = outputTensor.data as Float32Array;
-  const outputDims = outputTensor.dims;
+  const outputDims = outputTensor.dims as number[];
 
-  const boxes: TextBox[] = [];
+  // Output shape: [1, 1, outH, outW] — probability map at 1/4 scale
+  const outH = outputDims[2];
+  const outW = outputDims[3];
 
-  if (outputDims.length === 3 && outputDims[2] === 4) {
-    // [batch, num_boxes, 4]
-    const numBoxes = outputDims[1];
-    for (let i = 0; i < numBoxes; i++) {
-      const x1 = outputData[i * 4] * scale;
-      const y1 = outputData[i * 4 + 1] * scale;
-      const x2 = outputData[i * 4 + 2] * scale;
-      const y2 = outputData[i * 4 + 3] * scale;
-      boxes.push({ bbox: [x1, y1, x2, y2] });
-    }
-  }
+  // Compute effective scale from output-coords to original image
+  const effScaleX = scaleX * (paddedW / 4) / outW;
+  const effScaleY = scaleY * (paddedH / 4) / outH;
 
-  return boxes;
+  // Apply DB post-processing
+  return dbPostProcess(outputData, outH, outW, effScaleX, effScaleY);
 }
 
 async function recognizeText(imagePath: string, box: TextBox): Promise<string> {
@@ -150,78 +390,56 @@ async function recognizeText(imagePath: string, box: TextBox): Promise<string> {
     throw new Error('Recognition model not loaded. Run setup_ocr first.');
   }
 
-  const sharpInstance = await ensureSharp();
   const [x1, y1, x2, y2] = box.bbox;
+  const tensor = await preprocessForRecognition(imagePath, x1, y1, x2, y2);
 
-  // Crop the text region from the original image
-  const cropWidth = Math.max(1, Math.round(x2 - x1));
-  const cropHeight = Math.max(1, Math.round(y2 - y1));
-
-  const cropped = await sharpInstance(imagePath)
-    .extract({
-      left: Math.round(x1),
-      top: Math.round(y1),
-      width: cropWidth,
-      height: cropHeight,
-    })
-    .grayscale()
-    .resize(320, 48, { fit: 'fill' })  // PP-OCRv6 rec input size
-    .raw()
-    .toBuffer();
-
-  // Create input tensor (1, 1, 48, 320)
-  const tensor = new Float32Array(48 * 320);
-  for (let i = 0; i < 48 * 320; i++) {
-    tensor[i] = cropped[i] / 255.0;
-  }
-
+  // Run inference
   const inputName = session.inputNames[0];
   const feeds: Record<string, any> = {};
-  feeds[inputName] = new ort.Tensor('float32', tensor, [1, 1, 48, 320]);
+  const ort_ = await ensureOrt();
+  feeds[inputName] = new ort_.Tensor('float32', tensor, [1, 3, 48, 320]);
   const results = await session.run(feeds);
 
   // Decode recognition output to text
   const outputName = session.outputNames[0];
   const outputTensor = results[outputName];
   const outputData = outputTensor.data as Float32Array;
+  const outputDims = outputTensor.dims as number[];
 
-  // Simple argmax decoding with character mapping
-  const text = decodeRecOutput(outputData, outputTensor.dims);
-  return text;
+  return decodeRecOutput(outputData, outputDims);
 }
 
-// ── Character set (simplified — PP-OCRv6 has a large built-in charset) ──────
+// ── CTC Decoding ────────────────────────────────────────────────────────────
 
-const CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \n\t' +
-  '的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把性好应开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情者最立代想已通并提直题党程展五果料象员革位入常文总次品式活设及管特件长求老头基资边流路级少图山统接知较将组见计别她手角期根论运农指几九区强放决西被干做必战先回则任取据处队南给色光门即保治北造百规热领七海口东导器压志世金增争济阶油思术极交受联什认六共权收证改清己美再采转更单风切打白教速花带安场身车例真务具万每目至达走积示议声报斗完类八离华名确才科张信马节话米整空元况今集温传土许步群广石记需段研界拉林律叫且究观越织装影算低持音众书布复容儿须际商非验连断深难近矿千周委素技备半办青省列习响约支般史感劳便团往酸历市克何除消构府称太准精值号率族维划选标写存候毛亲快效斯院查江型眼王按格养易置派层片始却专状育厂京识适属圆包火住调满县局照参红细引听该铁价严龙飞';
-
-function decodeRecOutput(data: Float32Array, dims: readonly number[]): string {
+function decodeRecOutput(data: Float32Array, dims: number[]): string {
   // dims: [1, sequence_length, num_classes]
-  // For each timestep, argmax over classes
   if (dims.length < 3) return '';
-
   const seqLen = dims[1];
   const numClasses = dims[2];
-  const charLen = CHARSET.length;
-  const blankIdx = numClasses - 1;  // CTC blank is usually the last class
+
+  const chars = loadCharset();
+  const blankIdx = numClasses - 1; // CTC blank is the last class
 
   let result = '';
   let prevCharIdx = -1;
 
   for (let t = 0; t < seqLen; t++) {
+    // Argmax over classes at this timestep
     let maxIdx = 0;
     let maxVal = -Infinity;
+    const offset = t * numClasses;
     for (let c = 0; c < numClasses; c++) {
-      const val = data[t * numClasses + c];
+      const val = data[offset + c];
       if (val > maxVal) {
         maxVal = val;
         maxIdx = c;
       }
     }
 
+    // CTC collapse: skip blanks and consecutive duplicates
     if (maxIdx !== blankIdx && maxIdx !== prevCharIdx) {
-      if (maxIdx < charLen) {
-        result += CHARSET[maxIdx];
+      if (maxIdx < chars.length) {
+        result += chars[maxIdx];
       }
     }
     prevCharIdx = maxIdx;
@@ -463,6 +681,7 @@ class McpServer {
   private async handleOcrStatus(id: number | string): Promise<void> {
     const detLoaded = !!detSession;
     const recLoaded = !!recSession;
+    const charsLoaded = loadCharset().length;
 
     this.send({
       jsonrpc: '2.0',
@@ -475,8 +694,10 @@ class McpServer {
 - Languages: ${LANGUAGE}
 - Detection model loaded: ${detLoaded}
 - Recognition model loaded: ${recLoaded}
+- Character set size: ${charsLoaded}
 - Det model path: ${DET_MODEL_PATH || 'N/A'}
-- Rec model path: ${REC_MODEL_PATH || 'N/A'}`,
+- Rec model path: ${REC_MODEL_PATH || 'N/A'}
+- Chars path: ${CHARS_PATH || 'N/A'}`,
         }],
       },
     });
@@ -492,6 +713,10 @@ process.stdin.resume();
 const msg = JSON.stringify({
   jsonrpc: '2.0',
   id: 'startup',
-  result: { _log: true, level: 'info', message: `PP-OCRv6 MCP server started (tier=${TIER}, lang=${LANGUAGE})` },
+  result: {
+    _log: true,
+    level: 'info',
+    message: `PP-OCRv6 MCP server started (tier=${TIER}, lang=${LANGUAGE}, chars=${loadCharset().length})`,
+  },
 });
 process.stdout.write(msg + '\n');
