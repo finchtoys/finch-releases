@@ -189,18 +189,16 @@ function buildServer(
   detModelPath: string,
   recModelPath: string,
   charsFilePath: string,
+  configFilePath: string,
 ): McpServerConfig {
+  // Write config to a JSON file instead of using environment variables
+  const config = { detModelPath, recModelPath, charsFilePath, language, tier };
+  writeFileSync(configFilePath, JSON.stringify(config, null, 2), 'utf-8');
+
   return {
     name: SERVER_NAME,
     command: 'node',
-    args: ['dist/mcp-server.js'],
-    env: {
-      OCR_DET_MODEL_PATH: detModelPath,
-      OCR_REC_MODEL_PATH: recModelPath,
-      OCR_CHARS_PATH: charsFilePath,
-      OCR_LANGUAGE: language,
-      OCR_TIER: tier,
-    },
+    args: ['dist/mcp-server.js', configFilePath],
     description: `PP-OCRv6 ${tier} OCR server (${language}).`,
   };
 }
@@ -291,7 +289,8 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       }
 
       // Write MCP server config
-      const server = buildServer(tier, language, detDest, recDest, charsFilePath);
+      const configFilePath = join(mdlDir, 'mcp-config.json');
+      const server = buildServer(tier, language, detDest, recDest, charsFilePath, configFilePath);
       const file = mcpServersFile(ctx);
 
       try {

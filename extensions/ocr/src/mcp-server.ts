@@ -19,13 +19,37 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { existsSync, readFileSync } from 'node:fs';
 
-// ── Config from env ─────────────────────────────────────────────────────────
+// ── Config from CLI arg (JSON file path) ─────────────────────────────────────
 
-const DET_MODEL_PATH = process.env.OCR_DET_MODEL_PATH ?? '';
-const REC_MODEL_PATH = process.env.OCR_REC_MODEL_PATH ?? '';
-const CHARS_PATH = process.env.OCR_CHARS_PATH ?? '';
-const LANGUAGE = process.env.OCR_LANGUAGE ?? 'ch+en';
-const TIER = process.env.OCR_TIER ?? 'medium';
+const CONFIG_PATH = process.argv[2];
+interface McpConfig {
+  detModelPath: string;
+  recModelPath: string;
+  charsFilePath: string;
+  language: string;
+  tier: string;
+}
+
+function loadConfig(): McpConfig {
+  if (!CONFIG_PATH || !existsSync(CONFIG_PATH)) {
+    // No config file → return defaults (setup_ocr hasn't been run yet)
+    return {
+      detModelPath: '',
+      recModelPath: '',
+      charsFilePath: '',
+      language: 'ch+en',
+      tier: 'medium',
+    };
+  }
+  return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+}
+
+const config = loadConfig();
+const DET_MODEL_PATH = config.detModelPath;
+const REC_MODEL_PATH = config.recModelPath;
+const CHARS_PATH = config.charsFilePath;
+const LANGUAGE = config.language;
+const TIER = config.tier;
 
 // ── Models (lazy-loaded) ────────────────────────────────────────────────────
 
