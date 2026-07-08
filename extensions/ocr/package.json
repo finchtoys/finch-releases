@@ -16,7 +16,8 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "postinstall": "node scripts/clean-platforms.mjs"
   },
   "finch": {
     "manifestVersion": 1,
