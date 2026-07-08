@@ -461,6 +461,64 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
   }));
 }
 
+interface McpClient {
+  callTool(server: string, name: string, args: unknown): Promise<unknown>;
+}
+
+function registerOcrImageTool(ctx: finch.ExtensionContext): void {
+  ctx.subscriptions.push(ctx.tools.register({
+    name: 'ocr_image',
+    title: 'OCR Image',
+    description: 'Show a file-picker form for the user to specify an image path, then extract text from that image using PP-OCRv6. Call this when the user wants to extract text from an image or screenshot. Do NOT guess image paths — always use this tool to let the user provide the path.',
+    inputSchema: { type: 'object', properties: {} },
+    risk: 'low',
+    async execute(_input, exec) {
+      const result = await exec.ui.requestForm({
+        title: '选择图片',
+        description: '输入或拖放图片文件路径，PP-OCRv6 将提取其中的文字。',
+        submitLabel: '开始识别',
+        fields: [
+          {
+            key: 'imagePath',
+            label: '图片路径',
+            type: 'text',
+            required: true,
+            placeholder: '/path/to/image.png 或拖放文件到此处',
+          },
+        ],
+      });
+
+      if (!result.submitted) {
+        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason }) }] };
+      }
+
+      const imagePath = String(result.values.imagePath ?? '').trim();
+      if (!imagePath) {
+        return { content: [{ type: 'text', text: '未提供图片路径。' }], isError: true };
+      }
+
+      if (!existsSync(imagePath)) {
+        return { content: [{ type: 'text', text: `文件不存在: ${imagePath}` }], isError: true };
+      }
+
+      // Call the MCP server's ocr_image tool via mcp.client capability
+      if (!ctx.capabilities.has('mcp.client')) {
+        return { content: [{ type: 'text', text: 'MCP Client 未启用。请先启用 MCP Client 扩展。' }], isError: true };
+      }
+
+      const mcp = ctx.capabilities.get<McpClient>('mcp.client');
+      try {
+        const mcpResult = await mcp.callTool(SERVER_NAME, 'ocr_image', { imagePath }) as any;
+        const text = mcpResult?.content?.[0]?.text ?? 'OCR 未返回结果。';
+        return { content: [{ type: 'text', text }] };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: 'text', text: `OCR 识别失败: ${msg}` }], isError: true };
+      }
+    },
+  }));
+}
+
 // ── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(ctx: finch.ExtensionContext): void {
@@ -469,6 +527,7 @@ export function activate(ctx: finch.ExtensionContext): void {
   // Always register tools
   registerSetupTool(ctx);
   registerStatusTool(ctx);
+  registerOcrImageTool(ctx);
 
   // Read settings and auto-configure MCP server if models are already cached
   const tier = ctx.settings.get<string>('tier') ?? '';

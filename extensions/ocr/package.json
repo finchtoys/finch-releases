@@ -21,19 +21,19 @@
     "toolMeta": {
       "name": "PP-OCRv6"
     },
-    "systemPrompt": "When the user shares an image, screenshots, or asks to extract text from an image, automatically call the ocr_image tool. If PP-OCRv6 is not set up yet, call setup_ocr first to download models and configure languages.",
+    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool — it shows a form for the user to provide the image file path. Do NOT try to guess the image path yourself. If PP-OCRv6 is not set up yet, call setup_ocr first to download models and configure languages.",
     "promptGuides": [
       {
         "id": "setup-ocr",
         "title": "Set up OCR",
         "description": "Download PP-OCRv6 models and configure OCR.",
-        "prompt": "/ocr Setup PP-OCRv6 for image text extraction."
+        "prompt": "帮我设置 OCR，下载模型并启动 OCR 服务"
       },
       {
         "id": "ocr-image",
         "title": "Extract text from image",
         "description": "Recognize text in an image using PP-OCRv6.",
-        "prompt": "/ocr Extract text from this image."
+        "prompt": "帮我提取图片中的文字"
       }
     ],
     "main": "dist/index.js",

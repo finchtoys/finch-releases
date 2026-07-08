@@ -1,18 +1,18 @@
 {
   "name": "PP-OCRv6",
   "description": "Extract text from images using PP-OCRv6 ONNX models — supports 50 languages with high accuracy, fully local.",
-  "systemPrompt": "When the user shares an image, screenshots, or asks to extract text from an image, automatically call the ocr_image tool. If PP-OCRv6 is not set up yet, call setup_ocr first to download models and configure languages.",
+  "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool — it shows a form for the user to provide the image file path. Do NOT try to guess the image path yourself. If PP-OCRv6 is not set up yet, call setup_ocr first to download models and configure languages.",
   "toolMeta": { "name": "PP-OCRv6" },
   "promptGuides": {
     "setup-ocr": {
       "title": "Set up OCR",
       "description": "Download PP-OCRv6 models and configure OCR.",
-      "prompt": "/ocr Setup PP-OCRv6 for image text extraction."
+      "prompt": "Set up PP-OCRv6 for image text extraction"
     },
     "ocr-image": {
       "title": "Extract text from image",
       "description": "Recognize text in an image using PP-OCRv6.",
-      "prompt": "/ocr Extract text from this image."
+      "prompt": "Extract text from this image"
     }
   },
   "form.setup.title": "Set up PP-OCRv6 OCR",
