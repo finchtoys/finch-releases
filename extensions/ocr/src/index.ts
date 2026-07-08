@@ -469,11 +469,12 @@ function dbPostProcess(
 
   // The model may output logits (unbounded) or probabilities [0,1].
   // If the value range is clearly outside [0,1], apply sigmoid to be safe.
-  const maybeLogits = probMap.length > 0 &&
-    (probMap[0] < 0 || probMap[0] > 1 ||
-      Math.max(...probMap) > 1 || Math.min(...probMap) < 0);
-  const probs = maybeLogits ? new Float32Array(probMap.length) : probMap;
-  if (maybeLogits) {
+  let needsSigmoid = false;
+  for (let i = 0; i < probMap.length; i++) {
+    if (probMap[i] < 0 || probMap[i] > 1) { needsSigmoid = true; break; }
+  }
+  const probs = needsSigmoid ? new Float32Array(probMap.length) : probMap;
+  if (needsSigmoid) {
     for (let i = 0; i < probMap.length; i++) {
       probs[i] = 1 / (1 + Math.exp(-probMap[i]));
     }
