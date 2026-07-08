@@ -67,7 +67,7 @@
       ]
     },
     "permissions": {
-      "filesystem": "read",
+      "filesystem": "readwrite",
       "network": true,
       "shell": false,
       "secrets": []

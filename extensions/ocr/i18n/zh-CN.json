@@ -23,10 +23,20 @@
   "form.setup.tier.options.small": "Small (~30 MB) — 平衡",
   "form.setup.tier.options.medium": "Medium (~132 MB) — 最高精度（推荐）",
   "form.setup.language.label": "识别语言",
-  "form.setup.language.options.che": "中文 + 英文",
+  "form.setup.language.options.ch+en": "中文 + 英文",
   "form.setup.language.options.en": "英文",
   "form.setup.language.options.ch": "中文",
-  "form.setup.language.options.chenja": "中文 + 英文 + 日文",
+  "form.setup.language.options.ch+en+ja": "中文 + 英文 + 日文",
   "toast.saved.title": "OCR 配置已保存",
-  "toast.saved.description": "PP-OCRv6 模型已就绪，MCP Client 将启动 OCR 服务。"
+  "toast.saved.description": "PP-OCRv6 模型已就绪，MCP Client 将启动 OCR 服务。",
+  "status.noModels": "**没有缓存的模型。** 运行 setup_ocr 下载模型。",
+  "status.mcpUnavailable": "**MCP Client:** 不可用（请启用 MCP Client 扩展）",
+  "status.cachedModels": "**已缓存的模型:**",
+  "status.charsCount": "字符字典: {count} 个条目",
+  "status.mcpServer": "**OCR MCP 服务:** {status}",
+  "status.availableTools": "**可用工具:** {tools}",
+  "error.invalidTier": "无效的模型档位: {tier}",
+  "error.downloadFailed": "下载 OCR 模型失败: {message}",
+  "error.configSaveFailed": "保存 OCR MCP 配置失败: {message}",
+  "cancelled": "OCR 设置已取消 ({reason})"
 }

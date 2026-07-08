@@ -426,7 +426,7 @@ const server = new McpServer(
 
 // Tool: ocr_image
 server.registerTool('ocr_image', {
-  description: `Extract text from an image using PP-OCRv6. Supports ${LANGUAGE}. Provide the image file path.`,
+  description: `Extract text from an image using PP-OCRv6. Detects text regions and recognizes characters. Supports ${LANGUAGE}. Call this when the user shares an image, pastes a screenshot, uploads a photo, or asks to "read text from an image" or "OCR this image". Provide the absolute file path to the image. Returns recognized text with per-line bounding boxes.`,
   inputSchema: z.object({
     imagePath: z.string().describe('Absolute path to the image file (PNG, JPG, WebP, etc.).'),
   }),
@@ -437,7 +437,7 @@ server.registerTool('ocr_image', {
 
 // Tool: ocr_languages
 server.registerTool('ocr_languages', {
-  description: 'List supported languages for the current OCR configuration.',
+  description: 'List supported languages and current OCR configuration — model tier, language setting, whether detection and recognition models are loaded. Call this when the user asks "what languages does OCR support?" or to verify the current OCR setup.',
   inputSchema: z.object({}),
 }, async () => {
   return {
@@ -454,7 +454,7 @@ server.registerTool('ocr_languages', {
 
 // Tool: ocr_status
 server.registerTool('ocr_status', {
-  description: 'Check whether PP-OCRv6 models are loaded and ready.',
+  description: 'Check whether PP-OCRv6 models have been loaded into memory and are ready for OCR calls. Returns model loading status, character dictionary size, and any errors during initialization. Call this before ocr_image to verify readiness, or when the user asks "is OCR ready?" or OCR seems unresponsive.',
   inputSchema: z.object({}),
 }, async () => {
   const charsLoaded = loadCharset().length;

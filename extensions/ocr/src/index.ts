@@ -209,51 +209,50 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'setup_ocr',
     title: 'Set up PP-OCRv6',
-    description: 'Configure OCR: select model tier and languages, download ONNX models, and start the OCR MCP server. Call this when OCR is not set up yet.',
+    description: 'Configure PP-OCRv6 OCR: select model tier (tiny/small/medium) and languages (CN/EN/JA), download ONNX models from HuggingFace on first use, and register the OCR MCP server. Call this when the user says "set up OCR", "configure OCR", "download OCR models", or when an OCR tool reports that models are not yet available.',
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute(_input, exec) {
       const result = await exec.ui.requestForm({
-        title: '设置 PP-OCRv6 OCR',
-        description: '选择模型档位和识别语言，首次使用需要下载模型（约 132 MB）。',
-        submitLabel: '下载并启动',
+        title: ctx.i18n.t('form.setup.title'),
+        description: ctx.i18n.t('form.setup.description'),
+        submitLabel: ctx.i18n.t('form.setup.submit'),
         fields: [
           {
             key: 'tier',
-            label: '模型档位',
+            label: ctx.i18n.t('form.setup.tier.label'),
             type: 'select',
             default: 'medium',
             options: [
-              { value: 'tiny',   label: 'Tiny (~6 MB) — 快速轻量' },
-              { value: 'small',  label: 'Small (~30 MB) — 平衡' },
-              { value: 'medium', label: 'Medium (~132 MB) — 最高精度（推荐）' },
+              { value: 'tiny',   label: ctx.i18n.t('form.setup.tier.options.tiny') },
+              { value: 'small',  label: ctx.i18n.t('form.setup.tier.options.small') },
+              { value: 'medium', label: ctx.i18n.t('form.setup.tier.options.medium') },
             ],
           },
           {
             key: 'language',
-            label: '识别语言',
+            label: ctx.i18n.t('form.setup.language.label'),
             type: 'select',
             default: 'ch+en',
-            description: 'PP-OCRv6 单模型支持 50 种语言，按需选择',
             options: [
-              { value: 'ch+en',     label: '中文 + 英文' },
-              { value: 'en',        label: '英文' },
-              { value: 'ch',        label: '中文' },
-              { value: 'ch+en+ja',  label: '中文 + 英文 + 日文' },
+              { value: 'ch+en',    label: ctx.i18n.t('form.setup.language.options.ch+en') },
+              { value: 'en',       label: ctx.i18n.t('form.setup.language.options.en') },
+              { value: 'ch',       label: ctx.i18n.t('form.setup.language.options.ch') },
+              { value: 'ch+en+ja', label: ctx.i18n.t('form.setup.language.options.ch+en+ja') },
             ],
           },
         ],
       });
 
       if (!result.submitted) {
-        return { content: [{ type: 'text', text: `OCR setup was cancelled (${result.reason}).` }] };
+        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason }) }] };
       }
 
       const tier = String(result.values.tier ?? 'medium') as Tier;
       const language = String(result.values.language ?? 'ch+en');
 
       if (!TIER_INFO[tier]) {
-        return { content: [{ type: 'text', text: `Invalid tier: ${tier}` }], isError: true };
+        return { content: [{ type: 'text', text: ctx.i18n.t('error.invalidTier', { tier }) }], isError: true };
       }
 
       // Download models
@@ -283,7 +282,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       } catch (err) {
         ctx.logger.error('failed to download OCR models', err);
         return {
-          content: [{ type: 'text', text: `Failed to download OCR models: ${err instanceof Error ? err.message : String(err)}` }],
+          content: [{ type: 'text', text: ctx.i18n.t('error.downloadFailed', { message: err instanceof Error ? err.message : String(err) }) }],
           isError: true,
         };
       }
@@ -298,14 +297,14 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       } catch (err) {
         ctx.logger.error('failed to save OCR MCP config', err);
         return {
-          content: [{ type: 'text', text: `Failed to save OCR MCP config: ${err instanceof Error ? err.message : String(err)}` }],
+          content: [{ type: 'text', text: ctx.i18n.t('error.configSaveFailed', { message: err instanceof Error ? err.message : String(err) }) }],
           isError: true,
         };
       }
 
       await ctx.ui.showToast({
-        title: 'OCR 配置已保存',
-        description: `PP-OCRv6 ${tier} 模型已就绪，MCP Client 将启动 OCR 服务。`,
+        title: ctx.i18n.t('toast.saved.title'),
+        description: ctx.i18n.t('toast.saved.description'),
         variant: 'success',
       });
 
@@ -333,7 +332,7 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'ocr_status',
     title: 'OCR Status',
-    description: 'Check whether PP-OCRv6 is configured, which models are cached, and which tools are available through MCP Client.',
+    description: 'Check whether PP-OCRv6 is configured, which model tiers are cached on disk, whether the char dictionary was extracted, and whether the OCR MCP server is reachable with tools listed. Call this when the user asks "is OCR working?", "check OCR status", "are models downloaded?", or before troubleshooting OCR failures.',
     inputSchema: { type: 'object', properties: {} },
     risk: 'low',
     async execute() {
@@ -361,18 +360,18 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
       }
 
       if (cachedModels.length > 0) {
-        lines.push('**Cached models:**');
+        lines.push(ctx.i18n.t('status.cachedModels'));
         lines.push(...cachedModels);
         if (charsCount > 0) {
-          lines.push(`- Character dictionary: ${charsCount} entries`);
+          lines.push(ctx.i18n.t('status.charsCount', { count: String(charsCount) }));
         }
       } else {
-        lines.push('**No models cached.** Run `setup_ocr` to download models.');
+        lines.push(ctx.i18n.t('status.noModels'));
       }
 
       // Check MCP server
       if (!ctx.capabilities.has('mcp.client')) {
-        lines.push('\n**MCP Client:** not available (enable the MCP Client extension)');
+        lines.push(`\n${ctx.i18n.t('status.mcpUnavailable')}`);
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       }
 
@@ -394,9 +393,9 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
         status = 'unreachable';
       }
 
-      lines.push(`\n**OCR MCP Server:** ${status}`);
+      lines.push(`\n${ctx.i18n.t('status.mcpServer', { status })}`);
       if (tools.length > 0) {
-        lines.push(`**Available tools:** ${tools.join(', ')}`);
+        lines.push(ctx.i18n.t('status.availableTools', { tools: tools.join(', ') }));
       }
 
       return { content: [{ type: 'text', text: lines.join('\n') }] };

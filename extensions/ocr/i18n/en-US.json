@@ -23,10 +23,20 @@
   "form.setup.tier.options.small": "Small (~30 MB) — Balanced",
   "form.setup.tier.options.medium": "Medium (~132 MB) — Highest Accuracy (recommended)",
   "form.setup.language.label": "Language",
-  "form.setup.language.options.che": "Chinese + English",
+  "form.setup.language.options.ch+en": "Chinese + English",
   "form.setup.language.options.en": "English",
   "form.setup.language.options.ch": "Chinese",
-  "form.setup.language.options.chenja": "Chinese + English + Japanese",
+  "form.setup.language.options.ch+en+ja": "Chinese + English + Japanese",
   "toast.saved.title": "OCR configuration saved",
-  "toast.saved.description": "PP-OCRv6 models are ready. MCP Client will start the OCR service."
+  "toast.saved.description": "PP-OCRv6 models are ready. MCP Client will start the OCR service.",
+  "status.noModels": "**No models cached.** Run `setup_ocr` to download models.",
+  "status.mcpUnavailable": "**MCP Client:** not available (enable the MCP Client extension)",
+  "status.cachedModels": "**Cached models:**",
+  "status.charsCount": "Character dictionary: {count} entries",
+  "status.mcpServer": "**OCR MCP Server:** {status}",
+  "status.availableTools": "**Available tools:** {tools}",
+  "error.invalidTier": "Invalid tier: {tier}",
+  "error.downloadFailed": "Failed to download OCR models: {message}",
+  "error.configSaveFailed": "Failed to save OCR MCP config: {message}",
+  "cancelled": "OCR setup was cancelled ({reason})"
 }
