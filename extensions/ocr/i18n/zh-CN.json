@@ -15,9 +15,6 @@
       "prompt": "帮我识别这张图片里的文字"
     }
   },
-  "form.setup.title": "设置 PP-OCRv6 OCR",
-  "form.setup.description": "首次使用会下载模型（约132MB），自动支持中英日等 50 种语言",
-  "form.setup.submit": "下载并启动",
   "toast.saved.title": "OCR 配置已保存",
   "toast.saved.description": "PP-OCRv6 模型已就绪，已加载到内存。",
   "status.noModels": "**没有缓存的模型。** 运行 setup_ocr 下载模型。",
@@ -26,7 +23,6 @@
   "error.downloadFailed": "下载 OCR 模型失败: {message}",
   "error.nativeDepsFailed": "安装原生依赖失败（onnxruntime-node / sharp）: {message}",
   "error.configSaveFailed": "保存 OCR 配置失败: {message}",
-  "cancelled": "OCR 设置已取消 ({reason})",
   "error.notConfigured": "PP-OCRv6 尚未配置，请先运行 setup_ocr。",
   "error.noImagePath": "未提供图片路径。",
   "error.fileNotFound": "文件不存在: {path}",

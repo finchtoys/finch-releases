@@ -15,9 +15,6 @@
       "prompt": "Extract text from this image"
     }
   },
-  "form.setup.title": "Set up PP-OCRv6 OCR",
-  "form.setup.description": "Models (~132 MB) will be downloaded on first use. Supports Chinese, English, Japanese, and 47 other languages.",
-  "form.setup.submit": "Download & Start",
   "toast.saved.title": "OCR configuration saved",
   "toast.saved.description": "PP-OCRv6 models are ready and loaded into memory.",
   "status.noModels": "**No models cached.** Run `setup_ocr` to download models.",
@@ -26,7 +23,6 @@
   "error.downloadFailed": "Failed to download OCR models: {message}",
   "error.nativeDepsFailed": "Failed to install native dependencies (onnxruntime-node / sharp): {message}",
   "error.configSaveFailed": "Failed to save OCR config: {message}",
-  "cancelled": "OCR setup was cancelled ({reason})",
   "error.notConfigured": "PP-OCRv6 is not configured yet. Run `setup_ocr` first.",
   "error.noImagePath": "No image path provided.",
   "error.fileNotFound": "File not found: {path}",

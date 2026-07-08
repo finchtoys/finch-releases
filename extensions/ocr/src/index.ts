@@ -569,17 +569,6 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute(_input, exec) {
-      const result = await exec.ui.requestForm({
-        title: ctx.i18n.t('form.setup.title'),
-        description: ctx.i18n.t('form.setup.description'),
-        submitLabel: ctx.i18n.t('form.setup.submit'),
-        fields: [],
-      });
-
-      if (!result.submitted) {
-        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason ?? 'cancelled' }) }] };
-      }
-
       const detDest = detModelPath(ctx);
       const recDest = recModelPath(ctx);
       const mdlDir = modelsDir(ctx);
