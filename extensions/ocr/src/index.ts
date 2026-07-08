@@ -282,6 +282,32 @@ function rgbToNormalizedCHW(rgb: Buffer, height: number, width: number, mean: nu
   return tensor;
 }
 
+// ── Dark-theme detection ───────────────────────────────────────────────────
+
+/**
+ * Detect whether the input image is a dark-theme screenshot (light text on
+ * dark background). PP-OCRv6 is trained on dark text over light backgrounds,
+ * so we invert dark images before feeding the model.
+ *
+ * Heuristic: shrink the image, convert to grayscale, and compute the mean
+ * brightness. If the mean is below 128 (out of 255), treat it as dark theme.
+ */
+async function detectDarkTheme(imagePath: string): Promise<boolean> {
+  const sharp = await ensureSharp();
+  const { data } = await sharp(imagePath)
+    .resize(64, 64, { fit: 'inside' })
+    .grayscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    sum += data[i];
+  }
+  const mean = sum / (data.length || 1);
+  return mean < 128;
+}
+
 // ── Detection preprocessing ─────────────────────────────────────────────────
 
 interface DetPreprocessed {
@@ -295,15 +321,17 @@ interface DetPreprocessed {
 /**
  * PP-OCRv6 detection preprocessing:
  * 1. Load RGB, keep original dimensions
- * 2. Resize keeping aspect ratio: long side ≤ 960
- * 3. Pad to make both dimensions divisible by 32
- * 4. Normalize (pixel/255 - mean) / std, with RGB→BGR swap, HWC→CHW
+ * 2. Auto-detect dark theme and invert if needed
+ * 3. Resize keeping aspect ratio: long side ≤ 960
+ * 4. Pad to make both dimensions divisible by 32
+ * 5. Normalize (pixel/255 - mean) / std, with RGB→BGR swap, HWC→CHW
  */
 async function preprocessForDetection(imagePath: string): Promise<DetPreprocessed> {
   const sharp = await ensureSharp();
   const metadata = await sharp(imagePath).metadata();
   const origW = metadata.width ?? 0;
   const origH = metadata.height ?? 0;
+  const isDark = await detectDarkTheme(imagePath);
 
   const limitSideLen = 960;
   const ratio = Math.min(limitSideLen / Math.max(origH, origW), 1.0);
@@ -312,8 +340,12 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
   const paddedH = Math.ceil(resizedH / 32) * 32;
   const paddedW = Math.ceil(resizedW / 32) * 32;
 
-  const buffer = await sharp(imagePath)
-    .resize(resizedW, resizedH, { fit: 'fill' })
+  let pipeline: any = sharp(imagePath).resize(resizedW, resizedH, { fit: 'fill' });
+  if (isDark) {
+    pipeline = pipeline.negate();
+  }
+
+  const buffer = await pipeline
     .extend({
       top: 0,
       bottom: paddedH - resizedH,
@@ -342,9 +374,10 @@ async function preprocessForDetection(imagePath: string): Promise<DetPreprocesse
 /**
  * PP-OCRv6 recognition preprocessing for a cropped text region:
  * 1. Crop the text region from the original image
- * 2. Resize to height 48, width proportional (capped at 320)
- * 3. Pad width to 320 with black pixels
- * 4. Normalize, RGB→BGR, HWC→CHW
+ * 2. Auto-detect dark theme and invert if needed
+ * 3. Resize to height 48, width proportional (capped at 320)
+ * 4. Pad width to 320 with black pixels
+ * 5. Normalize, RGB→BGR, HWC→CHW
  */
 async function preprocessForRecognition(
   imagePath: string,
@@ -361,14 +394,20 @@ async function preprocessForRecognition(
   const cropY = Math.max(0, Math.round(y1));
   const cropW = Math.max(1, Math.min(Math.round(x2 - x1), imgW - cropX));
   const cropH = Math.max(1, Math.min(Math.round(y2 - y1), imgH - cropY));
+  const isDark = await detectDarkTheme(imagePath);
 
   const propW = Math.round(targetH * (cropW / cropH));
   const resizeW = Math.min(propW, targetW);
   const padRight = targetW - resizeW;
 
-  const buffer = await sharp(imagePath)
+  let pipeline: any = sharp(imagePath)
     .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
-    .resize(resizeW, targetH, { fit: 'fill' })
+    .resize(targetW, targetH, { fit: 'inside' });
+  if (isDark) {
+    pipeline = pipeline.negate();
+  }
+
+  const buffer = await pipeline
     .extend({
       top: 0, bottom: 0,
       left: 0, right: padRight,
@@ -418,15 +457,28 @@ function dbPostProcess(
   probMap: Float32Array, probH: number, probW: number,
   scaleX: number, scaleY: number,
 ): TextBox[] {
-  const thresh = 0.2;
-  const boxThresh = 0.45;
-  const unclipRatio = 1.4;
+  // Align with PP-OCRv6 online API defaults for better accuracy
+  const thresh = 0.3;
+  const boxThresh = 0.6;
+  const unclipRatio = 1.5;
   const maxCandidates = 3000;
+
+  // The model may output logits (unbounded) or probabilities [0,1].
+  // If the value range is clearly outside [0,1], apply sigmoid to be safe.
+  const maybeLogits = probMap.length > 0 &&
+    (probMap[0] < 0 || probMap[0] > 1 ||
+      Math.max(...probMap) > 1 || Math.min(...probMap) < 0);
+  const probs = maybeLogits ? new Float32Array(probMap.length) : probMap;
+  if (maybeLogits) {
+    for (let i = 0; i < probMap.length; i++) {
+      probs[i] = 1 / (1 + Math.exp(-probMap[i]));
+    }
+  }
 
   // Binary mask
   const binary = new Uint8Array(probH * probW);
   for (let i = 0; i < probH * probW; i++) {
-    binary[i] = probMap[i] > thresh ? 1 : 0;
+    binary[i] = probs[i] > thresh ? 1 : 0;
   }
 
   const visited = new Uint8Array(probH * probW);

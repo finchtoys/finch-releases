@@ -78,5 +78,10 @@
     "@types/node": "^26.1.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.6.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "onnxruntime-node@1.27.0": true,
+    "sharp@0.34.5": true
   }
 }
