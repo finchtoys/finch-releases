@@ -11,7 +11,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "node build.mjs"
   },
   "finch": {
     "manifestVersion": 1,
@@ -74,9 +74,18 @@
           "label": "Model Tier",
           "default": "medium",
           "options": [
-            { "value": "tiny",   "label": "Tiny (~6 MB) — Fast & Lightweight" },
-            { "value": "small",  "label": "Small (~30 MB) — Balanced" },
-            { "value": "medium", "label": "Medium (~132 MB) — Highest Accuracy (recommended)" }
+            {
+              "value": "tiny",
+              "label": "Tiny (~6 MB) — Fast & Lightweight"
+            },
+            {
+              "value": "small",
+              "label": "Small (~30 MB) — Balanced"
+            },
+            {
+              "value": "medium",
+              "label": "Medium (~132 MB) — Highest Accuracy (recommended)"
+            }
           ]
         },
         {
@@ -85,10 +94,22 @@
           "label": "Language",
           "default": "ch+en",
           "options": [
-            { "value": "ch+en",    "label": "Chinese + English" },
-            { "value": "en",       "label": "English" },
-            { "value": "ch",       "label": "Chinese" },
-            { "value": "ch+en+ja", "label": "Chinese + English + Japanese" }
+            {
+              "value": "ch+en",
+              "label": "Chinese + English"
+            },
+            {
+              "value": "en",
+              "label": "English"
+            },
+            {
+              "value": "ch",
+              "label": "Chinese"
+            },
+            {
+              "value": "ch+en+ja",
+              "label": "Chinese + English + Japanese"
+            }
           ]
         }
       ]
@@ -107,6 +128,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "esbuild": "^0.28.1",
     "typescript": "^6.0.3"
   }
 }
