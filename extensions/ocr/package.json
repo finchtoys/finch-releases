@@ -117,7 +117,7 @@
     "permissions": {
       "filesystem": "readwrite",
       "network": true,
-      "shell": false,
+      "shell": true,
       "secrets": []
     }
   },

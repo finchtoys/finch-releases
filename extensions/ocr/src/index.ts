@@ -264,6 +264,42 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       const mdlDir = modelsDir(ctx);
       let charsFilePath = join(mdlDir, 'chars.json');
 
+      // Install native deps (onnxruntime-node, sharp) if not already present
+      const extDir = ctx.extension.extensionPath;
+      const nativeDepExists = existsSync(join(extDir, 'node_modules', 'onnxruntime-node', 'package.json'))
+        && existsSync(join(extDir, 'node_modules', 'sharp', 'package.json'));
+      if (!nativeDepExists) {
+        exec.logger.info('installing native deps (onnxruntime-node, sharp)...');
+        try {
+          const { execSync } = await import('node:child_process');
+          execSync('npm install onnxruntime-node sharp --no-save --ignore-scripts', {
+            cwd: extDir,
+            timeout: 120_000,
+            stdio: 'pipe',
+          });
+          // Run install scripts for native binaries
+          execSync('node node_modules/onnxruntime-node/install || true', {
+            cwd: extDir,
+            timeout: 60_000,
+            stdio: 'pipe',
+          });
+          execSync('node node_modules/sharp/install || true', {
+            cwd: extDir,
+            timeout: 60_000,
+            stdio: 'pipe',
+          });
+          exec.logger.info('native deps installed');
+        } catch (err) {
+          exec.logger.error('failed to install native deps', err);
+          return {
+            content: [{ type: 'text', text: ctx.i18n.t('error.nativeDepsFailed', { message: err instanceof Error ? err.message : String(err) }) }],
+            isError: true,
+          };
+        }
+      } else {
+        exec.logger.info('native deps already installed');
+      }
+
       try {
         // Check if models already exist
         if (!existsSync(detDest)) {

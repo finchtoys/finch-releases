@@ -37,6 +37,7 @@
   "status.availableTools": "**Available tools:** {tools}",
   "error.invalidTier": "Invalid tier: {tier}",
   "error.downloadFailed": "Failed to download OCR models: {message}",
+  "error.nativeDepsFailed": "Failed to install native dependencies (onnxruntime-node / sharp): {message}",
   "error.configSaveFailed": "Failed to save OCR MCP config: {message}",
   "cancelled": "OCR setup was cancelled ({reason})",
   "settings.tier.label": "Model Tier",

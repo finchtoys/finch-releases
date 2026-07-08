@@ -37,6 +37,7 @@
   "status.availableTools": "**可用工具:** {tools}",
   "error.invalidTier": "无效的模型档位: {tier}",
   "error.downloadFailed": "下载 OCR 模型失败: {message}",
+  "error.nativeDepsFailed": "安装原生依赖失败（onnxruntime-node / sharp）: {message}",
   "error.configSaveFailed": "保存 OCR MCP 配置失败: {message}",
   "cancelled": "OCR 设置已取消 ({reason})",
   "settings.tier.label": "模型档位",
