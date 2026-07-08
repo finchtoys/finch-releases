@@ -38,5 +38,7 @@
   "error.invalidTier": "Invalid tier: {tier}",
   "error.downloadFailed": "Failed to download OCR models: {message}",
   "error.configSaveFailed": "Failed to save OCR MCP config: {message}",
-  "cancelled": "OCR setup was cancelled ({reason})"
+  "cancelled": "OCR setup was cancelled ({reason})",
+  "settings.tier.label": "Model Tier",
+  "settings.language.label": "Language"
 }

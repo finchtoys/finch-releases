@@ -266,6 +266,11 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute(_input, exec) {
+      // Read defaults from Toolbox settings
+      const settingsTier = ctx.settings.get<string>('tier') ?? 'medium';
+      const settingsLang = ctx.settings.get<string>('language') ?? 'ch+en';
+      const settingsDefaultTier = TIER_INFO[settingsTier as Tier] ? settingsTier : 'medium';
+
       const result = await exec.ui.requestForm({
         title: ctx.i18n.t('form.setup.title'),
         description: ctx.i18n.t('form.setup.description'),
@@ -275,7 +280,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
             key: 'tier',
             label: ctx.i18n.t('form.setup.tier.label'),
             type: 'select',
-            default: 'medium',
+            default: settingsDefaultTier,
             options: [
               { value: 'tiny',   label: ctx.i18n.t('form.setup.tier.options.tiny') },
               { value: 'small',  label: ctx.i18n.t('form.setup.tier.options.small') },
@@ -286,7 +291,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
             key: 'language',
             label: ctx.i18n.t('form.setup.language.label'),
             type: 'select',
-            default: 'ch+en',
+            default: settingsLang,
             options: [
               { value: 'ch+en',    label: ctx.i18n.t('form.setup.language.options.ch+en') },
               { value: 'en',       label: ctx.i18n.t('form.setup.language.options.en') },
@@ -460,9 +465,40 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
 
 export function activate(ctx: finch.ExtensionContext): void {
   ctx.logger.info('PP-OCRv6 extension activating...');
+
+  // Always register tools
   registerSetupTool(ctx);
   registerStatusTool(ctx);
-  ctx.logger.info('PP-OCRv6 extension activated — setup_ocr and ocr_status tools registered');
+
+  // Read settings and auto-configure MCP server if models are already cached
+  const tier = ctx.settings.get<string>('tier') ?? '';
+  const language = ctx.settings.get<string>('language') ?? 'ch+en';
+  const mdlDir = modelsDir(ctx);
+
+  if (tier && TIER_INFO[tier as Tier]) {
+    const detDest = modelPath(ctx, tier as Tier, 'det');
+    const recDest = modelPath(ctx, tier as Tier, 'rec');
+    const charsDest = charsPath(ctx);
+    const configPath = join(mdlDir, 'mcp-config.json');
+
+    if (existsSync(detDest) && existsSync(recDest) && existsSync(charsDest)) {
+      ctx.logger.info(`models cached for tier=${tier}, auto-configuring MCP server`);
+      try {
+        const server = buildServer(tier as Tier, language, detDest, recDest, charsDest, configPath);
+        const file = mcpServersFile(ctx);
+        upsertServer(file, server);
+        ctx.logger.info('MCP server auto-configured from settings');
+      } catch (err) {
+        ctx.logger.warn('auto-config failed', err);
+      }
+    } else {
+      ctx.logger.info(`models not yet cached for tier=${tier}, run setup_ocr to download`);
+    }
+  } else {
+    ctx.logger.info('no tier setting configured, run setup_ocr to set up');
+  }
+
+  ctx.logger.info('PP-OCRv6 extension activated');
 }
 
 export function deactivate(): void {

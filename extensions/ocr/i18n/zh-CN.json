@@ -38,5 +38,7 @@
   "error.invalidTier": "无效的模型档位: {tier}",
   "error.downloadFailed": "下载 OCR 模型失败: {message}",
   "error.configSaveFailed": "保存 OCR MCP 配置失败: {message}",
-  "cancelled": "OCR 设置已取消 ({reason})"
+  "cancelled": "OCR 设置已取消 ({reason})",
+  "settings.tier.label": "模型档位",
+  "settings.language.label": "识别语言"
 }
