@@ -24,7 +24,7 @@ npx @finch.app/minitools add @finch.app/mcp-client --cwd /path/to/project
 # Install globally (~/.finch/extensions/)
 npx @finch.app/minitools add @finch.app/mcp-client --global
 
-# List installed mini tools
+# List installed mini tools (id, version, enabled/disabled, name, path)
 npx @finch.app/minitools list
 npx @finch.app/minitools list --global
 

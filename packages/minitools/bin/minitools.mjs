@@ -340,8 +340,10 @@ function cmdList(opts) {
     console.log(`No extensions installed in ${dir}`);
     return;
   }
+  const pluginState = normalizePluginState(readJson(pluginsStatePath(), {}));
   for (const p of plugins) {
-    console.log(`${p.info.id}\t${p.info.version}\t${p.info.displayName}\t${p.path}`);
+    const status = pluginState[p.info.id]?.enabled ? 'enabled' : 'disabled';
+    console.log(`${p.info.id}\t${p.info.version}\t${status}\t${p.info.displayName}\t${p.path}`);
   }
 }
 
@@ -460,8 +462,9 @@ function cmdDoctor(src = '.') {
   const pkg = readPackageJson(abs);
   const manifest = pkg?.finch ?? {};
   // Surface recommended manifest metadata that's missing (non-fatal).
-  const recommended = ['name', 'description', 'extensionType'];
+  const recommended = ['name', 'description'];
   const missing = recommended.filter((k) => manifest[k] == null);
+  if (manifest.miniToolType == null && manifest.extensionType == null) missing.push('miniToolType');
   if (missing.length) console.log(`  hint: manifest 建议补充字段: ${missing.join(', ')}`);
   if (manifest.permissions) {
     const p = manifest.permissions;

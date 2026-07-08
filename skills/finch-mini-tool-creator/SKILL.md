@@ -31,7 +31,7 @@ Use this skill as an index first:
 
 ## 1. Quick Start
 
-A mini tool is an npm-style TypeScript package discovered from the file system. It can contribute Agent tools, Composer toolbar buttons, bundled Skills, and other Finch runtime capabilities through a single `ExtensionContext` (`ctx`) object.
+A mini tool is an npm-style TypeScript package discovered from the file system. It can contribute Agent tools, Composer toolbar buttons, bundled Skills, and other Finch runtime capabilities through a single `MiniToolContext` (`ctx`) object. `ExtensionContext` remains available as a deprecated compatibility alias.
 
 Minimum shape:
 
@@ -96,6 +96,7 @@ All runtime capabilities go through `ctx`:
 - `ctx.storage`
 - `ctx.secrets`
 - `ctx.logger`
+- `ctx.app` — read Finch app info such as version/build/platform
 - `ctx.i18n`
 - `ctx.capabilities`
 - `ctx.extensions`

@@ -7,7 +7,7 @@
  * ```ts
  * import type * as finch from 'finch';
  *
- * export function activate(ctx: finch.ExtensionContext) {
+ * export function activate(ctx: finch.MiniToolContext) {
  *   ctx.subscriptions.push(
  *     ctx.tools.register({ ... }),
  *     ctx.composerActions.register('my-btn', { ... }),
@@ -116,17 +116,20 @@ declare module 'finch' {
    * - `ctx.storage` — 私有 KV 存储
    * - `ctx.secrets` — 只读密钥
    * - `ctx.logger` — 带前缀日志
+   * - `ctx.app` — Finch App 基本信息（只读）
    * - `ctx.session` — 当前 session（只读）
    * - `ctx.workspace` — 当前 workspace（只读）
    *
    * @example
-   * export function activate(ctx: finch.ExtensionContext) {
+   * export function activate(ctx: finch.MiniToolContext) {
    *   ctx.subscriptions.push(
    *     ctx.tools.register({ name: 'greet', ... }),
    *     ctx.composerActions.register('my-btn', { ... }),
    *   );
    *   ctx.logger.info('activated');
    * }
+   *
+   * @deprecated Use {@link MiniToolContext} for new mini tools.
    */
   export interface ExtensionContext {
     /**
@@ -317,6 +320,9 @@ declare module 'finch' {
     /** 对 manifest `permissions.secrets` 声明的密钥的只读访问。 */
     readonly secrets: Secrets;
 
+    /** Finch App 基本信息（只读）。 */
+    readonly app: App;
+
     /** 当前 session 信息（只读快照）。 */
     readonly session: SessionInfo;
 
@@ -324,7 +330,37 @@ declare module 'finch' {
     readonly workspace: WorkspaceInfo;
   }
 
-  /** 插件自身元信息。 */
+  /** Finch App 运行平台。 */
+  export type AppPlatform = 'aix' | 'android' | 'darwin' | 'freebsd' | 'haiku' | 'linux' | 'netbsd' | 'openbsd' | 'sunos' | 'win32' | 'cygwin';
+
+  /** Finch App 基本信息。 */
+  export interface AppInfo {
+    /** 应用名称。 */
+    readonly name: 'Finch';
+    /** 语义化版本号，例如 `1.5.0`。 */
+    readonly version: string;
+    /** 内部构建号。 */
+    readonly buildNumber: number;
+    /** 面向用户展示的完整版本，例如 `1.5.0(1456)`。 */
+    readonly versionDisplay: string;
+    /** 当前解析后的 App 语言。 */
+    readonly locale: AppLocale;
+    /** 当前操作系统平台，对齐 Node.js `process.platform`。 */
+    readonly platform: AppPlatform;
+    /** Finch API User-Agent 字符串。 */
+    readonly userAgent: string;
+  }
+
+  /** Finch App 只读信息入口。 */
+  export interface App {
+    /** 获取当前 Finch App 基本信息。 */
+    getInfo(): Promise<AppInfo>;
+  }
+
+  /**
+   * 插件自身元信息。
+   * @deprecated Use {@link MiniToolInfo} for new mini tools.
+   */
   export interface ExtensionInfo {
     /** 插件全局唯一 id，来自 manifest `finch.id`。 */
     readonly id: string;
@@ -367,7 +403,10 @@ declare module 'finch' {
   // § 3  finch.tools — Agent 工具
   // ════════════════════════════════════════════════════════════════════════════
 
-  /** 插件自定义表单中的单个字段，渲染在等候区表单卡片里。 */
+  /**
+   * 插件自定义表单中的单个字段，渲染在等候区表单卡片里。
+   * @deprecated Use {@link MiniToolFormField} for new mini tools.
+   */
   export interface ExtensionFormField {
     /** 表单值映射中的唯一 key。 */
     readonly key: string;
@@ -400,7 +439,10 @@ declare module 'finch' {
     readonly width?: 'full' | '1/2' | '1/3' | '2/3';
   }
 
-  /** `ctx.ui.requestForm` 的表单描述 —— 用户在工具调用期间填写。 */
+  /**
+   * `ctx.ui.requestForm` 的表单描述 —— 用户在工具调用期间填写。
+   * @deprecated Use {@link MiniToolFormSpec} for new mini tools.
+   */
   export interface ExtensionFormSpec {
     readonly title: string;
     readonly description?: string;
@@ -414,7 +456,10 @@ declare module 'finch' {
     readonly timeoutMs?: number;
   }
 
-  /** 用户提交或取消表单后返回给插件的结果。 */
+  /**
+   * 用户提交或取消表单后返回给插件的结果。
+   * @deprecated Use {@link MiniToolFormResult} for new mini tools.
+   */
   export interface ExtensionFormResult {
     /** 用户取消、超时、或 session 未提交即结束时为 false。 */
     readonly submitted: boolean;
@@ -986,6 +1031,7 @@ declare module 'finch' {
     getVersion(name: string): Promise<string | undefined>;
   }
 
+  /** @deprecated Use {@link MiniToolContribution} for new mini tools. */
   export interface ExtensionContribution<T = unknown> {
     extensionId: string;
     extensionName: string;
@@ -998,7 +1044,10 @@ declare module 'finch' {
   // § 6.2  Extensions — 读取其它扩展贡献
   // ════════════════════════════════════════════════════════════════════════════
 
-  /** `ctx.extensions` 的接口：读取已启用扩展的原始 manifest contributions。 */
+  /**
+   * `ctx.extensions` 的接口：读取已启用扩展的原始 manifest contributions。
+   * @deprecated Use {@link MiniToolContributions} for new mini tools.
+   */
   export interface Extensions {
     listContributions<T = unknown>(point: string): ExtensionContribution<T>[];
   }
@@ -1109,7 +1158,10 @@ declare module 'finch' {
   export type TranslationValue = string | number | boolean | null | undefined;
   export type TranslationValues = Record<string, TranslationValue>;
 
-  /** 扩展运行时 i18n。读取扩展自己的 `i18n/<locale>.json`。 */
+  /**
+   * 扩展运行时 i18n。读取扩展自己的 `i18n/<locale>.json`。
+   * @deprecated Use {@link MiniToolI18n} for new mini tools.
+   */
   export interface ExtensionI18n {
     /** 当前解析后的 app 语言，例如 `zh-CN` 或 `en-US`。 */
     readonly locale: AppLocale;
@@ -1213,7 +1265,10 @@ declare module 'finch' {
     readonly 'zh-CN'?: string;
   };
 
-  /** 扩展详情页展示的 prompt 引导语。点击后会填入 HomeView Composer。 */
+  /**
+   * 扩展详情页展示的 prompt 引导语。点击后会填入 HomeView Composer。
+   * @deprecated Use {@link MiniToolPromptGuide} for new mini tools.
+   */
   export interface ExtensionPromptGuide {
     readonly id?: string;
     readonly title: LocalizedString;
@@ -1221,7 +1276,13 @@ declare module 'finch' {
     readonly description?: LocalizedString;
   }
 
-  /** 扩展能力声明，用于官方扩展与社区扩展之间解耦。 */
+  /** Mini tool 类型与来源，用于工具箱/社区展示。 */
+  export type MiniToolType = 'official' | 'community' | 'local' | string;
+
+  /**
+   * 扩展能力声明，用于官方扩展与社区扩展之间解耦。
+   * @deprecated Use {@link MiniToolCapabilitySpec} for new mini tools.
+   */
   export interface ExtensionCapabilitySpec {
     readonly capabilities?: readonly string[];
   }
@@ -1292,6 +1353,8 @@ declare module 'finch' {
    *   "description": "做一些有用的事。",
    *   "systemPrompt": "当用户询问 X 时，优先使用这个扩展的工具。"
    * }
+   *
+   * @deprecated Use {@link MiniToolManifest} for new mini tools.
    */
   export interface ExtensionManifest {
     /** 必须为 `1`。 */
@@ -1346,8 +1409,13 @@ declare module 'finch' {
      * 需要用户显式授权或额外配置的插件（如 MCP 桥接）应设为 false。
      */
     readonly autoEnable?: boolean;
-    /** 插件类型与分类，用于插件市场/工具箱展示。 */
-    readonly extensionType?: 'official' | 'community' | 'local' | string;
+    /** Mini tool 类型与来源，用于工具箱/社区展示。 */
+    readonly miniToolType?: MiniToolType;
+    /**
+     * 插件类型与分类，用于插件市场/工具箱展示。
+     * @deprecated Use `miniToolType` for new mini tools.
+     */
+    readonly extensionType?: MiniToolType;
     readonly categories?: readonly string[];
     readonly privacyPolicyUrl?: string;
     readonly termsOfServiceUrl?: string;
@@ -1404,7 +1472,10 @@ declare module 'finch' {
     readonly tooltip?: string;
   }
 
-  /** 插件权限声明。 */
+  /**
+   * 插件权限声明。
+   * @deprecated Use {@link MiniToolPermissions} for new mini tools.
+   */
   export interface ExtensionPermissions {
     /** 文件系统访问级别。`'none'` = 禁止，`'read'` = 只读，`'readwrite'` = 读写。 */
     readonly filesystem?: 'none' | 'read' | 'readwrite';
@@ -1415,5 +1486,34 @@ declare module 'finch' {
     /** 可访问的密钥 key 列表（在 Finch 设置中由用户填写）。 */
     readonly secrets?: string[];
   }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // § 11  Mini Tool aliases — preferred public names
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /** Preferred name for {@link ExtensionContext}. */
+  export type MiniToolContext = ExtensionContext;
+  /** Preferred name for {@link ExtensionInfo}. */
+  export type MiniToolInfo = ExtensionInfo;
+  /** Preferred name for {@link ExtensionFormField}. */
+  export type MiniToolFormField = ExtensionFormField;
+  /** Preferred name for {@link ExtensionFormSpec}. */
+  export type MiniToolFormSpec = ExtensionFormSpec;
+  /** Preferred name for {@link ExtensionFormResult}. */
+  export type MiniToolFormResult = ExtensionFormResult;
+  /** Preferred name for {@link ExtensionContribution}. */
+  export type MiniToolContribution<T = unknown> = ExtensionContribution<T>;
+  /** Preferred name for {@link Extensions}. */
+  export type MiniToolContributions = Extensions;
+  /** Preferred name for {@link ExtensionI18n}. */
+  export type MiniToolI18n = ExtensionI18n;
+  /** Preferred name for {@link ExtensionPromptGuide}. */
+  export type MiniToolPromptGuide = ExtensionPromptGuide;
+  /** Preferred name for {@link ExtensionCapabilitySpec}. */
+  export type MiniToolCapabilitySpec = ExtensionCapabilitySpec;
+  /** Preferred name for {@link ExtensionManifest}. */
+  export type MiniToolManifest = ExtensionManifest;
+  /** Preferred name for {@link ExtensionPermissions}. */
+  export type MiniToolPermissions = ExtensionPermissions;
 
 } // end declare module 'finch'

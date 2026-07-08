@@ -17,7 +17,7 @@ npm install --save-dev @finch.app/minitool-api
 ```ts
 import type * as finch from 'finch';
 
-export function activate(ctx: finch.ExtensionContext) {
+export function activate(ctx: finch.MiniToolContext) {
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'greet',
@@ -58,7 +58,7 @@ Add a path alias so TypeScript resolves `'finch'` to this package's declarations
 
 ## API Overview
 
-All APIs are accessed through `ctx` — `ExtensionContext` is the single entry point.
+All APIs are accessed through `ctx` — `MiniToolContext` is the preferred public type for the single entry point. `ExtensionContext` remains available as a deprecated compatibility alias.
 
 ### Lifecycle
 
@@ -117,6 +117,15 @@ ctx.composerActions.register('git-branch', {
 | `showModalDialog(options)` | Custom-button modal |
 | `showMessage(message, type?)` | Inline status message |
 | `createCanvasWindow(options)` | Floating transparent window for desktop pets, overlays, etc. |
+
+### `ctx.app` — Finch App Info
+
+Read basic host app information such as version, build number, locale, platform, and User-Agent.
+
+```ts
+const app = await ctx.app.getInfo();
+ctx.logger.info(`Running on Finch ${app.versionDisplay}`);
+```
 
 ### `ctx.storage` — Private KV Store
 
@@ -193,7 +202,7 @@ ctx.workspace.spaceId // active Space id (undefined in default session)
 
 ## Manifest (`package.json`)
 
-All extension metadata lives under the `finch` key in `package.json`. Use `ExtensionManifest` for type hints:
+All mini tool metadata lives under the `finch` key in `package.json`. Use `MiniToolManifest` for type hints:
 
 ```jsonc
 {
@@ -203,8 +212,9 @@ All extension metadata lives under the `finch` key in `package.json`. Use `Exten
   "finch": {
     "manifestVersion": 1,
     "id": "my-extension",
-    "name": "My Extension",
+    "name": "My Mini Tool",
     "description": "Does something useful.",
+    "miniToolType": "community",
     "activationEvents": ["onStartup"],
     "contributes": {
       "tools": true,
@@ -213,7 +223,7 @@ All extension metadata lives under the `finch` key in `package.json`. Use `Exten
       ]
     },
     "permissions": {
-      "filesystem": "readonly",
+      "filesystem": "read",
       "network": true,
       "shell": false,
       "secrets": ["MY_API_KEY"]
