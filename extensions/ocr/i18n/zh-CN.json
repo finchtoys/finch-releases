@@ -1,7 +1,7 @@
 {
   "name": "PP-OCRv6",
   "description": "使用 PP-OCRv6 从图片中提取文字——支持 50 种语言，完全本地运行。",
-  "systemPrompt": "当用户上传图片、截图或要求提取图片中的文字时，调用 ocr_image 工具——它会弹出一个表单让用户提供图片文件路径。不要自己猜测图片路径。如果 PP-OCRv6 尚未配置，先调用 setup_ocr 下载模型。",
+  "systemPrompt": "当用户上传图片、截图或要求提取图片中的文字时，调用 ocr_image 工具并传入图片文件路径。如果 PP-OCRv6 尚未配置，先调用 setup_ocr 下载模型。",
   "toolMeta": { "name": "PP-OCRv6" },
   "promptGuides": {
     "setup-ocr": {
@@ -28,11 +28,6 @@
   "error.configSaveFailed": "保存 OCR 配置失败: {message}",
   "cancelled": "OCR 设置已取消 ({reason})",
   "error.notConfigured": "PP-OCRv6 尚未配置，请先运行 setup_ocr。",
-  "form.ocrImage.title": "选择图片",
-  "form.ocrImage.description": "输入或拖放图片文件路径，PP-OCRv6 将提取其中的文字。",
-  "form.ocrImage.submit": "开始识别",
-  "form.ocrImage.imagePath.label": "图片路径",
-  "form.ocrImage.imagePath.placeholder": "/path/to/image.png 或拖放文件到此处",
   "error.noImagePath": "未提供图片路径。",
   "error.fileNotFound": "文件不存在: {path}",
   "error.ocrFailed": "OCR 识别失败: {message}",

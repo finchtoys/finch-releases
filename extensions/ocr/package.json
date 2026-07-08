@@ -26,7 +26,7 @@
     "toolMeta": {
       "name": "PP-OCRv6"
     },
-    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool — it shows a form for the user to provide the image file path. Do NOT try to guess the image path yourself. If PP-OCRv6 is not set up yet, call setup_ocr first to download models.",
+    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. If PP-OCRv6 is not set up yet, call setup_ocr first to download models.",
     "promptGuides": [
       {
         "id": "setup-ocr",

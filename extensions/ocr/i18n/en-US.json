@@ -1,7 +1,7 @@
 {
   "name": "PP-OCRv6",
   "description": "Extract text from images using PP-OCRv6 ONNX models — supports 50 languages with high accuracy, fully local.",
-  "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool — it shows a form for the user to provide the image file path. Do NOT try to guess the image path yourself. If PP-OCRv6 is not set up yet, call setup_ocr first to download models.",
+  "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. If PP-OCRv6 is not set up yet, call setup_ocr first to download models.",
   "toolMeta": { "name": "PP-OCRv6" },
   "promptGuides": {
     "setup-ocr": {
@@ -28,11 +28,6 @@
   "error.configSaveFailed": "Failed to save OCR config: {message}",
   "cancelled": "OCR setup was cancelled ({reason})",
   "error.notConfigured": "PP-OCRv6 is not configured yet. Run `setup_ocr` first.",
-  "form.ocrImage.title": "Select Image",
-  "form.ocrImage.description": "Enter or drag an image file path — PP-OCRv6 will extract text from it.",
-  "form.ocrImage.submit": "Start OCR",
-  "form.ocrImage.imagePath.label": "Image Path",
-  "form.ocrImage.imagePath.placeholder": "/path/to/image.png or drag file here",
   "error.noImagePath": "No image path provided.",
   "error.fileNotFound": "File not found: {path}",
   "error.ocrFailed": "OCR recognition failed: {message}",

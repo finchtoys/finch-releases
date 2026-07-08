@@ -722,30 +722,17 @@ function registerOcrImageTool(ctx: finch.ExtensionContext): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'ocr_image',
     title: 'OCR Image',
-    description: 'Extract text from an image using PP-OCRv6. Call when the user shares an image, pastes a screenshot, or asks to read text from an image. Shows a form for the user to provide the image file path.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'Extract text from an image using PP-OCRv6. Call when the user shares an image, pastes a screenshot, or asks to read text from an image. Provide the image file path.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        imagePath: { type: 'string', description: 'Absolute path to the image file' },
+      },
+      required: ['imagePath'],
+    },
     risk: 'low',
-    async execute(_input, exec) {
-      const result = await exec.ui.requestForm({
-        title: ctx.i18n.t('form.ocrImage.title'),
-        description: ctx.i18n.t('form.ocrImage.description'),
-        submitLabel: ctx.i18n.t('form.ocrImage.submit'),
-        fields: [
-          {
-            key: 'imagePath',
-            label: ctx.i18n.t('form.ocrImage.imagePath.label'),
-            type: 'text',
-            required: true,
-            placeholder: ctx.i18n.t('form.ocrImage.imagePath.placeholder'),
-          },
-        ],
-      });
-
-      if (!result.submitted) {
-        return { content: [{ type: 'text', text: ctx.i18n.t('cancelled', { reason: result.reason ?? 'cancelled' }) }] };
-      }
-
-      const imagePath = String(result.values.imagePath ?? '').trim();
+    async execute(input) {
+      const imagePath = String((input as any).imagePath ?? '').trim();
       if (!imagePath) {
         return { content: [{ type: 'text', text: ctx.i18n.t('error.noImagePath') }], isError: true };
       }
