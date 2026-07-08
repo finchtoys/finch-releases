@@ -17,6 +17,9 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const CURRENT_BRANCH_KEY = 'currentBranch';
 
+// Tracks the most-recently-seen cwd so the background poller can use it.
+let activeCwd: string | undefined;
+
 function readIconSvg(name: string): string {
   return readFileSync(new URL(`../icons/${name}.svg`, import.meta.url), 'utf-8');
 }
@@ -149,10 +152,11 @@ export function activate(ctx: finch.ExtensionContext): void {
     }),
   );
 
-  ctx.subscriptions.push(
-    ctx.composerActions.register('git-branch', {
+  const composerAction = ctx.composerActions.register('git-branch', {
       async getBadge({ cwd }): Promise<string | undefined> {
         if (!cwd || !isGitRepo(cwd)) throw new Error('not a git repo');
+        // Keep activeCwd up-to-date so the background poller can use it.
+        activeCwd = cwd;
         // 工具/菜单分支变更会写入 storage；getBadge 每次同步真实 git 状态。
         // 不删除缓存，避免一次内部查询提前消费，导致入口文案仍停留在旧值。
         const branch = await git(cwd, ['branch', '--show-current']);
@@ -327,8 +331,7 @@ export function activate(ctx: finch.ExtensionContext): void {
           ctx.ui.showMessage(ctx.i18n.t('git.branch.switch.fail'), 'error');
         }
       },
-    }),
-  );
+    });
 
   // ── Agent tool: create branch with form dialog ─────────────────────────
   ctx.subscriptions.push(
@@ -403,6 +406,32 @@ export function activate(ctx: finch.ExtensionContext): void {
       },
     }),
   );
+
+  ctx.subscriptions.push(composerAction);
+
+  // ── Background poller: notify badge refresh when branch changes externally ──
+  // Reads .git/HEAD directly (no process spawn) every 3 s.
+  // Calls composerAction.notifyUpdate() when branch differs, which triggers
+  // a getBadge re-fetch and updates the toolbar badge immediately.
+  let lastPolledBranch: string | undefined;
+  const pollInterval = setInterval(() => {
+    const cwd = activeCwd;
+    if (!cwd || !isGitRepo(cwd)) return;
+    try {
+      const head = readFileSync(join(cwd, '.git/HEAD'), 'utf-8').trim();
+      const match = head.match(/^ref: refs\/heads\/(.+)$/);
+      const branch = match?.[1];
+      if (!branch) return;
+      if (branch !== lastPolledBranch) {
+        lastPolledBranch = branch;
+        composerAction.notifyUpdate();
+      }
+    } catch {
+      // ignore transient errors (detached HEAD, missing .git/HEAD, etc.)
+    }
+  }, 3000);
+
+  ctx.subscriptions.push({ dispose: () => clearInterval(pollInterval) });
 
   ctx.logger.info('git-branch v2 activated');
 }
