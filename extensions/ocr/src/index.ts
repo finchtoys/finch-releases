@@ -95,14 +95,32 @@ function registerSetupTool(ctx: any): void {
       if (!pythonCmd) {
         lines.push('❌ **Python not found**');
         lines.push('');
-        lines.push('Please install Python 3.10+ first:');
-        lines.push('- macOS: `brew install python@3.12`');
-        lines.push('- Ubuntu/Debian: `sudo apt install python3.12`');
-        lines.push('- Windows: Download from https://www.python.org/downloads/');
+        lines.push('**Required:** Python 3.10 or higher');
+        lines.push('');
+        lines.push('**Install Python:**');
+        lines.push('- **macOS:** `brew install python@3.12`');
+        lines.push('- **Ubuntu/Debian:** `sudo apt install python3.12`');
+        lines.push('- **Windows:** Download from https://www.python.org/downloads/');
+        lines.push('');
+        lines.push('After installing Python, run `setup_ocr` again.');
         return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
       }
 
       lines.push(`✅ **Python:** ${pythonCmd} (${pythonVersion})`);
+
+      // Check Python version (need 3.10+)
+      const versionMatch = pythonVersion.match(/(\d+)\.(\d+)/);
+      if (versionMatch) {
+        const major = parseInt(versionMatch[1]);
+        const minor = parseInt(versionMatch[2]);
+        if (major < 3 || (major === 3 && minor < 10)) {
+          lines.push('');
+          lines.push(`❌ **Python version too old:** ${pythonVersion}`);
+          lines.push('**Required:** Python 3.10 or higher');
+          lines.push('Please upgrade Python and try again.');
+          return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
+        }
+      }
 
       // Step 2: Check PaddleOCR
       let paddleocrInstalled = false;
@@ -118,13 +136,22 @@ function registerSetupTool(ctx: any): void {
       // Step 3: Install PaddleOCR if not installed
       if (!paddleocrInstalled) {
         lines.push('');
-        lines.push('📦 **Installing PaddleOCR...**');
+        lines.push('📦 **Dependencies to install:**');
+        lines.push('- `paddleocr` (v3.7+) — OCR engine');
+        lines.push('- `paddlepaddle` (v3.0+) — Deep learning framework');
+        lines.push('- `opencv-python` — Image processing (auto-installed)');
+        lines.push('- `numpy` — Array operations (auto-installed)');
+        lines.push('');
+        lines.push('**Total download size:** ~200 MB');
+        lines.push('**Download source:** PyPI (pip)');
+        lines.push('');
+        lines.push('⏳ **Installing...** (this may take 2-5 minutes on first run)');
 
         try {
           // Try to install in the venv first
           if (pythonCmd.includes('ocr-venv')) {
             lines.push('Installing in existing virtual environment...');
-            execSync(`${pythonCmd} -m pip install paddleocr paddlepaddle`, {
+            execSync(`${pythonCmd} -m pip install paddleocr paddlepaddle --timeout 120`, {
               timeout: 300_000,
               stdio: 'pipe',
             });
@@ -133,7 +160,7 @@ function registerSetupTool(ctx: any): void {
             lines.push('Creating virtual environment...');
             execSync('python3 -m venv /tmp/ocr-venv', { timeout: 60_000, stdio: 'pipe' });
             lines.push('Installing PaddleOCR in virtual environment...');
-            execSync('/tmp/ocr-venv/bin/python3 -m pip install paddleocr paddlepaddle', {
+            execSync('/tmp/ocr-venv/bin/python3 -m pip install paddleocr paddlepaddle --timeout 120', {
               timeout: 300_000,
               stdio: 'pipe',
             });
@@ -145,16 +172,42 @@ function registerSetupTool(ctx: any): void {
             encoding: 'utf-8',
           }).trim();
           paddleocrInstalled = true;
+          lines.push('');
           lines.push(`✅ **PaddleOCR installed:** v${paddleocrVersion}`);
         } catch (err) {
-          lines.push(`❌ **Installation failed:** ${err instanceof Error ? err.message : String(err)}`);
+          const errMsg = err instanceof Error ? err.message : String(err);
           lines.push('');
-          lines.push('Please install manually:');
-          lines.push('```bash');
-          lines.push('python3 -m venv /tmp/ocr-venv');
-          lines.push('source /tmp/ocr-venv/bin/activate');
-          lines.push('pip install paddleocr paddlepaddle');
-          lines.push('```');
+
+          if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT')) {
+            lines.push('❌ **Download timeout**');
+            lines.push('');
+            lines.push('**Possible causes:**');
+            lines.push('- Slow network connection');
+            lines.push('- PyPI server is blocked or slow');
+            lines.push('- Firewall blocking downloads');
+            lines.push('');
+            lines.push('**Solutions:**');
+            lines.push('1. **Use a faster network** (WiFi instead of mobile)');
+            lines.push('2. **Use a mirror** (for China users):');
+            lines.push('   ```bash');
+            lines.push('   pip install paddleocr paddlepaddle -i https://pypi.tuna.tsinghua.edu.cn/simple');
+            lines.push('   ```');
+            lines.push('3. **Install manually** in terminal:');
+            lines.push('   ```bash');
+            lines.push('   python3 -m venv /tmp/ocr-venv');
+            lines.push('   source /tmp/ocr-venv/bin/activate');
+            lines.push('   pip install paddleocr paddlepaddle');
+            lines.push('   ```');
+          } else {
+            lines.push(`❌ **Installation failed:** ${errMsg}`);
+            lines.push('');
+            lines.push('**Please install manually:**');
+            lines.push('```bash');
+            lines.push('python3 -m venv /tmp/ocr-venv');
+            lines.push('source /tmp/ocr-venv/bin/activate');
+            lines.push('pip install paddleocr paddlepaddle');
+            lines.push('```');
+          }
           return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
         }
       }
@@ -171,7 +224,9 @@ function registerSetupTool(ctx: any): void {
       lines.push('');
       lines.push('🎉 **PP-OCRv6 is ready!**');
       lines.push('');
-      lines.push('You can now use `ocr_image` to extract text from images.');
+      lines.push('**Usage:** Send an image and say "识别这张图里的文字"');
+      lines.push('');
+      lines.push('**First OCR call** will download models (~132 MB) from HuggingFace.');
 
       return { content: [{ type: 'text', text: lines.join('\n') }] };
     },
