@@ -17,6 +17,8 @@ Setup happens automatically on first use (Python venv + pip install).
 |------|-------------|
 | `ocr_image` | Extract text from an image (PNG, JPG, WebP, BMP, etc.) |
 | `ocr_pdf` | OCR a scanned PDF page by page |
+| `ocr_cache` | View cached OCR results (age, expiry) |
+| `clear_ocr_cache` | Clear all cached results |
 | `setup_ocr` | Check environment and install dependencies |
 | `ocr_status` | Quick health check |
 

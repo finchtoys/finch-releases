@@ -17,6 +17,8 @@
 |------|------|
 | `ocr_image` | 从图片（PNG、JPG、WebP、BMP 等）提取文字 |
 | `ocr_pdf` | 逐页 OCR 扫描版 PDF |
+| `ocr_cache` | 查看缓存的 OCR 结果（时间、过期） |
+| `clear_ocr_cache` | 清空所有缓存 |
 | `setup_ocr` | 检查环境并安装依赖 |
 | `ocr_status` | 快速健康检查 |
 
