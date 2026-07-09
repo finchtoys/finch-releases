@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
 
 os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
@@ -170,46 +170,72 @@ def pdf_blank_page(pix):
         return False
 
 
-def render_page(doc, page_num, dpi=PDF_RENDER_DPI):
+def render_page_to_tmp(page_num, pdf_path, dpi=PDF_RENDER_DPI):
     """
-    Render a PDF page to a temp PNG.
-    Uses a low-res preview (72 DPI) to check for blank content first —
-    only renders at full DPI if the page has content.
+    Render a PDF page to a temp PNG. Opens the PDF independently (for multiprocessing).
+    Uses a low-res preview (PDF_CHECK_DPI) to skip blank pages.
     Returns path or None if blank.
     """
-    page = doc[page_num]
-
-    # Step 1: low-res preview to check for blank
-    check_zoom = PDF_CHECK_DPI / 72.0
-    check_pix = page.get_pixmap(matrix=fitz.Matrix(check_zoom, check_zoom))
-    if pdf_blank_page(check_pix):
-        return None
-    check_pix = None  # let GC free memory
-
-    # Step 2: full-resolution render
-    zoom = dpi / 72.0
-    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-    tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-    pix.save(tmp.name)
-    return tmp.name
-
-
-def ocr_page(ocr, doc, page_num, dpi=PDF_RENDER_DPI):
-    """Render one PDF page and OCR it. Returns result dict."""
-    path = render_page(doc, page_num, dpi)
-    if path is None:
-        return {"page": page_num + 1, "lines": ["[blank page]"], "count": 1, "confidence": 0}
+    doc = fitz.open(pdf_path)
     try:
-        lines, confidence, _ = ocr_image(ocr, path)
+        page = doc[page_num]
+        # Low-res preview to check for blank
+        check_zoom = PDF_CHECK_DPI / 72.0
+        check_pix = page.get_pixmap(matrix=fitz.Matrix(check_zoom, check_zoom))
+        if pdf_blank_page(check_pix):
+            return None
+        check_pix = None
+
+        # Full-resolution render
+        zoom = dpi / 72.0
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        pix.save(tmp.name)
+        return tmp.name
+    finally:
+        doc.close()
+
+
+def render_and_ocr_page(args):
+    """
+    Worker function for multiprocessing: render + OCR a single PDF page.
+    Called inside a pool where _WORKER_OCR is pre-initialized.
+    args: (page_num, pdf_path)
+    Returns a result dict.
+    """
+    page_num, pdf_path = args
+    ocr = _WORKER_OCR
+    path = render_page_to_tmp(page_num, pdf_path)
+    if path is None:
+        return {"page": page_num + 1, "lines": ["[blank page]"], "count": 0, "confidence": 0}
+    try:
+        img, original_h_w = load_and_resize(path)
+        if img is None:
+            return {"page": page_num + 1, "lines": [], "count": 0, "confidence": 0}
+        h, w = img.shape[:2]
+        was_resized = (h, w) != original_h_w
+        # Save to temp (after resize) for PaddleOCR predict
+        work_path = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
+        cv2.imwrite(work_path, img)
+        lines, confidence = run_ocr(ocr, work_path)
+        os.unlink(work_path)
         return {
             "page": page_num + 1,
             "lines": lines or [],
             "count": len(lines) if lines else 0,
-            "confidence": confidence,
+            "confidence": round(confidence, 3),
+            "resized": was_resized,
         }
     finally:
         if os.path.exists(path):
             os.unlink(path)
+
+
+def _init_worker():
+    """Pool initializer: create and warm up one PaddleOCR instance per worker."""
+    global _WORKER_OCR
+    _WORKER_OCR = create_ocr_instance()
+    warmup_ocr(_WORKER_OCR)
 
 
 def process_pdf_stream(pdf_path):
@@ -222,32 +248,56 @@ def process_pdf_stream(pdf_path):
     total_pages = len(doc)
     yield json.dumps({"type": "meta", "total_pages": total_pages})
     sys.stdout.flush()
+    doc.close()  # workers open their own handles
 
     try:
         if total_pages <= 8:
+            # Small PDF: single model, sequential
             ocr = create_ocr_instance()
             warmup_ocr(ocr)
             for i in range(total_pages):
-                result = ocr_page(ocr, doc, i, PDF_RENDER_DPI)
+                path = render_page_to_tmp(i, pdf_path)
+                if path is None:
+                    result = {"page": i + 1, "lines": ["[blank page]"], "count": 0, "confidence": 0}
+                else:
+                    try:
+                        img, original_h_w = load_and_resize(path)
+                        if img is None:
+                            result = {"page": i + 1, "lines": [], "count": 0, "confidence": 0}
+                        else:
+                            work_path = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
+                            cv2.imwrite(work_path, img)
+                            lines, confidence = run_ocr(ocr, work_path)
+                            os.unlink(work_path)
+                            result = {
+                                "page": i + 1,
+                                "lines": lines or [],
+                                "count": len(lines) if lines else 0,
+                                "confidence": round(confidence, 3),
+                            }
+                    finally:
+                        if os.path.exists(path):
+                            os.unlink(path)
                 yield json.dumps({"type": "page", **result})
                 sys.stdout.flush()
         else:
-            # Warm up one model first (cold start), then spawn workers
-            warmup_ocr_instance = create_ocr_instance()
-            warmup_ocr(warmup_ocr_instance)
-            del warmup_ocr_instance  # release after warmup
+            # Large PDF: multiprocessing pool with persistent workers
+            workers = min(PDF_MAX_WORKERS, total_pages)
+            task_args = [(i, pdf_path) for i in range(total_pages)]
 
-            with ThreadPoolExecutor(max_workers=PDF_MAX_WORKERS) as pool:
-                futures = {pool.submit(ocr_page, create_ocr_instance(), doc, i, PDF_RENDER_DPI): i for i in range(total_pages)}
-                for f in as_completed(futures):
-                    result = f.result()
+            with multiprocessing.Pool(
+                processes=workers,
+                initializer=_init_worker,
+            ) as pool:
+                for result in pool.imap_unordered(render_and_ocr_page, task_args):
                     yield json.dumps({"type": "page", **result})
                     sys.stdout.flush()
 
         yield json.dumps({"type": "done"})
         sys.stdout.flush()
-    finally:
-        doc.close()
+    except Exception as e:
+        yield json.dumps({"error": str(e)})
+        sys.stdout.flush()
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────

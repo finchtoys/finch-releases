@@ -51,11 +51,11 @@ extensions/pp-ocrv6/
 | Type | Suggested Limit | Notes |
 |------|----------------|-------|
 | Single image | Unlimited | Automatically scaled if longest edge >3000px |
-| PDF pages | Hundreds | 150 DPI rendering, two-pass blank skip (72 DPI preview then 150 DPI), >98% blank pages skipped |
+| PDF pages | Hundreds | 150 DPI rendering, two-pass blank skip (72 DPI preview then 150 DPI), blank pages auto-skipped |
 | Single PDF page | Up to A0 | Very large drawings should be split first |
 
-- **Model warmup** — cold start (~10s) handled before first page; subsequent predictions are instant
-- **Multi-page PDFs** (>8 pages) use 4 parallel worker threads automatically
+- **Model warmup** — cold start (~10s) handled once per worker; subsequent predictions are instant
+- **Multi-page PDFs** (>8 pages) use multiprocessing with 4 workers — each worker pre-warms its own model and processes multiple pages, bypassing the GIL for true CPU parallelism
 - **Dynamic time estimation** — per-page moving average shown in `check_ocr_task` progress
 - PDF output includes page headers and confidence per page
 - Cache stored in extension private data directory
