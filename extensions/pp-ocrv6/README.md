@@ -54,8 +54,8 @@ extensions/pp-ocrv6/
 | PDF pages | Hundreds | 150 DPI rendering, two-pass blank skip (72 DPI preview then 150 DPI), blank pages auto-skipped |
 | Single PDF page | Up to A0 | Very large drawings should be split first |
 
-- **Model warmup** — cold start (~10s) handled once per worker; subsequent predictions are instant
-- **Multi-page PDFs** (>8 pages) use multiprocessing with 4 workers — each worker pre-warms its own model and processes multiple pages, bypassing the GIL for true CPU parallelism
+- **Model warmup** — cold start (~10s) handled once at the start of each PDF; subsequent predictions are instant
+- **Sequential page processing** — pages are processed one at a time with a single model instance, maximizing reliability on macOS ARM (PaddlePaddle multiprocessing is unstable)
 - **Dynamic time estimation** — per-page moving average shown in `check_ocr_task` progress
 - PDF output includes page headers and confidence per page
 - Cache stored in extension private data directory

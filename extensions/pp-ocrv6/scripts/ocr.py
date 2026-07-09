@@ -1,34 +1,23 @@
 #!/usr/bin/env python3
-"""PP-OCRv6 OCR — supports images and PDFs with large-file handling."""
+"""PP-OCRv6 OCR — images and PDFs. Always sequential; no multiprocessing."""
 import sys
 import json
 import os
 import tempfile
 import argparse
-import multiprocessing
-
-# macOS defaults to 'fork' which conflicts with PaddlePaddle's global
-# registries (operator registry, kernel cache). Using 'spawn' ensures
-# each worker starts as a clean Python process with no inherited state.
-try:
-    multiprocessing.set_start_method('spawn', force=True)
-except RuntimeError:
-    pass  # already set or not applicable on this platform
 
 os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
-# Prevent thread oversubscription in multiprocessing workers.
-# PaddlePaddle has its OWN thread pool (ThreadPoolTempl) that ignores
-# OMP_NUM_THREADS. We must also set PaddlePaddle-specific flags.
+# Limit native-thread oversubscription in PaddlePaddle / BLAS.
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
-os.environ['FLAGS_use_mkldnn'] = '0'          # disable MKL-DNN threading
-os.environ['FLAGS_paddle_num_threads'] = '1'   # limit PaddlePaddle internal pool
+os.environ['FLAGS_use_mkldnn'] = '0'
+os.environ['FLAGS_paddle_num_threads'] = '1'
 os.environ['FLAGS_enable_parallel_graph'] = '0'
-os.environ['CUDA_VISIBLE_DEVICES'] = ''        # no GPU, skip detection
-os.environ['MALLOC_ARENA_MAX'] = '2'           # limit glibc memory fragmentation
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+os.environ['MALLOC_ARENA_MAX'] = '2'
 
 try:
     from paddleocr import PaddleOCR
@@ -50,13 +39,11 @@ except ImportError:
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-MAX_IMAGE_DIM = 3000          # longest edge; larger images are scaled down
-PDF_RENDER_DPI = 150          # PDF page→PNG resolution
-PDF_CHECK_DPI = 72            # low-res preview for blank-page detection
-PDF_MAX_WORKERS = 2           # parallel workers for large PDFs (lower = less memory)
-PDF_MAX_TASKS_PER_WORKER = 15 # recycle workers after N pages to prevent memory leaks
-BLANK_PAGE_WHITE_THRESHOLD = 0.95  # ratio of near-white pixels to treat page as blank
-BLANK_PAGE_PIXEL_THRESHOLD = 240   # pixel value considered "white"
+MAX_IMAGE_DIM = 3000
+PDF_RENDER_DPI = 150
+PDF_CHECK_DPI = 72
+BLANK_PAGE_WHITE_THRESHOLD = 0.95
+BLANK_PAGE_PIXEL_THRESHOLD = 240
 
 
 # ── Image helpers ────────────────────────────────────────────────────────────
@@ -112,17 +99,16 @@ def warmup_ocr(ocr):
     """Run a dummy prediction to warm up the model (cold start ~10s). No-op if already warm."""
     warmup_path = os.path.join(os.path.dirname(__file__), 'warmup.png')
     if not os.path.exists(warmup_path):
-        # Create a 64×64 white dummy image on the fly
         try:
             tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
             cv2.imwrite(tmp.name, np.ones((64, 64, 3), dtype=np.uint8) * 255)
             warmup_path = tmp.name
         except Exception:
-            return  # skip warmup if we can't create a temp file
+            return
     try:
         ocr.predict(warmup_path)
     except Exception:
-        pass  # warmup failure is non-fatal
+        pass
     finally:
         if warmup_path and warmup_path.startswith(tempfile.gettempdir()):
             try:
@@ -176,7 +162,7 @@ def ocr_image(ocr, path):
     return lines1, round(avg1, 3), was_resized
 
 
-# ── PDF processing ───────────────────────────────────────────────────────────
+# ── PDF processing (sequential) ──────────────────────────────────────────────
 
 def pdf_blank_page(pix):
     """Check if a pixmap is mostly white."""
@@ -191,85 +177,8 @@ def pdf_blank_page(pix):
         return False
 
 
-def render_page_to_tmp(page_num, pdf_path, dpi=PDF_RENDER_DPI):
-    """
-    Render a PDF page to a temp PNG. Opens the PDF independently (for multiprocessing).
-    Uses a low-res preview (PDF_CHECK_DPI) to skip blank pages.
-    Returns path or None if blank.
-    """
-    doc = fitz.open(pdf_path)
-    try:
-        page = doc[page_num]
-        # Low-res preview to check for blank
-        check_zoom = PDF_CHECK_DPI / 72.0
-        check_pix = page.get_pixmap(matrix=fitz.Matrix(check_zoom, check_zoom))
-        if pdf_blank_page(check_pix):
-            return None
-        check_pix = None
-
-        # Full-resolution render
-        zoom = dpi / 72.0
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-        pix.save(tmp.name)
-        return tmp.name
-    finally:
-        doc.close()
-
-
-def render_and_ocr_page(args):
-    """
-    Worker function for multiprocessing: render + OCR a single PDF page.
-    Called inside a pool where _WORKER_OCR is pre-initialized.
-    args: (page_num, pdf_path)
-    Returns a result dict.
-    """
-    page_num, pdf_path = args
-    ocr = _WORKER_OCR
-    path = render_page_to_tmp(page_num, pdf_path)
-    if path is None:
-        return {"page": page_num + 1, "lines": ["[blank page]"], "count": 0, "confidence": 0}
-    try:
-        img, original_h_w = load_and_resize(path)
-        if img is None:
-            return {"page": page_num + 1, "lines": [], "count": 0, "confidence": 0}
-        h, w = img.shape[:2]
-        was_resized = (h, w) != original_h_w
-        # Save to temp (after resize) for PaddleOCR predict
-        work_path = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
-        cv2.imwrite(work_path, img)
-        del img  # release image memory before OCR
-        lines, confidence = run_ocr(ocr, work_path)
-        try:
-            os.unlink(work_path)
-        except OSError:
-            pass
-        return {
-            "page": page_num + 1,
-            "lines": lines or [],
-            "count": len(lines) if lines else 0,
-            "confidence": round(confidence, 3),
-            "resized": was_resized,
-        }
-    except Exception as e:
-        return {"page": page_num + 1, "lines": [], "count": 0, "confidence": 0, "error": str(e)}
-    finally:
-        try:
-            if os.path.exists(path):
-                os.unlink(path)
-        except OSError:
-            pass
-
-
-def _init_worker():
-    """Pool initializer: create and warm up one PaddleOCR instance per worker."""
-    global _WORKER_OCR
-    _WORKER_OCR = create_ocr_instance()
-    warmup_ocr(_WORKER_OCR)
-
-
 def process_pdf_stream(pdf_path):
-    """OCR every page of a PDF, yielding one JSON line per page (NDJSON)."""
+    """OCR every page of a PDF sequentially, yielding one JSON line per page."""
     if not HAS_PDF_SUPPORT:
         yield json.dumps({"error": "PyMuPDF not installed."})
         return
@@ -278,25 +187,37 @@ def process_pdf_stream(pdf_path):
     total_pages = len(doc)
     yield json.dumps({"type": "meta", "total_pages": total_pages})
     sys.stdout.flush()
-    doc.close()  # workers open their own handles
+    doc.close()
+
+    ocr = create_ocr_instance()
+    warmup_ocr(ocr)
 
     try:
-        if total_pages <= 8:
-            # Small PDF: single model, sequential
-            ocr = create_ocr_instance()
-            warmup_ocr(ocr)
-            for i in range(total_pages):
-                path = render_page_to_tmp(i, pdf_path)
-                if path is None:
+        for i in range(total_pages):
+            page_doc = fitz.open(pdf_path)
+            try:
+                page = page_doc[i]
+                # Low-res preview to check for blank
+                check_zoom = PDF_CHECK_DPI / 72.0
+                check_pix = page.get_pixmap(matrix=fitz.Matrix(check_zoom, check_zoom))
+                if pdf_blank_page(check_pix):
                     result = {"page": i + 1, "lines": ["[blank page]"], "count": 0, "confidence": 0}
                 else:
+                    check_pix = None
+                    # Full-resolution render
+                    zoom = PDF_RENDER_DPI / 72.0
+                    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+                    tmp_path = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
+                    pix.save(tmp_path)
+                    pix = None  # release pixmap memory
                     try:
-                        img, original_h_w = load_and_resize(path)
+                        img, original_h_w = load_and_resize(tmp_path)
                         if img is None:
                             result = {"page": i + 1, "lines": [], "count": 0, "confidence": 0}
                         else:
                             work_path = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
                             cv2.imwrite(work_path, img)
+                            del img  # release image memory before OCR
                             lines, confidence = run_ocr(ocr, work_path)
                             os.unlink(work_path)
                             result = {
@@ -306,26 +227,12 @@ def process_pdf_stream(pdf_path):
                                 "confidence": round(confidence, 3),
                             }
                     finally:
-                        if os.path.exists(path):
-                            os.unlink(path)
-                yield json.dumps({"type": "page", **result})
-                sys.stdout.flush()
-        else:
-            # Large PDF: multiprocessing pool with persistent workers
-            workers = min(PDF_MAX_WORKERS, total_pages)
-            task_args = [(i, pdf_path) for i in range(total_pages)]
-
-            with multiprocessing.Pool(
-                processes=workers,
-                initializer=_init_worker,
-                maxtasksperchild=PDF_MAX_TASKS_PER_WORKER,
-            ) as pool:
-                for result in pool.imap_unordered(render_and_ocr_page, task_args):
-                    # If a worker returned an error for a page, still yield it
-                    # so the TS side can track progress
-                    yield json.dumps({"type": "page", **result})
-                    sys.stdout.flush()
-
+                        if os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+            finally:
+                page_doc.close()
+            yield json.dumps({"type": "page", **result})
+            sys.stdout.flush()
         yield json.dumps({"type": "done"})
         sys.stdout.flush()
     except Exception as e:
