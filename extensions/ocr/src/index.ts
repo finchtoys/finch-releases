@@ -393,6 +393,76 @@ function registerStatusTool(ctx: any): void {
   }));
 }
 
+function registerCacheStatusTool(ctx: any): void {
+  ctx.subscriptions.push(ctx.tools.register({
+    name: 'ocr_cache',
+    title: 'OCR Cache',
+    description: 'View cached OCR results: entry count, expiry info, and option to clear cache.',
+    inputSchema: { type: 'object', properties: {} },
+    risk: 'low',
+    async execute() {
+      const lines: string[] = ['## OCR Cache\n'];
+
+      try {
+        const raw = await ctx.storage.get(CACHE_KEY);
+        if (!raw) {
+          lines.push('No cached results.');
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+
+        const cache = JSON.parse(raw) as Record<string, CacheEntry>;
+        const entries = Object.values(cache);
+        const now = Date.now();
+
+        if (entries.length === 0) {
+          lines.push('No cached results.');
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        }
+
+        lines.push(`| # | Type | Age | Expires | Files`);
+        lines.push('|---|------|-----|---------|------');
+
+        entries.forEach((entry, i) => {
+          const age = now - new Date(entry.createdAt).getTime();
+          const ageDays = Math.floor(age / (24 * 60 * 60 * 1000));
+          const ageHours = Math.floor((age % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+          const expiresIn = Math.max(0, 30 - ageDays);
+          const type = entry.pages ? 'PDF' : 'Image';
+          const shortHash = entry.hash.slice(0, 12);
+          lines.push(`| ${i + 1} | ${type} | \`${shortHash}...\` | ${ageDays}d ${ageHours}h ago | ${expiresIn}d | 1 file`);
+        });
+
+        lines.push('');
+        lines.push(`**Total:** ${entries.length} entries`);
+        lines.push('');
+        lines.push('To clear all cache, call `clear_ocr_cache`.');
+      } catch (err) {
+        lines.push(`Failed to read cache: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    },
+  }));
+}
+
+function registerClearCacheTool(ctx: any): void {
+  ctx.subscriptions.push(ctx.tools.register({
+    name: 'clear_ocr_cache',
+    title: 'Clear OCR Cache',
+    description: 'Delete all cached OCR results.',
+    inputSchema: { type: 'object', properties: {} },
+    risk: 'medium',
+    async execute() {
+      try {
+        await ctx.storage.delete(CACHE_KEY);
+        return { content: [{ type: 'text', text: 'OCR cache cleared.' }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Failed to clear cache: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+      }
+    },
+  }));
+}
+
 function registerOcrImageTool(ctx: any): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'ocr_image',
@@ -551,6 +621,8 @@ export async function activate(ctx: any): Promise<void> {
   ctx.logger.info('PP-OCRv6 extension activating...');
   registerSetupTool(ctx);
   registerStatusTool(ctx);
+  registerCacheStatusTool(ctx);
+  registerClearCacheTool(ctx);
   registerOcrImageTool(ctx);
   registerOcrPdfTool(ctx);
   ctx.logger.info('PP-OCRv6 extension activated — OCR ready for images and PDFs');
