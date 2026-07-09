@@ -367,6 +367,8 @@ declare module 'finch' {
     readonly platform: AppPlatform;
     /** Finch API User-Agent 字符串。 */
     readonly userAgent: string;
+    /** 用户自定义的助手名称，例如 "帕亚"。未设置时为默认值 "Finch"。 */
+    readonly assistantName: string;
   }
 
   /** Finch App 只读信息入口。 */

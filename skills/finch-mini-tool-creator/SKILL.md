@@ -96,7 +96,7 @@ All runtime capabilities go through `ctx`:
 - `ctx.storage`
 - `ctx.secrets`
 - `ctx.logger`
-- `ctx.app` — read Finch app info such as version/build/platform
+- `ctx.app` — read Finch app info such as version/build/platform/assistantName (user-customized assistant name, e.g. "帕亚"; use it to personalize tool output)
 - `ctx.i18n`
 - `ctx.capabilities`
 - `ctx.extensions`

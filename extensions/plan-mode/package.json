@@ -22,8 +22,8 @@
     "manifestVersion": 1,
     "id": "plan-mode",
     "name": "plan",
-    "description": "Add a one-tap planning mode button that injects planning-only reminders into each turn.",
-    "systemPrompt": "当用户需要先规划、拆解方案、暂不执行时，可使用 Plan Mode 扩展切换到计划模式。",
+    "description": "Toggle planning mode from the Finch Composer toolbar.",
+    "systemPrompt": "When the user wants to plan before acting, or break down a task before execution, suggest using Plan Mode.",
     "main": "dist/index.js",
     "activationEvents": [
       "onStartup"
@@ -39,7 +39,7 @@
         {
           "id": "plan-mode",
           "icon": "clipboard",
-          "tooltip": "做计划"
+          "tooltip": "Plan Mode"
         }
       ]
     },

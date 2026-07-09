@@ -1,101 +1,89 @@
 import type * as finch from 'finch';
 
-const ACTIVE_BADGE = '计划中';
 const INACTIVE_ICON = 'clipboard';
 const ACTIVE_ICON = 'clipboard-check';
-const REMINDER = 'Planning only — output a plan, do not execute any tools or side effects this turn.';
 
-// Per-session enabled state (in-memory, keyed by sessionId).
+const REMINDER =
+  'You are in Planning Mode. This turn: output a structured plan only. ' +
+  'Do NOT execute any tools, write any files, or perform side effects. ' +
+  'Wait for the user to confirm before acting.';
+
+// ── Per-session state (in-memory, keyed by sessionId) ────────────────────────
 const sessionState = new Map<string, boolean>();
 
-// Home page: one-shot planning flag.
-let homePlanningEnabled = false;
+function isEnabled(sessionId: string | undefined): boolean {
+  if (!sessionId) return false;
+  return sessionState.get(sessionId) === true;
+}
 
-// Last known sessionId from any callback that receives one reliably.
-// Used as a fallback when getBadge/getIcon are called without sessionId.
-// When a sessionId IS provided to getBadge/getIcon, it overrides this value,
-// so switching sessions (if runtime passes the new sessionId) is handled
-// automatically. If runtime never passes sessionId to getBadge/getIcon,
-// the Finch source needs to call notifyUpdate() on session switch so we
-// re-fetch with the right context.
-let activeSessionId: string | undefined;
+function setEnabled(sessionId: string, enabled: boolean): void {
+  sessionState.set(sessionId, enabled);
+}
 
 function storageKey(sessionId: string): string {
   return `enabled:${sessionId}`;
 }
 
-// Returns the effective sessionId: prefer explicit, fall back to last known.
-// Also updates activeSessionId whenever a fresh sessionId is seen.
-function resolveSession(sessionId: string | undefined): string | undefined {
-  if (sessionId) {
-    if (sessionId !== activeSessionId) {
-      // Session changed — runtime did pass the new id.
-      activeSessionId = sessionId;
-    }
-    return sessionId;
-  }
-  // Runtime didn't pass sessionId; use last known as fallback.
-  return activeSessionId;
-}
+// ── Home one-shot flag ────────────────────────────────────────────────────────
+let homePlanningEnabled = false;
 
-function isEnabled(sessionId: string | undefined): boolean {
-  const id = resolveSession(sessionId);
-  return id !== undefined && sessionState.get(id) === true;
-}
+// 当 home 发出计划态消息后，下一个全新 session 应继承计划态。
+// getBadge 遇到首次出现的 sessionId 时消费此 flag。
+let pendingNewSessionPlan = false;
+const knownSessions = new Set<string>();
 
+// ── Activation ────────────────────────────────────────────────────────────────
 export function activate(ctx: finch.ExtensionContext): void {
+  const t = (key: string) => ctx.i18n.t(key);
+
   const action = ctx.composerActions.register('plan-mode', {
 
+    // ── Badge ─────────────────────────────────────────────────────────────
     async getBadge({ surface, sessionId, cwd }) {
-      ctx.logger.info('getBadge called', { surface, sessionId, cwd, activeSessionId });
+      ctx.logger.info('getBadge', { surface, sessionId, cwd });
       if (surface === 'home') {
-        return homePlanningEnabled ? { text: ACTIVE_BADGE, active: true } : undefined;
+        return homePlanningEnabled ? { text: t('badge.active'), active: true } : undefined;
       }
-      const resolved = resolveSession(sessionId);
-      const enabled = isEnabled(resolved);
-      return enabled ? { text: ACTIVE_BADGE, active: true } : undefined;
+      // 首次见到这个 sessionId：如果 home 有未消费的计划态，继承给这个新 session
+      if (sessionId && !knownSessions.has(sessionId)) {
+        knownSessions.add(sessionId);
+        if (pendingNewSessionPlan) {
+          pendingNewSessionPlan = false;
+          setEnabled(sessionId, true);
+          void ctx.storage.set(storageKey(sessionId), true).catch(() => undefined);
+          queueMicrotask(() => action.notifyUpdate());
+        }
+      }
+      return isEnabled(sessionId) ? { text: t('badge.active'), active: true } : undefined;
     },
 
+    // ── Icon ──────────────────────────────────────────────────────────────
     async getIcon({ surface, sessionId }) {
       if (surface === 'home') {
         return homePlanningEnabled ? ACTIVE_ICON : INACTIVE_ICON;
       }
-      const resolved = resolveSession(sessionId);
-      const enabled = isEnabled(resolved);
-      ctx.logger.info('getIcon', { sessionId, resolved, activeSessionId, enabled });
-      return enabled ? ACTIVE_ICON : INACTIVE_ICON;
+      return isEnabled(sessionId) ? ACTIVE_ICON : INACTIVE_ICON;
     },
 
+    // ── Click ─────────────────────────────────────────────────────────────
     async onClick({ surface, sessionId }) {
-      ctx.logger.info('onClick', { surface, sessionId });
-
-      // ── Home: one-shot toggle ──────────────────────────────────────────────
+      // Home: one-shot
       if (surface === 'home') {
         homePlanningEnabled = !homePlanningEnabled;
         action.notifyUpdate();
         void ctx.ui.showToast({
-          title: homePlanningEnabled ? '已进入计划' : '已退出计划',
-          description: homePlanningEnabled
-            ? '首页下一条消息将以计划模式发送，发送后会自动关闭。'
-            : '已取消首页下一条消息的计划模式。',
+          title: homePlanningEnabled ? t('toast.enter.title') : t('toast.home.exit.title'),
+          description: homePlanningEnabled ? t('toast.home.enter.desc') : t('toast.home.exit.desc'),
           variant: homePlanningEnabled ? 'info' : 'default',
           position: 'TC',
         }).catch(() => undefined);
         return;
       }
 
-      // ── Session: per-session persistent toggle ─────────────────────────────
-      if (!sessionId) {
-        ctx.logger.warn('onClick called without sessionId in session surface');
-        return;
-      }
-
-      // onClick always carries the correct sessionId — update activeSessionId.
-      activeSessionId = sessionId;
-
+      // Session: per-session persistent
+      if (!sessionId) return;
       const next = !isEnabled(sessionId);
-      sessionState.set(sessionId, next);
-      ctx.logger.info('toggled', { sessionId, next });
+      setEnabled(sessionId, next);
       action.notifyUpdate();
 
       void ctx.storage.set(storageKey(sessionId), next).catch((err) => {
@@ -103,36 +91,47 @@ export function activate(ctx: finch.ExtensionContext): void {
       });
 
       void ctx.ui.showToast({
-        title: next ? '已进入计划' : '已退出计划',
-        description: next
-          ? '当前会话后续每轮消息都会自动附加"仅规划、不执行工具"的隐藏提醒。'
-          : '当前会话已停止自动注入 planning reminder。',
+        title: next ? t('toast.enter.title') : t('toast.exit.title'),
+        description: next ? t('toast.enter.desc') : undefined,
         variant: next ? 'info' : 'default',
         position: 'TC',
       }).catch(() => undefined);
     },
 
+    // ── Reminder ──────────────────────────────────────────────────────────
     async getReminder({ surface, sessionId }) {
-      // ── Home: one-shot, auto-clear after injection ─────────────────────────
       if (surface === 'home') {
         if (!homePlanningEnabled) return undefined;
         homePlanningEnabled = false;
+        pendingNewSessionPlan = true;
         queueMicrotask(() => action.notifyUpdate());
         return REMINDER;
       }
+      return isEnabled(sessionId) ? REMINDER : undefined;
+    },
 
-      // ── Session: getReminder is called with the correct context reliably ───
-      // Use it to update activeSessionId so getBadge/getIcon fallback stays current.
-      if (sessionId) activeSessionId = sessionId;
-      const resolved = resolveSession(sessionId);
-      const enabled = isEnabled(resolved);
-      ctx.logger.info('getReminder', { sessionId, resolved, enabled });
-      return enabled ? REMINDER : undefined;
+    // ── onTurnEnd ─────────────────────────────────────────────────────────
+    async onTurnEnd({ surface, sessionId }, actions) {
+      ctx.logger.info('onTurnEnd', { surface, sessionId });
+      if (surface !== 'session' || !isEnabled(sessionId)) return;
+
+      const result = await actions.composer.confirm({
+        text: t('confirm.text'),
+        confirmLabel: t('confirm.label'),
+        cancelLabel: t('confirm.cancel'),
+      });
+
+      if (result === 'confirm') {
+        setEnabled(sessionId!, false);
+        action.notifyUpdate();
+        void ctx.storage.set(storageKey(sessionId!), false).catch(() => undefined);
+        await actions.composer.fill(t('execute.prompt'));
+      }
     },
   });
 
   ctx.subscriptions.push(action);
-  ctx.logger.info('activated');
+  ctx.logger.info('plan-mode activated');
 }
 
 export function deactivate(): void {}

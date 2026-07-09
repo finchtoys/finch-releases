@@ -1,0 +1,27 @@
+{
+  "name": "plan",
+  "description": "Toggle planning mode from the Finch Composer toolbar.",
+  "systemPrompt": "When the user wants to plan before acting, or break down a task before execution, suggest using Plan Mode.",
+
+  "composerActions": {
+    "plan-mode": {
+      "tooltip": "Plan Mode"
+    }
+  },
+
+  "badge.active": "Planning",
+
+  "toast.enter.title": "Think before you act",
+  "toast.enter.desc": "Finch will only output a plan. Confirm after each reply to execute.",
+  "toast.exit.title": "No planning",
+
+  "toast.home.enter.desc": "Next message will be sent in planning mode and auto-closes after sending.",
+  "toast.home.exit.title": "No planning",
+  "toast.home.exit.desc": "Planning mode cancelled.",
+
+  "confirm.text": "Continue planning, or start executing?",
+  "confirm.label": "Execute",
+  "confirm.cancel": "Continue Planning",
+
+  "execute.prompt": "Plan confirmed, please start executing according to the plan above."
+}
