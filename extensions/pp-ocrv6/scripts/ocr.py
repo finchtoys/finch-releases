@@ -7,6 +7,14 @@ import tempfile
 import argparse
 import multiprocessing
 
+# macOS defaults to 'fork' which conflicts with PaddlePaddle's global
+# registries (operator registry, kernel cache). Using 'spawn' ensures
+# each worker starts as a clean Python process with no inherited state.
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    pass  # already set or not applicable on this platform
+
 os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
