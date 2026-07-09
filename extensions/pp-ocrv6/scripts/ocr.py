@@ -34,21 +34,25 @@ MAX_IMAGE_DIM = 3000          # longest edge; larger images are scaled down
 PDF_RENDER_DPI = 150          # PDF page→PNG resolution
 PDF_CHECK_DPI = 72            # low-res preview for blank-page detection
 PDF_MAX_WORKERS = 4           # parallel pages for large PDFs
+BLANK_PAGE_WHITE_THRESHOLD = 0.95  # ratio of near-white pixels to treat page as blank
+BLANK_PAGE_PIXEL_THRESHOLD = 240   # pixel value considered "white"
 
 
 # ── Image helpers ────────────────────────────────────────────────────────────
 
 def load_and_resize(path):
-    """Load image. If longest edge > MAX_IMAGE_DIM, scale down preserving aspect ratio."""
+    """Load image. If longest edge > MAX_IMAGE_DIM, scale down preserving aspect ratio.
+    Returns (image, original_hw) where original_hw is the (h, w) before resize."""
     img = cv2.imread(path)
     if img is None:
-        return None
+        return None, None
     h, w = img.shape[:2]
+    original_hw = (h, w)
     longest = max(h, w)
     if longest > MAX_IMAGE_DIM:
         scale = MAX_IMAGE_DIM / longest
         img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-    return img
+    return img, original_hw
 
 
 def enhance_image(img):
@@ -128,12 +132,11 @@ def ocr_image(ocr, path):
     OCR a single image: load → maybe resize → OCR → if low confidence, enhance → retry.
     Returns (lines, confidence, was_resized).
     """
-    img = load_and_resize(path)
+    img, original_h_w = load_and_resize(path)
     if img is None:
         return None, 0, False
 
     h, w = img.shape[:2]
-    original_h_w = cv2.imread(path).shape[:2] if cv2.imread(path) is not None else (h, w)
     was_resized = (h, w) != original_h_w
 
     work_path = save_temp(img)
@@ -155,14 +158,14 @@ def ocr_image(ocr, path):
 # ── PDF processing ───────────────────────────────────────────────────────────
 
 def pdf_blank_page(pix):
-    """Check if a pixmap is >98% white."""
+    """Check if a pixmap is mostly white."""
     samples = pix.samples
     total = len(samples)
     if total == 0:
         return True
     try:
-        white = np.sum(samples > 240)
-        return (white / total) > 0.98
+        white = np.sum(samples > BLANK_PAGE_PIXEL_THRESHOLD)
+        return (white / total) > BLANK_PAGE_WHITE_THRESHOLD
     except Exception:
         return False
 

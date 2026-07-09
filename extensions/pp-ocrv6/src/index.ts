@@ -357,7 +357,7 @@ function checkTask(cacheParent: string, hash: string): { status: string; text: s
   if (!existsSync(sf)) {
     const cached = getCached(cacheParent, hash);
     if (cached) return { status: 'completed', text: cached.text };
-    return { status: 'not_found', text: '没有找到对应的任务或缓存。' };
+    return { status: 'not_found', text: 'No matching task or cache found.' };
   }
 
   const task: TaskStatus = JSON.parse(readFileSync(sf, 'utf-8'));
@@ -374,7 +374,7 @@ function checkTask(cacheParent: string, hash: string): { status: string; text: s
 
       if (done > 0) {
         const mdParts: string[] = [
-          `## PDF OCR 进行中\n\n已完成 **${done}**/${total} 页，已耗时 **${elapsed}s**，预计还需 **~${remaining}s**\n`,
+          `## PDF OCR in Progress\n\nCompleted **${done}**/${total} pages, elapsed **${elapsed}s**, estimated remaining **~${remaining}s**\n`,
         ];
         // Show last few pages as a preview
         const show = prog.pages.slice(Math.max(0, done - 3));
@@ -390,14 +390,14 @@ function checkTask(cacheParent: string, hash: string): { status: string; text: s
     const remaining = Math.max(0, task.estimatedSeconds - elapsed);
     return {
       status: 'running',
-      text: `## OCR 任务进行中\n\n- 已耗时: **${elapsed}s**\n- 预计还需: **~${remaining}s**\n\n请稍后再查。`,
+      text: `## OCR Task in Progress\n\n- Elapsed: **${elapsed}s**\n- Estimated remaining: **~${remaining}s**\n\nPlease check again later.`,
     };
   }
 
   if (task.status === 'failed') {
     const errLog = existsSync(taskLogFile(cacheParent, hash)) ? readFileSync(taskLogFile(cacheParent, hash), 'utf-8').trim() : 'Unknown error';
     rmSync(taskDir(cacheParent, hash), { recursive: true, force: true });
-    return { status: 'failed', text: `## OCR 任务失败\n\n\`\`\`\n${errLog}\n\`\`\`` };
+    return { status: 'failed', text: `## OCR Task Failed\n\n\`\`\`\n${errLog}\n\`\`\`` };
   }
 
   // completed
@@ -771,7 +771,7 @@ function registerClearCacheTool(ctx: any): void {
       if (existsSync(root)) {
         rmSync(root, { recursive: true, force: true });
       }
-      return { content: [{ type: 'text', text: 'OCR 缓存已清空。' }] };
+      return { content: [{ type: 'text', text: 'OCR cache cleared.' }] };
     },
   }));
 }
@@ -819,7 +819,7 @@ function registerOcrImageTool(ctx: any): void {
         const existing = JSON.parse(readFileSync(sf, 'utf-8')) as TaskStatus;
         if (existing.status === 'running') {
           const elapsed = Math.floor((Date.now() - new Date(existing.createdAt).getTime()) / 1000);
-          return { content: [{ type: 'text', text: `OCR 任务已在运行中（已耗时 ${elapsed}s）。使用 \`check_ocr_task\` 查询进度（任务 ID: \`${hash}\`）。` }] };
+          return { content: [{ type: 'text', text: `OCR task already running (elapsed ${elapsed}s). Use \`check_ocr_task\` to check progress (task ID: \`${hash}\`).` }] };
         }
       }
 
@@ -833,18 +833,18 @@ function registerOcrImageTool(ctx: any): void {
           content: [{
             type: 'text',
             text: [
-              '## OCR 任务已启动\n',
-              '| 字段 | 值 |',
+              '## OCR Task Started\n',
+              '| Field | Value |',
               '|---|----|',
-              `| 任务 ID | \`${hash}\` |`,
-              `| 类型 | 图片 |`,
-              `| 状态 | 运行中 |`,
-              `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
-              `| 预计 | ~${estimatedSec} 秒 |`,
-              `| 结果文件 | \`${task.resultFile}\` |`,
-              `| 日志文件 | \`${taskLogFile(stPath, hash)}\` |`,
+              `| Task ID | \`${hash}\` |`,
+              `| Type | Image |`,
+              `| Status | Running |`,
+              `| Created | ${new Date(task.createdAt).toLocaleString()} |`,
+              `| Estimated | ~${estimatedSec}s |`,
+              `| Result File | \`${task.resultFile}\` |`,
+              `| Log File | \`${taskLogFile(stPath, hash)}\` |`,
               '',
-              `约 ${estimatedSec} 秒后使用 \`check_ocr_task\` 查询结果（传入任务 ID）。`,
+              `Use \`check_ocr_task\` with the task ID after about ${estimatedSec}s to retrieve the result.`,
             ].join('\n'),
           }],
         };
@@ -878,15 +878,15 @@ function registerOcrPdfTool(ctx: any): void {
     async execute(input: any) {
       const pdfPath = String((input as any).pdfPath ?? '').trim();
       if (!pdfPath) {
-        return { content: [{ type: 'text', text: '请提供 PDF 文件路径。' }], isError: true };
+        return { content: [{ type: 'text', text: 'Please provide the PDF path.' }], isError: true };
       }
       if (!existsSync(pdfPath)) {
-        return { content: [{ type: 'text', text: `文件不存在: ${pdfPath}` }], isError: true };
+        return { content: [{ type: 'text', text: `File not found: ${pdfPath}` }], isError: true };
       }
 
       const scriptPath = join(ctx.extension.extensionPath, 'scripts', 'ocr.py');
       if (!existsSync(scriptPath)) {
-        return { content: [{ type: 'text', text: 'OCR 脚本缺失，请重新安装扩展。' }], isError: true };
+        return { content: [{ type: 'text', text: 'OCR script missing. Please reinstall the extension.' }], isError: true };
       }
 
       const hash = fileHash(pdfPath);
@@ -905,7 +905,7 @@ function registerOcrPdfTool(ctx: any): void {
         const existing = JSON.parse(readFileSync(sf, 'utf-8')) as TaskStatus;
         if (existing.status === 'running') {
           const elapsed = Math.floor((Date.now() - new Date(existing.createdAt).getTime()) / 1000);
-          return { content: [{ type: 'text', text: `PDF OCR 任务已在运行中（已耗时 ${elapsed}s）。使用 \`check_ocr_task\` 查询进度（任务 ID: \`${hash}\`）。` }] };
+          return { content: [{ type: 'text', text: `PDF OCR task already running (elapsed ${elapsed}s). Use \`check_ocr_task\` to check progress (task ID: \`${hash}\`).` }] };
         }
       }
 
@@ -919,18 +919,18 @@ function registerOcrPdfTool(ctx: any): void {
           content: [{
             type: 'text',
             text: [
-              '## PDF OCR 任务已启动\n',
-              '| 字段 | 值 |',
+              '## PDF OCR Task Started\n',
+              '| Field | Value |',
               '|---|----|',
-              `| 任务 ID | \`${hash}\` |`,
-              `| 类型 | PDF |`,
-              `| 状态 | 运行中 |`,
-              `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
-              `| 预计 | ~${estimatedSec} 秒（大文件可能更久） |`,
-              `| 结果文件 | \`${task.resultFile}\` |`,
-              `| 日志文件 | \`${taskLogFile(stPath, hash)}\` |`,
+              `| Task ID | \`${hash}\` |`,
+              `| Type | PDF |`,
+              `| Status | Running |`,
+              `| Created | ${new Date(task.createdAt).toLocaleString()} |`,
+              `| Estimated | ~${estimatedSec}s (may take longer for large files) |`,
+              `| Result File | \`${task.resultFile}\` |`,
+              `| Log File | \`${taskLogFile(stPath, hash)}\` |`,
               '',
-              '稍后使用 \`check_ocr_task\` 查询结果（传入任务 ID）。',
+              'Use \`check_ocr_task\` with the task ID later to retrieve the result.',
             ].join('\n'),
           }],
         };
@@ -940,9 +940,9 @@ function registerOcrPdfTool(ctx: any): void {
         }
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('PyMuPDF')) {
-          return { content: [{ type: 'text', text: `PDF 解析库未安装: ${msg}\n\n运行 \`setup_ocr\` 重新安装全部依赖。` }], isError: true };
+          return { content: [{ type: 'text', text: `PDF parsing library not installed: ${msg}\n\nRun \`setup_ocr\` to reinstall all dependencies.` }], isError: true };
         }
-        return { content: [{ type: 'text', text: `PDF OCR 失败: ${msg}` }], isError: true };
+        return { content: [{ type: 'text', text: `PDF OCR failed: ${msg}` }], isError: true };
       }
     },
   }));
@@ -964,7 +964,7 @@ function registerCheckOcrTaskTool(ctx: any): void {
     async execute(input: any) {
       const hash = String((input as any).taskId ?? '').trim();
       if (!hash) {
-        return { content: [{ type: 'text', text: '请提供任务 ID。' }], isError: true };
+        return { content: [{ type: 'text', text: 'Please provide the task ID.' }], isError: true };
       }
 
       const result = checkTask(storagePath(ctx), hash);
@@ -982,7 +982,7 @@ function registerCheckOcrTaskTool(ctx: any): void {
       if (result.text) {
         return { content: [{ type: 'text', text: result.text }] };
       }
-      return { content: [{ type: 'text', text: '没有找到对应的任务或缓存。' }], isError: true };
+      return { content: [{ type: 'text', text: 'No matching task or cache found.' }], isError: true };
     },
   }));
 }

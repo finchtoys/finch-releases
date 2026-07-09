@@ -10,13 +10,14 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/finchtoys/finch-releases.git",
-    "directory": "extensions/ocr"
+    "directory": "extensions/pp-ocrv6"
   },
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc --noEmit -p tsconfig.json"
   },
   "finch": {
     "manifestVersion": 1,
@@ -47,7 +48,6 @@
         "prompt": "Extract text from this PDF"
       }
     ],
-    "main": "dist/index.js",
     "activationEvents": [
       "onStartup"
     ],
@@ -62,7 +62,7 @@
       "tools": true
     },
     "permissions": {
-      "filesystem": "read",
+      "filesystem": "write",
       "network": true,
       "shell": true,
       "secrets": []

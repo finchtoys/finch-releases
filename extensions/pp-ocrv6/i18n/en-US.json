@@ -1,0 +1,23 @@
+{
+  "name": "PP-OCRv6",
+  "description": "Extract text from images and scanned PDFs using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
+  "systemPrompt": "OCR tasks: DO NOT write Python scripts or use other tools. Always use the dedicated OCR tools: call ocr_image for images (PNG, JPG, WebP, BMP, screenshots) and ocr_pdf for PDF files (especially scanned PDFs). Both tools handle setup automatically. IMPORTANT: ocr_image and ocr_pdf are ASYNC — they start a background task and return a task ID immediately. AFTER the estimated time, call check_ocr_task with that task ID to retrieve the result. Do NOT ask the user to check manually — call check_ocr_task yourself.",
+  "toolMeta": { "name": "PP-OCRv6" },
+  "promptGuides": {
+    "setup-ocr": {
+      "title": "Set up OCR",
+      "description": "Download PP-OCRv6 models and configure OCR.",
+      "prompt": "Set up OCR, download models and start OCR service"
+    },
+    "ocr-image": {
+      "title": "Extract text from image",
+      "description": "Recognize text in an image using PP-OCRv6.",
+      "prompt": "Extract text from this image"
+    },
+    "ocr-pdf": {
+      "title": "Extract text from PDF",
+      "description": "OCR a scanned PDF to extract text page by page.",
+      "prompt": "Extract text from this PDF"
+    }
+  }
+}

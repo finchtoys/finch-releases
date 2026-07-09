@@ -35,7 +35,7 @@ Setup happens automatically on first use (Python venv + pip install).
 OCR results are cached for **30 days**, keyed by SHA-256 file hash. Same file = instant result without re-running OCR.
 
 ```
-extensions/ocr/
+extensions/pp-ocrv6/
 ├── cache/
 │   ├── index.json         # hash → ISO timestamp
 │   └── <sha256>.json      # result file

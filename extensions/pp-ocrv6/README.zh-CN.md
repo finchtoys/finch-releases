@@ -35,7 +35,7 @@
 OCR 结果缓存 **30 天**，基于 SHA-256 文件哈希作为键。同一个文件再次识别直接返回缓存结果，无需重新运行 OCR。
 
 ```
-extensions/ocr/
+extensions/pp-ocrv6/
 ├── cache/
 │   ├── index.json         # hash → ISO 时间戳
 │   └── <sha256>.json      # 结果文件
