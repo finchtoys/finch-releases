@@ -65,7 +65,7 @@ function createVenv(cmd: string): void {
 }
 
 function pipInstall(pyCmd: string): void {
-  const r = spawnSync(pyCmd, ['-m', 'pip', 'install', 'paddleocr', 'paddlepaddle', 'PyMuPDF', '--timeout', '120'], {
+  const r = spawnSync(pyCmd, ['-m', 'pip', 'install', 'paddleocr', 'paddlepaddle', 'PyMuPDF', 'opencv-python', 'numpy', '--timeout', '120'], {
     timeout: 300_000, stdio: 'pipe', encoding: 'utf-8',
   });
   if (r.status !== 0) {
@@ -174,7 +174,7 @@ class SetupError extends Error {
 
 // ── OCR Runner ──────────────────────────────────────────────────────────────
 
-function runOcrScript(pythonCmd: string, scriptPath: string, imagePath: string): { text: string; confidence: number } {
+function runOcrScript(pythonCmd: string, scriptPath: string, imagePath: string): { text: string; confidence: number; wasResized?: boolean } {
   const r = spawnSync(pythonCmd, [scriptPath, imagePath], {
     timeout: 120_000, stdio: 'pipe', encoding: 'utf-8',
   });
@@ -183,12 +183,11 @@ function runOcrScript(pythonCmd: string, scriptPath: string, imagePath: string):
     throw new Error((r.stderr || r.stdout || '').trim() || 'OCR process failed');
   }
 
-  const lines = r.stdout.trim().split('\n');
-  const parsed = JSON.parse(lines[lines.length - 1]);
+  const parsed = JSON.parse(r.stdout.trim());
   if (parsed.error) throw new Error(parsed.error);
 
   if (parsed.lines?.length > 0) {
-    return { text: parsed.lines.join('\n'), confidence: parsed.confidence || 0 };
+    return { text: parsed.lines.join('\n'), confidence: parsed.confidence || 0, wasResized: parsed.resized };
   }
   return { text: 'No text detected in the image.', confidence: 0 };
 }
@@ -210,15 +209,25 @@ function runOcrPdfScript(pythonCmd: string, scriptPath: string, pdfPath: string)
     return { text: 'No text detected in the PDF.', pages: [] };
   }
 
-  const collected: string[] = [];
   const pages: Array<{ page: number; text: string; confidence: number }> = [];
   for (const pg of parsed.pages) {
     const pageText = (pg.lines as string[]).join('\n');
-    collected.push(`--- Page ${pg.page} ---\n${pageText}`);
     pages.push({ page: pg.page, text: pageText, confidence: pg.confidence ?? 0 });
   }
 
-  return { text: collected.join('\n\n'), pages };
+  // Build Markdown output
+  const mdParts: string[] = [];
+  for (const pg of pages) {
+    mdParts.push(`### 📄 Page ${pg.page}`);
+    if (pg.confidence > 0) {
+      mdParts.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
+    }
+    mdParts.push('');
+    mdParts.push(pg.text || '*No text detected*');
+    mdParts.push('');
+  }
+
+  return { text: mdParts.join('\n'), pages };
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────
@@ -359,11 +368,17 @@ function registerOcrImageTool(ctx: any): void {
         const setup = ensureSetup();
         const result = runOcrScript(setup.cmd, scriptPath, imagePath);
 
-        let response = result.text;
-        if (result.confidence > 0) {
-          response += `\n\n---\n*Confidence: ${(result.confidence * 100).toFixed(1)}%*`;
+        // Build Markdown output
+        const mdLines: string[] = ['## OCR Result\n'];
+        if (result.wasResized) {
+          mdLines.push('> ℹ️ Large image was scaled down for processing.\n');
         }
-        return { content: [{ type: 'text', text: response }] };
+        mdLines.push(result.text);
+        if (result.confidence > 0) {
+          mdLines.push('');
+          mdLines.push(`> Confidence: **${(result.confidence * 100).toFixed(1)}%**`);
+        }
+        return { content: [{ type: 'text', text: mdLines.join('\n') }] };
       } catch (err) {
         if (err instanceof SetupError) {
           // User-friendly guidance for setup issues
@@ -417,9 +432,9 @@ function registerOcrPdfTool(ctx: any): void {
         const setup = ensureSetup();
         const result = runOcrPdfScript(setup.cmd, scriptPath, pdfPath);
 
-        let response = result.text;
-        response += `\n\n---\n*共 ${result.pages.length} 页，已识别所有文字*`;
-        return { content: [{ type: 'text', text: response }] };
+        // result.text is already Markdown
+        const footer = `\n---\n> *Processed **${result.pages.length}** pages: ${result.pages.filter(p => p.confidence > 0).length} with text, ${result.pages.filter(p => p.confidence === 0).length} blank*`;
+        return { content: [{ type: 'text', text: result.text + footer }] };
       } catch (err) {
         if (err instanceof SetupError) {
           return { content: [{ type: 'text', text: err.userMessage }], isError: true };

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""PP-OCRv6 adaptive OCR with retry logic. Supports both images and PDFs."""
+"""PP-OCRv6 OCR — supports images and PDFs with large-file handling."""
 import sys
 import json
 import os
 import tempfile
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
@@ -20,67 +21,53 @@ except ImportError as e:
     }))
     sys.exit(1)
 
-# PyMuPDF is optional — only needed for PDF processing
 try:
-    import fitz  # PyMuPDF
+    import fitz
     HAS_PDF_SUPPORT = True
 except ImportError:
     HAS_PDF_SUPPORT = False
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Image preprocessing
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Constants ────────────────────────────────────────────────────────────────
 
-def analyze_image(img):
-    """Analyze image characteristics to choose preprocessing strategy."""
-    h, w = img.shape[:2]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    mean_brightness = gray.mean()
-    is_dark = mean_brightness < 128
-    is_small = max(h, w) < 1500
-    is_large = max(h, w) > 4000
-    return {
-        'width': w, 'height': h,
-        'is_dark': is_dark,
-        'is_small': is_small,
-        'is_large': is_large,
-        'brightness': mean_brightness,
-    }
+MAX_IMAGE_DIM = 3000          # longest edge; larger images are scaled down
+PDF_RENDER_DPI = 200          # PDF page→PNG resolution
+PDF_MAX_WORKERS = 4           # parallel pages for large PDFs
 
 
-def preprocess_adaptive(img_path, strategy='default'):
-    """Apply adaptive preprocessing based on strategy."""
-    img = cv2.imread(img_path)
+# ── Image helpers ────────────────────────────────────────────────────────────
+
+def load_and_resize(path):
+    """Load image. If longest edge > MAX_IMAGE_DIM, scale down preserving aspect ratio."""
+    img = cv2.imread(path)
     if img is None:
-        return img_path, False
-
-    info = analyze_image(img)
-    modified = False
-
-    if strategy == 'enhance':
-        if info['is_small']:
-            img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-            modified = True
-
-        img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
-        modified = True
-
-        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        img = cv2.filter2D(img, -1, kernel)
-        modified = True
-
-    if modified:
-        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-        cv2.imwrite(tmp.name, img)
-        return tmp.name, True
-
-    return img_path, False
+        return None
+    h, w = img.shape[:2]
+    longest = max(h, w)
+    if longest > MAX_IMAGE_DIM:
+        scale = MAX_IMAGE_DIM / longest
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    return img
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Core OCR
-# ═══════════════════════════════════════════════════════════════════════════════
+def enhance_image(img):
+    """Upscale small images, normalize contrast, sharpen."""
+    h, w = img.shape[:2]
+    if max(h, w) < 1500:
+        img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
+    kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+    img = cv2.filter2D(img, -1, kernel)
+    return img
+
+
+def save_temp(img):
+    tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    cv2.imwrite(tmp.name, img)
+    return tmp.name
+
+
+# ── Core OCR ────────────────────────────────────────────────────────────────
 
 def create_ocr_instance():
     return PaddleOCR(
@@ -95,109 +82,127 @@ def create_ocr_instance():
 
 
 def run_ocr(ocr, image_path):
-    """Run OCR and return results with confidence scores."""
+    """Run OCR and return (lines, avg_confidence)."""
     result = ocr.predict(image_path)
-
-    lines = []
-    scores = []
+    lines, scores = [], []
     for r in result:
         res = r.get('res', r) if isinstance(r, dict) else r
-        if hasattr(res, 'rec_texts') and res.rec_texts:
-            for text, score in zip(res.rec_texts, res.rec_scores):
+        texts = getattr(res, 'rec_texts', None) or (res.get('rec_texts') if isinstance(res, dict) else None)
+        score_list = getattr(res, 'rec_scores', None) or (res.get('rec_scores') if isinstance(res, dict) else [])
+        if texts:
+            for text, score in zip(texts, score_list):
                 if text and text.strip():
                     lines.append(text.strip())
                     scores.append(float(score))
-        elif isinstance(res, dict) and 'rec_texts' in res:
-            for text, score in zip(res['rec_texts'], res['rec_scores']):
-                if text and text.strip():
-                    lines.append(text.strip())
-                    scores.append(float(score))
-
-    avg_score = sum(scores) / len(scores) if scores else 0
-    return lines, scores, avg_score
+    avg = sum(scores) / len(scores) if scores else 0
+    return lines, avg
 
 
-def run_ocr_with_retry(ocr, image_path):
-    """Run OCR with adaptive retry if confidence is low."""
-    enhanced_path = None
+def ocr_image(ocr, path):
+    """
+    OCR a single image: load → maybe resize → OCR → if low confidence, enhance → retry.
+    Returns (lines, confidence, was_resized).
+    """
+    img = load_and_resize(path)
+    if img is None:
+        return None, 0, False
+
+    h, w = img.shape[:2]
+    original_h_w = cv2.imread(path).shape[:2] if cv2.imread(path) is not None else (h, w)
+    was_resized = (h, w) != original_h_w
+
+    work_path = save_temp(img)
+    lines1, avg1 = run_ocr(ocr, work_path)
+    os.unlink(work_path)
+
+    # Retry with enhancement if needed
+    if avg1 < 0.85 or len(lines1) < 3:
+        enhanced = enhance_image(img)
+        enhanced_path = save_temp(enhanced)
+        lines2, avg2 = run_ocr(ocr, enhanced_path)
+        os.unlink(enhanced_path)
+        if avg2 > avg1 or len(lines2) > len(lines1):
+            lines1, avg1 = lines2, avg2
+
+    return lines1, round(avg1, 3), was_resized
+
+
+# ── PDF processing ───────────────────────────────────────────────────────────
+
+def pdf_blank_page(pix):
+    """Check if a pixmap is >98% white."""
+    samples = pix.samples
+    total = len(samples)
+    if total == 0:
+        return True
     try:
-        lines1, scores1, avg1 = run_ocr(ocr, image_path)
-
-        if avg1 < 0.85 or len(lines1) < 3:
-            enhanced_path, was_enhanced = preprocess_adaptive(image_path, 'enhance')
-            if was_enhanced:
-                lines2, scores2, avg2 = run_ocr(ocr, enhanced_path)
-                if avg2 > avg1 or len(lines2) > len(lines1):
-                    lines1, scores1, avg1 = lines2, scores2, avg2
-
-        return lines1, round(avg1, 3)
-    finally:
-        if enhanced_path and os.path.exists(enhanced_path):
-            os.unlink(enhanced_path)
+        white = np.sum(samples > 240)
+        return (white / total) > 0.98
+    except Exception:
+        return False
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PDF processing
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def pdf_page_to_image(doc, page_num, zoom=2.0):
-    """Render a PDF page as a PIL/PyMuPDF pixmap → temp PNG file."""
+def render_page(doc, page_num, dpi=PDF_RENDER_DPI):
+    """Render a PDF page to a temp PNG. Returns path or None if blank."""
+    zoom = dpi / 72.0
     page = doc[page_num]
-    mat = fitz.Matrix(zoom, zoom)  # 2x for better OCR
-    pix = page.get_pixmap(matrix=mat)
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    if pdf_blank_page(pix):
+        return None
     tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
     pix.save(tmp.name)
     return tmp.name
 
 
-def process_pdf(pdf_path):
-    """OCR every page of a PDF and return merged results."""
-    if not HAS_PDF_SUPPORT:
-        return {
-            "error": "PyMuPDF not installed. Run `pip install PyMuPDF` in your venv, or run setup_ocr to reinstall all dependencies.",
-            "pages": [],
-            "total_lines": 0,
-        }
-
-    doc = fitz.open(pdf_path)
-    ocr = create_ocr_instance()
-
-    page_results = []
-    total_lines = 0
-    page_files = []
-
+def ocr_page(ocr, doc, page_num, dpi=PDF_RENDER_DPI):
+    """Render one PDF page and OCR it. Returns result dict."""
+    path = render_page(doc, page_num, dpi)
+    if path is None:
+        return {"page": page_num + 1, "lines": ["[blank page]"], "count": 1, "confidence": 0}
     try:
-        for i in range(len(doc)):
-            img_path = pdf_page_to_image(doc, i)
-            page_files.append(img_path)
-
-            lines, confidence = run_ocr_with_retry(ocr, img_path)
-            page_results.append({
-                "page": i + 1,
-                "lines": lines,
-                "count": len(lines),
-                "confidence": confidence,
-            })
-            total_lines += len(lines)
-
+        lines, confidence, _ = ocr_image(ocr, path)
         return {
-            "pages": page_results,
-            "total_pages": len(page_results),
-            "total_lines": total_lines,
+            "page": page_num + 1,
+            "lines": lines or [],
+            "count": len(lines) if lines else 0,
+            "confidence": confidence,
         }
     finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def process_pdf(pdf_path):
+    """OCR every page of a PDF. Parallel workers for large PDFs."""
+    if not HAS_PDF_SUPPORT:
+        return {"error": "PyMuPDF not installed.", "pages": [], "total_lines": 0}
+
+    doc = fitz.open(pdf_path)
+    total_pages = len(doc)
+
+    try:
+        page_results = []
+        if total_pages <= 8:
+            ocr = create_ocr_instance()
+            for i in range(total_pages):
+                page_results.append(ocr_page(ocr, doc, i, PDF_RENDER_DPI))
+        else:
+            # Parallel — each thread creates its own OCR instance
+            with ThreadPoolExecutor(max_workers=PDF_MAX_WORKERS) as pool:
+                futures = []
+                for i in range(total_pages):
+                    futures.append(pool.submit(ocr_page, create_ocr_instance(), doc, i, PDF_RENDER_DPI))
+                for f in as_completed(futures):
+                    page_results.append(f.result())
+            page_results.sort(key=lambda x: x["page"])
+
+        total_lines = sum(p["count"] for p in page_results)
+        return {"pages": page_results, "total_pages": len(page_results), "total_lines": total_lines}
+    finally:
         doc.close()
-        for f in page_files:
-            try:
-                if os.path.exists(f):
-                    os.unlink(f)
-            except OSError:
-                pass
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Entry point
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Entry point ─────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description='PP-OCRv6 OCR — images and PDFs')
@@ -205,26 +210,24 @@ def main():
     parser.add_argument('--pdf', action='store_true', help='Process file as PDF')
     args = parser.parse_args()
 
-    file_path = args.path
-    if not os.path.exists(file_path):
-        print(json.dumps({"error": f"File not found: {file_path}"}))
+    if not os.path.exists(args.path):
+        print(json.dumps({"error": f"File not found: {args.path}"}))
         sys.exit(1)
 
     if args.pdf:
-        result = process_pdf(file_path)
+        result = process_pdf(args.path)
         print(json.dumps(result))
         if "error" in result:
             sys.exit(1)
         return
 
-    # Image mode
     ocr = create_ocr_instance()
-    lines, confidence = run_ocr_with_retry(ocr, file_path)
-
+    lines, confidence, was_resized = ocr_image(ocr, args.path)
     print(json.dumps({
-        "lines": lines,
-        "count": len(lines),
+        "lines": lines or [],
+        "count": len(lines) if lines else 0,
         "confidence": confidence,
+        "resized": was_resized,
     }))
 
 
