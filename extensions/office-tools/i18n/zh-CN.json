@@ -1,0 +1,177 @@
+{
+  "name": "Office Tools",
+  "description": "读取、创建、编辑 Word、Excel、PowerPoint 文件",
+  "systemPrompt": "当用户需要处理 Office 文档（Word .docx、Excel .xlsx、PowerPoint .pptx）时，优先使用 Office Tools 扩展。底层使用 OfficeCLI —— 专为 AI Agent 设计的 Office 套件命令行工具。\n\n策略：L1（读取与检查）→ L2（编辑）。先用 `read_office_file` 了解文档结构，再用 `modify_office_file` 进行修改。不确定属性名或语法时，用 `inspect_office_file` 查询帮助文档，不要猜测。\n\n安装：如果 OfficeCLI 未安装，调用 `setup_officecli` 自动下载安装。这是一次性设置。如果 `check_officecli` 显示 OfficeCLI 不可用，始终建议先调用 `setup_officecli`。\n\n实时预览规则：\n- PowerPoint (.pptx)：创建或编辑 PPT 时**必须**启动实时预览（`preview_office_file(action=start)`）。PPT 是视觉媒介，用户需要实时看到效果。每次 `modify_office_file` 后浏览器自动刷新。用户在浏览器里点击元素时，用 `preview_office_file(action=selected)` 检查。\n- Word (.docx) 和 Excel (.xlsx)：**不要**自动启动预览。改为询问用户：'需要启动实时预览吗？你可以在浏览器里点击元素来检查。'如果用户说要，就启动；如果不要，继续编辑。\n- 编辑完成且用户不再需要预览时，调用 `preview_office_file(action=stop)` 关闭服务器。",
+  "promptGuides": {
+    "setup-officecli": {
+      "title": "设置 OfficeCLI",
+      "description": "检查并在需要时安装 OfficeCLI。",
+      "prompt": "先用 check_officecli 检查 OfficeCLI 是否已安装。如果没有安装，调用 setup_officecli 下载安装。"
+    },
+    "inspect-help": {
+      "title": "查询 OfficeCLI 帮助",
+      "description": "查询 OfficeCLI 帮助文档获取属性语法。",
+      "prompt": "查询如何在 PowerPoint 幻灯片中添加图表，使用 OfficeCLI 帮助。"
+    },
+    "read-docx": {
+      "title": "读取 Word 文档",
+      "description": "读取 .docx 文件并显示结构。",
+      "prompt": "读取 outline.docx 并以大纲视图显示文档结构。然后启动实时预览，让我点击段落和表格来检查它们。"
+    },
+    "read-pptx": {
+      "title": "读取 PowerPoint",
+      "description": "读取 .pptx 文件并显示结构。",
+      "prompt": "读取 deck.pptx 并显示幻灯片大纲。然后启动实时预览，让我点击元素。"
+    },
+    "read-xlsx": {
+      "title": "读取 Excel 文件",
+      "description": "读取 .xlsx 文件并显示结构。",
+      "prompt": "读取 data.xlsx 并显示大纲。然后启动实时预览，让我点击单元格和工作表来检查它们。"
+    },
+    "create-report": {
+      "title": "创建正式报告",
+      "description": "创建含目录、页眉页脚、页码的 Word 文档。",
+      "prompt": "创建一个名为 annual-report.docx 的正式报告。添加标题页 '年度报告 2025'，目录，3 个带标题和正文的章节，带页码的页眉，和带公司名称的页脚。"
+    },
+    "create-minutes": {
+      "title": "创建会议纪要",
+      "description": "创建会议纪要 Word 文档。",
+      "prompt": "创建 meeting-minutes.docx，包含标题 '会议纪要'，日期，参会人员列表，议程事项，讨论要点，和带负责人和截止日期的行动事项。"
+    },
+    "create-proposal": {
+      "title": "创建提案文档",
+      "description": "创建 Word 提案文档。",
+      "prompt": "创建 proposal.docx，包含章节：执行摘要，问题陈述，解决方案，时间线，预算，和结论。使用专业格式和标题、要点。"
+    },
+    "create-contract": {
+      "title": "创建合同",
+      "description": "创建 Word 合同或协议。",
+      "prompt": "创建 contract.docx，包含章节：各方，工作范围，付款条款，时间线，保密条款，终止条款，和签名。使用正式语言和适当格式。"
+    },
+    "create-resume": {
+      "title": "创建简历",
+      "description": "创建专业 Word 简历。",
+      "prompt": "创建 resume.docx，包含章节：联系方式，摘要，工作经历（3 份工作），教育背景，技能，和证书。使用简洁格式和一致字体。"
+    },
+    "create-pptx-pitch": {
+      "title": "创建 Pitch Deck",
+      "description": "创建创业融资演示文稿。",
+      "prompt": "创建 pitch-deck.pptx，包含 10 页幻灯片：标题，问题，解决方案，市场规模，商业模式，增长数据，团队，财务，融资需求，和联系方式。使用深色主题和专业配色。"
+    },
+    "create-pptx-qbr": {
+      "title": "创建季度业务回顾",
+      "description": "创建季度业务回顾演示文稿。",
+      "prompt": "创建 qbr.pptx，包含幻灯片：标题，议程，关键指标，收入分布，客户增长，产品更新，挑战，下季度目标。为收入和客户数据添加图表。"
+    },
+    "create-pptx-product": {
+      "title": "创建产品发布会演示",
+      "description": "创建产品发布会演示文稿。",
+      "prompt": "创建 product-launch.pptx，包含幻灯片：标题，产品概述，核心功能（3 页），演示，定价，市场机会，竞品分析，行动号召。使用现代设计和图片。"
+    },
+    "create-pptx-training": {
+      "title": "创建培训演示",
+      "description": "创建培训或入职演示文稿。",
+      "prompt": "创建 training.pptx，包含幻灯片：标题，议程，公司概述，角色描述，工具和系统，流程，最佳实践，问答。为每页幻灯片添加演讲者备注。"
+    },
+    "create-pptx-charts": {
+      "title": "创建含图表的演示",
+      "description": "创建带数据可视化的 PowerPoint。",
+      "prompt": "创建 dashboard.pptx，包含：月度收入柱状图，市场份额饼图，增长趋势折线图，和汇总关键指标的表格。"
+    },
+    "create-xlsx-budget": {
+      "title": "创建预算追踪器",
+      "description": "创建 Excel 预算表格。",
+      "prompt": "创建 budget.xlsx，包含工作表：收入（工资、投资、其他），支出（住房、食物、交通、水电、娱乐），和汇总表，含各类别总计、公式和净收入计算。"
+    },
+    "create-xlsx-dashboard": {
+      "title": "创建销售仪表盘",
+      "description": "创建带图表的 Excel 销售仪表盘。",
+      "prompt": "创建 sales-dashboard.xlsx，包含原始数据表（100 行销售数据，列：日期、产品、区域、金额、数量），数据透视表，和按区域及月度趋势的收入图表。"
+    },
+    "create-xlsx-pivot": {
+      "title": "创建数据透视表",
+      "description": "从数据创建 Excel 数据透视表。",
+      "prompt": "读取 data.xlsx，然后在新工作表上创建数据透视表，按区域和产品汇总销售数据，含总计和百分比。"
+    },
+    "create-xlsx-gradebook": {
+      "title": "创建成绩册",
+      "description": "创建带公式的 Excel 成绩册。",
+      "prompt": "创建 gradebook.xlsx，包含列：学生姓名，作业 1-5，期中，期末，总分（加权公式），等级（字母），和及格/不及格的条件格式。"
+    },
+    "create-xlsx-financial": {
+      "title": "创建财务模型",
+      "description": "创建 Excel 财务模型。",
+      "prompt": "创建 financial-model.xlsx，包含工作表：假设，收入预测（5 年），成本结构，利润表，现金流量表，和汇总表含关键指标和图表。"
+    },
+    "create-xlsx-tracker": {
+      "title": "创建项目追踪器",
+      "description": "创建 Excel 项目追踪器。",
+      "prompt": "创建 project-tracker.xlsx，包含列：任务，负责人，开始日期，结束日期，状态，优先级，进度百分比。为状态颜色添加条件格式和汇总仪表盘。"
+    },
+    "edit-word-tables": {
+      "title": "编辑 Word 表格",
+      "description": "在 Word 文档中添加和格式化表格。",
+      "prompt": "读取 report.docx，然后在第一段后添加一个 4x4 表格，标题为：类别，Q1，Q2，Q3。添加数据行，标题行加粗并使用蓝色背景。"
+    },
+    "edit-word-images": {
+      "title": "在 Word 中添加图片",
+      "description": "在 Word 文档中添加图片和图注。",
+      "prompt": "读取 report.docx，然后在第二段后添加一张名为 chart.png 的图片。在图片下方添加图注：'图 1：收入增长'。"
+    },
+    "edit-word-comments": {
+      "title": "添加 Word 批注",
+      "description": "添加批注和修订跟踪。",
+      "prompt": "读取 draft.docx，然后为需要修改的段落添加批注。在第三段添加批注 '请扩展此部分'。"
+    },
+    "edit-pptx-animations": {
+      "title": "为 PPT 添加动画",
+      "description": "为幻灯片添加动画和过渡。",
+      "prompt": "读取 deck.pptx，然后为第一页幻灯片的标题形状添加淡入动画，为第二页的要点添加飞入动画，为所有幻灯片之间添加 Morph 过渡。"
+    },
+    "edit-pptx-layout": {
+      "title": "重排 PPT 幻灯片",
+      "description": "移动、克隆和重排幻灯片。",
+      "prompt": "读取 deck.pptx，然后克隆第一页幻灯片并移到最后。将克隆的幻灯片标题改为 '谢谢'。"
+    },
+    "edit-xlsx-formulas": {
+      "title": "添加 Excel 公式",
+      "description": "添加公式和计算。",
+      "prompt": "读取 data.xlsx，然后在总计行添加 SUM 公式，为每列添加 AVERAGE 公式，并为超过 1000 的单元格添加条件格式高亮。"
+    },
+    "edit-xlsx-charts": {
+      "title": "添加 Excel 图表",
+      "description": "从表格数据创建图表。",
+      "prompt": "读取 data.xlsx，然后创建月度收入柱状图，按产品市场份额饼图，和增长趋势折线图。"
+    },
+    "edit-xlsx-sort": {
+      "title": "排序和筛选 Excel 数据",
+      "description": "排序和筛选表格数据。",
+      "prompt": "读取 data.xlsx，然后按 C 列降序排序数据。在标题行添加自动筛选。"
+    },
+    "preview-click-edit": {
+      "title": "预览并点击编辑",
+      "description": "启动实时预览，点击元素并编辑。",
+      "prompt": "启动我的文档的实时预览。当我点击一个元素后，获取选中的元素并将其颜色改为红色。"
+    },
+    "preview-word": {
+      "title": "预览 Word 文档",
+      "description": "启动 Word 文档的实时预览进行可视化编辑。",
+      "prompt": "启动 report.docx 的实时预览。我想点击段落和表格来检查它们的格式并进行修改。"
+    },
+    "preview-excel": {
+      "title": "预览 Excel 表格",
+      "description": "启动 Excel 表格的实时预览。",
+      "prompt": "启动 data.xlsx 的实时预览。我想点击单元格和工作表来检查它们的值和公式。"
+    },
+    "bulk-edit-word": {
+      "title": "批量编辑 Word 文档",
+      "description": "在 Word 文档中查找替换文本。",
+      "prompt": "读取 report.docx，然后将所有 'draft' 替换为 'final'。同时将所有 'important' 加粗。"
+    },
+    "bulk-edit-pptx": {
+      "title": "批量编辑 PowerPoint",
+      "description": "跨多张幻灯片应用更改。",
+      "prompt": "读取 deck.pptx，然后将所有幻灯片中所有形状的字体改为 Arial，字号改为 24pt。在每张幻灯片右下角添加公司 Logo。"
+    }
+  }
+}

@@ -1,0 +1,265 @@
+{
+  "name": "@finch.app/office-tools",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Office tools for Finch — read, create, edit Word, Excel, and PowerPoint files using OfficeCLI.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/office-tools"
+  },
+  "license": "MIT",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "office-tools",
+    "name": "Office Tools",
+    "description": "Office tools for Finch — read, create, edit Word, Excel, and PowerPoint files using OfficeCLI.",
+    "toolMeta": {
+      "name": "Office Tools"
+    },
+    "systemPrompt": "When the user needs to work with Office documents (Word .docx, Excel .xlsx, PowerPoint .pptx), prefer the Office Tools extension. It wraps OfficeCLI — a single-binary Office suite for AI agents.\n\nStrategy: L1 (read & inspect) → L2 (edit). Start with `read_office_file` to understand structure, then use `modify_office_file` to make changes. When unsure about property names or syntax, use `inspect_office_file` with a help query instead of guessing.\n\nSetup: If OfficeCLI is not installed, call `setup_officecli` to download and install it automatically. This is a one-time setup. If `check_officecli` shows OfficeCLI is not available, always suggest calling `setup_officecli` first.\n\nLive preview rules:\n- PowerPoint (.pptx): ALWAYS start a live preview (`preview_office_file(action=start)`) when creating or editing a PPT. PPT is a visual medium — the user needs to see the result in real time. After each `modify_office_file` call, the browser auto-refreshes. When the user clicks an element in the browser, use `preview_office_file(action=selected)` to inspect it.\n- Word (.docx) and Excel (.xlsx): Do NOT auto-start preview. Instead, ask the user: 'Would you like a live preview so you can click on elements to inspect them?' If yes, start preview. If no, continue without.\n- When done with all edits and the user no longer needs preview, call `preview_office_file(action=stop)` to shut down the server.",
+    "promptGuides": [
+      {
+        "id": "setup-officecli",
+        "title": "Set up OfficeCLI",
+        "description": "Check and install OfficeCLI if needed.",
+        "prompt": "Check if OfficeCLI is installed using check_officecli. If not installed, call setup_officecli to download and install it."
+      },
+      {
+        "id": "inspect-help",
+        "title": "Look up OfficeCLI help",
+        "description": "Query OfficeCLI help for property syntax.",
+        "prompt": "Look up how to add a chart to a PowerPoint slide using OfficeCLI help."
+      },
+      {
+        "id": "read-docx",
+        "title": "Read a Word document",
+        "description": "Read a .docx file and display its structure.",
+        "prompt": "Read outline.docx and show me the document structure in outline view. Then start a live preview so I can click on paragraphs and tables to inspect them."
+      },
+      {
+        "id": "read-pptx",
+        "title": "Read a PowerPoint",
+        "description": "Read a .pptx file and display its structure.",
+        "prompt": "Read deck.pptx and show me the slide outline. Then start a live preview so I can click on elements."
+      },
+      {
+        "id": "read-xlsx",
+        "title": "Read an Excel file",
+        "description": "Read a .xlsx file and display its structure.",
+        "prompt": "Read data.xlsx and show me the outline. Then start a live preview so I can click on cells and sheets to inspect them."
+      },
+      {
+        "id": "create-report",
+        "title": "Create a formal report",
+        "description": "Create a Word document with TOC, headers, footers, page numbers.",
+        "prompt": "Create a formal report called annual-report.docx. Add a title page with 'Annual Report 2025', a table of contents, 3 sections with headings and body text, headers with page numbers, and a footer with the company name."
+      },
+      {
+        "id": "create-minutes",
+        "title": "Create meeting minutes",
+        "description": "Create a Word document for meeting minutes.",
+        "prompt": "Create meeting-minutes.docx with a header 'Meeting Minutes', date, attendees list, agenda items, discussion points, and action items with owners and deadlines."
+      },
+      {
+        "id": "create-proposal",
+        "title": "Create a proposal",
+        "description": "Create a Word proposal document.",
+        "prompt": "Create proposal.docx with sections: Executive Summary, Problem Statement, Proposed Solution, Timeline, Budget, and Conclusion. Use professional formatting with headings and bullet points."
+      },
+      {
+        "id": "create-contract",
+        "title": "Create a contract",
+        "description": "Create a Word contract or agreement.",
+        "prompt": "Create contract.docx with sections: Parties, Scope of Work, Payment Terms, Timeline, Confidentiality, Termination, and Signatures. Use formal language and proper formatting."
+      },
+      {
+        "id": "create-resume",
+        "title": "Create a resume",
+        "description": "Create a professional resume in Word.",
+        "prompt": "Create resume.docx with sections: Contact Info, Summary, Experience (3 jobs), Education, Skills, and Certifications. Use clean formatting with consistent fonts."
+      },
+      {
+        "id": "create-pptx-pitch",
+        "title": "Create a pitch deck",
+        "description": "Create a startup pitch deck in PowerPoint.",
+        "prompt": "Create pitch-deck.pptx with 10 slides: Title, Problem, Solution, Market Size, Business Model, Traction, Team, Financials, Ask, and Contact. Use a dark theme with professional colors."
+      },
+      {
+        "id": "create-pptx-qbr",
+        "title": "Create a quarterly review",
+        "description": "Create a quarterly business review presentation.",
+        "prompt": "Create qbr.pptx with slides: Title, Agenda, Key Metrics, Revenue Breakdown, Customer Growth, Product Updates, Challenges, Next Quarter Goals. Add charts for revenue and customer data."
+      },
+      {
+        "id": "create-pptx-product",
+        "title": "Create a product launch deck",
+        "description": "Create a product launch presentation.",
+        "prompt": "Create product-launch.pptx with slides: Title, Product Overview, Key Features (3 slides), Demo, Pricing, Market Opportunity, Competitive Analysis, Call to Action. Use modern design with images."
+      },
+      {
+        "id": "create-pptx-training",
+        "title": "Create a training deck",
+        "description": "Create a training or onboarding presentation.",
+        "prompt": "Create training.pptx with slides: Title, Agenda, Company Overview, Role Description, Tools & Systems, Processes, Best Practices, Q&A. Add speaker notes to each slide."
+      },
+      {
+        "id": "create-pptx-charts",
+        "title": "Create a presentation with charts",
+        "description": "Create a PowerPoint with data visualization.",
+        "prompt": "Create dashboard.pptx with slides containing: a bar chart for monthly revenue, a pie chart for market share, a line chart for growth trends, and a table summarizing key metrics."
+      },
+      {
+        "id": "create-xlsx-budget",
+        "title": "Create a budget tracker",
+        "description": "Create an Excel budget spreadsheet.",
+        "prompt": "Create budget.xlsx with sheets: Income (salary, investments, other), Expenses (housing, food, transport, utilities, entertainment), and Summary with totals, formulas for each category, and a net income calculation."
+      },
+      {
+        "id": "create-xlsx-dashboard",
+        "title": "Create a sales dashboard",
+        "description": "Create an Excel sales dashboard with charts.",
+        "prompt": "Create sales-dashboard.xlsx with raw data sheet (100 rows of sales data with columns: Date, Product, Region, Amount, Units), a pivot table, and charts for revenue by region and monthly trends."
+      },
+      {
+        "id": "create-xlsx-pivot",
+        "title": "Create a pivot table",
+        "description": "Create an Excel pivot table from data.",
+        "prompt": "Read data.xlsx, then create a pivot table on a new sheet that summarizes sales by Region and Product, with totals and percentages."
+      },
+      {
+        "id": "create-xlsx-gradebook",
+        "title": "Create a gradebook",
+        "description": "Create an Excel gradebook with formulas.",
+        "prompt": "Create gradebook.xlsx with columns: Student Name, Assignment 1-5, Midterm, Final, Total (weighted formula), Grade (letter), and conditional formatting for pass/fail."
+      },
+      {
+        "id": "create-xlsx-financial",
+        "title": "Create a financial model",
+        "description": "Create an Excel financial model.",
+        "prompt": "Create financial-model.xlsx with sheets: Assumptions, Revenue Projections (5 years), Cost Structure, P&L Statement, Cash Flow, and Summary with key metrics and charts."
+      },
+      {
+        "id": "create-xlsx-tracker",
+        "title": "Create a project tracker",
+        "description": "Create an Excel project tracker.",
+        "prompt": "Create project-tracker.xlsx with columns: Task, Owner, Start Date, End Date, Status, Priority, Progress %. Add conditional formatting for status colors and a summary dashboard."
+      },
+      {
+        "id": "edit-word-tables",
+        "title": "Edit Word tables",
+        "description": "Add and format tables in a Word document.",
+        "prompt": "Read report.docx, then add a 4x4 table after the first paragraph with headers: Category, Q1, Q2, Q3. Add data rows and format the header row bold with a blue background."
+      },
+      {
+        "id": "edit-word-images",
+        "title": "Add images to Word",
+        "description": "Add images and captions to a Word document.",
+        "prompt": "Read report.docx, then add an image called chart.png after the second paragraph. Add a caption below the image: 'Figure 1: Revenue Growth'."
+      },
+      {
+        "id": "edit-word-comments",
+        "title": "Add comments to Word",
+        "description": "Add comments and track changes.",
+        "prompt": "Read draft.docx, then add comments to paragraphs that need revision. Add a comment 'Please expand this section' to the third paragraph."
+      },
+      {
+        "id": "edit-pptx-animations",
+        "title": "Add animations to PPT",
+        "description": "Add animations and transitions to slides.",
+        "prompt": "Read deck.pptx, then add a fade-in animation to the title shape on slide 1, a fly-in animation to the bullet points on slide 2, and a morph transition between all slides."
+      },
+      {
+        "id": "edit-pptx-layout",
+        "title": "Rearrange PPT slides",
+        "description": "Move, clone, and rearrange slides.",
+        "prompt": "Read deck.pptx, then clone slide 1 and move it to the end. Change the title of the cloned slide to 'Thank You'."
+      },
+      {
+        "id": "edit-xlsx-formulas",
+        "title": "Add formulas to Excel",
+        "description": "Add formulas and calculations.",
+        "prompt": "Read data.xlsx, then add a SUM formula in the total row, an AVERAGE formula for each column, and conditional formatting to highlight cells above 1000."
+      },
+      {
+        "id": "edit-xlsx-charts",
+        "title": "Add charts to Excel",
+        "description": "Create charts from spreadsheet data.",
+        "prompt": "Read data.xlsx, then create a bar chart showing revenue by month, a pie chart showing market share by product, and a line chart showing growth trends."
+      },
+      {
+        "id": "edit-xlsx-sort",
+        "title": "Sort and filter Excel data",
+        "description": "Sort and filter spreadsheet data.",
+        "prompt": "Read data.xlsx, then sort the data by column C in descending order. Add an autofilter to the header row."
+      },
+      {
+        "id": "preview-click-edit",
+        "title": "Preview and click to edit",
+        "description": "Start live preview, click elements, and edit them.",
+        "prompt": "Start a live preview of my document. After I click on an element, get the selected element and change its color to red."
+      },
+      {
+        "id": "preview-word",
+        "title": "Preview a Word document",
+        "description": "Start live preview of a Word document for visual editing.",
+        "prompt": "Start a live preview of report.docx. I want to click on paragraphs and tables to inspect their formatting and make changes."
+      },
+      {
+        "id": "preview-excel",
+        "title": "Preview an Excel spreadsheet",
+        "description": "Start live preview of an Excel spreadsheet.",
+        "prompt": "Start a live preview of data.xlsx. I want to click on cells and sheets to inspect their values and formulas."
+      },
+      {
+        "id": "bulk-edit-word",
+        "title": "Bulk edit Word document",
+        "description": "Find and replace text across a Word document.",
+        "prompt": "Read report.docx, then find all instances of 'draft' and replace with 'final'. Also bold all instances of 'important'."
+      },
+      {
+        "id": "bulk-edit-pptx",
+        "title": "Bulk edit PowerPoint",
+        "description": "Apply changes across multiple slides.",
+        "prompt": "Read deck.pptx, then change the font to Arial and size to 24pt on all shapes across all slides. Add a company logo to the bottom-right of each slide."
+      }
+    ],
+    "main": "dist/index.js",
+    "activationEvents": [
+      "onStartup"
+    ],
+    "contributes": {
+      "tools": true
+    },
+    "extensionType": "official",
+    "categories": [
+      "productivity"
+    ],
+    "permissions": {
+      "filesystem": "readwrite",
+      "network": false,
+      "shell": true
+    }
+  },
+  "devDependencies": {
+    "@finch.app/minitool-api": "^0.1.10",
+    "@types/node": "^26.1.0",
+    "typescript": "^5.6.0"
+  },
+  "files": [
+    "dist/",
+    "i18n/",
+    "README.md",
+    "package.json"
+  ]
+}
