@@ -104,7 +104,7 @@ function setCached(cacheParent: string, hash: string, entry: Omit<CacheEntry, 'h
 }
 
 function storagePath(ctx: any): string {
-  return ctx.extension.storagePath ?? ctx.extension.extensionPath;
+  return ctx.extension.extensionPath;
 }
 
 // ── Async Task Management ──────────────────────────────────────────────────
