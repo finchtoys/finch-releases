@@ -1,4 +1,4 @@
-# MCP Client
+## MCP Client
 
 MCP Client is [Finch](https://finchwork.app/)'s bridge for mini tools that want to expose Model Context Protocol (MCP) servers to the Agent.
 

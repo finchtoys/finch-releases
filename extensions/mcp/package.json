@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/mcp-client",
-  "version": "1.1.18",
+  "version": "1.1.19",
   "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
@@ -15,8 +15,15 @@
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "README.zh-CN.md",
+    "i18n/**/*"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
   },
   "finch": {
     "manifestVersion": 1,

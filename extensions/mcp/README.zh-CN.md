@@ -1,4 +1,4 @@
-# MCP Client
+## MCP Client
 
 MCP Client 是 [Finch](https://finchwork.app/) 为小工具提供的 MCP 桥接扩展，用来把 Model Context Protocol（MCP）server 暴露给 Agent 使用。
 

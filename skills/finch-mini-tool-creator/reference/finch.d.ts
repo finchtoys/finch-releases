@@ -709,6 +709,25 @@ declare module 'finch' {
     readonly surface: ComposerSurface;
   }
 
+  /**
+   * 从 `getBadge()` 返回此对象，可在文字的基础上附加 `active` 激活态。
+   *
+   * - `text` — 按钮右侧展示的徽标文字；省略则只显示图标（等价于返回 `undefined` 徽标）。
+   * - `active` — 为 `true` 时按钮进入「激活」态：badge 文字染 accent 色、按钮背景加淡高亮。
+   *   适用于计划模式、过滤器、全局开关等「开/关」场景。
+   *
+   * @example
+   * async getBadge() {
+   *   return planningMode
+   *     ? { text: '计划中', active: true }   // 激活态，accent 高亮
+   *     : undefined;                          // 未激活，隐藏 badge
+   * }
+   */
+  export interface ComposerActionBadge {
+    text?: string;
+    active?: boolean;
+  }
+
   /** 填充 Composer 输入框的模式。 */
   export type ComposerFillMode = 'replace' | 'append';
 
@@ -803,12 +822,42 @@ declare module 'finch' {
    */
   export interface ComposerActionProvider {
     /**
-     * 返回按钮徽标文字（如分支名、计数器）。
-     * - 返回字符串 → 显示在图标右侧
+     * 返回按钮徽标。
+     * - 返回字符串 → 显示在图标右侧（普通态）
+     * - 返回 {@link ComposerActionBadge} `{ text?, active? }` → 可附加激活态高亮
+     *   - `active: true` 使 badge 文字染 accent 色、按钮背景加淡高亮
      * - 返回 `undefined` → 只显示图标，按钮仍然可见
      * - 抛出错误 → 按钮隐藏（表示当前 cwd 不适用）
+     *
+     * @example 普通字符串（兼容旧用法）
+     * async getBadge({ cwd }) { return getCurrentBranch(cwd); }
+     *
+     * @example 带激活态（计划模式 / 开关类按钮）
+     * async getBadge() {
+     *   return planningMode ? { text: '计划中', active: true } : undefined;
+     * }
      */
-    getBadge?(ctx: ComposerActionContext): Promise<string | undefined>;
+    getBadge?(ctx: ComposerActionContext): Promise<string | ComposerActionBadge | undefined>;
+    /**
+     * 在用户发送消息前被调用。返回字符串时，Finch 将其作为 `<reminder>` 块追加到
+     * 用户消息尾部；模型可见，但 UI 中不展示给用户。
+     *
+     * 典型用途：「计划模式」小工具在激活时，每轮消息都附加
+     * `"This turn is planning only — do not perform any tool calls or side effects."` 等
+     * 提示，让模型始终在约束下工作。
+     *
+     * - 返回字符串 → 注入到本轮消息
+     * - 返回 `undefined` 或抛出错误 → 本轮不注入
+     *
+     * @example
+     * getReminder({ cwd, surface }) {
+     *   if (surface === 'home') return undefined;   // 首页无需计划约束
+     *   return planningMode
+     *     ? 'This turn is planning only — output a plan, do not execute any tools.'
+     *     : undefined;
+     * }
+     */
+    getReminder?(ctx: ComposerActionContext): Promise<string | undefined>;
     /**
      * 返回按钮图标的 {@link IconRef}：内置 Lucide 名（如 `'settings'`、`'timer'`、
      * `'log-in'`、`'list'`），或本扩展运行时图标包里的 icon id / `ext:<packId>/<iconId>`。
@@ -820,13 +869,45 @@ declare module 'finch' {
     /**
      * 用户点击按钮后拉取的下拉菜单。
      * 返回空数组则显示空菜单；抛出错误则显示错误提示项。
+     *
+     * 当提供了 {@link onClick} 时，主点击不再触发菜单，此方法变为可选。
+     * 对于纯切换按钮（计划模式、过滤器等），可省略此方法并只实现 `onClick`。
      */
-    getMenu(ctx: ComposerActionContext): Promise<ComposerActionMenuItem[]>;
+    getMenu?(ctx: ComposerActionContext): Promise<ComposerActionMenuItem[]>;
     /**
      * 用户选中某个菜单项时执行。
      * @param itemId 对应 {@link ComposerActionMenuItem.id}
      */
-    execute(ctx: ComposerActionContext, itemId: string, actions: ComposerActionActions): Promise<void>;
+    execute?(ctx: ComposerActionContext, itemId: string, actions: ComposerActionActions): Promise<void>;
+    /**
+     * 直接点击按钮时执行——**不弹出菜单**。
+     *
+     * 定义此方法后，按钮变为「直接点击」模式：
+     * - 用户单击 → 调用 `onClick`，刷新 badge，无菜单弹出。
+     * - 适合开/关切换（计划模式、全局过滤器等）。
+     *
+     * 与 `getBadge` `active` 配合，实现完整 check button 体验：
+     *
+     * @example
+     * let planningMode = false;
+     * const action = ctx.composerActions.register('plan-mode', {
+     *   async getBadge() {
+     *     return planningMode ? { text: '计划中', active: true } : undefined;
+     *   },
+     *   async getIcon() {
+     *     return planningMode ? 'ClipboardCheck' : 'Clipboard';
+     *   },
+     *   async onClick() {               // ← 直接点击切换，无菜单
+     *     planningMode = !planningMode;
+     *   },
+     *   async getReminder({ surface }) {
+     *     if (!planningMode || surface === 'home') return undefined;
+     *     return 'Planning only — do not execute tools this turn.';
+     *   },
+     * });
+     * ctx.subscriptions.push(action);
+     */
+    onClick?(ctx: ComposerActionContext, actions: ComposerActionActions): Promise<void>;
   }
 
   // ════════════════════════════════════════════════════════════════════════════

@@ -342,7 +342,7 @@ function installExtensionDir(srcDir, destRoot, lockSource) {
   cpSync(srcDir, dest, { recursive: true, force: true, dereference: false });
   recordInstall(destRoot, info.id, lockSource);
   console.log(`✓ Added "${info.displayName}" (${info.id}) → ${dest}`);
-  console.log('  Installed only. Open Finch → Toolcase → Mini Tool to review permissions and enable.');
+  console.log('  Installed only. Open Finch → Toolcase → Mini Tools to review permissions and enable.');
   return info.id;
 }
 
