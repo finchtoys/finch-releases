@@ -155,6 +155,7 @@ function startOcrTask(
   hash: string,
   type: 'image' | 'pdf',
   estimatedSeconds: number,
+  useGpu?: boolean,
 ): TaskStatus {
   const createdAt = new Date().toISOString();
   const tDir = taskDir(cacheParent, hash);
@@ -168,7 +169,10 @@ function startOcrTask(
   };
   writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
 
-  const args = type === 'pdf' ? [scriptPath, filePath, '--pdf'] : [scriptPath, filePath];
+  const gpuArg = useGpu ? ['--gpu'] : [];
+  const args = type === 'pdf'
+    ? [scriptPath, filePath, '--pdf', ...gpuArg]
+    : [scriptPath, filePath, ...gpuArg];
   const proc = spawn(pythonCmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
   if (type === 'pdf') {
@@ -438,8 +442,16 @@ function createVenv(cmd: string): void {
   if (r.status !== 0) throw new Error((r.stderr || r.stdout || '').trim() || 'Failed to create virtual environment');
 }
 
-function pipInstall(pyCmd: string): void {
-  const r = spawnSync(pyCmd, ['-m', 'pip', 'install', 'paddleocr', 'paddlepaddle', 'PyMuPDF', 'opencv-python', 'numpy', '--timeout', '120'], {
+function hasCuda(): boolean {
+  try {
+    const r = spawnSync('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], { timeout: 5000, encoding: 'utf-8' });
+    return r.status === 0 && r.stdout.trim().length > 0;
+  } catch { return false; }
+}
+
+function pipInstall(pyCmd: string, useGpu: boolean): void {
+  const paddlePkg = useGpu ? 'paddlepaddle-gpu' : 'paddlepaddle';
+  const r = spawnSync(pyCmd, ['-m', 'pip', 'install', 'paddleocr', paddlePkg, 'PyMuPDF', 'opencv-python', 'numpy', '--timeout', '120'], {
     timeout: 300_000, stdio: 'pipe', encoding: 'utf-8',
   });
   if (r.status !== 0) {
@@ -455,6 +467,7 @@ interface SetupResult {
   cmd: string;       // Python command ready for inference
   version: string;   // Python version
   paddleVersion: string; // Installed PaddleOCR version
+  useGpu: boolean;   // Whether GPU acceleration is available
 }
 
 /**
@@ -481,23 +494,26 @@ function ensureSetup(): SetupResult {
     );
   }
 
+  const useGpu = hasCuda();
+
   const paddleVer = checkPaddle(python.cmd);
   if (paddleVer) {
-    return { cmd: python.cmd, version: python.version, paddleVersion: paddleVer };
+    return { cmd: python.cmd, version: python.version, paddleVersion: paddleVer, useGpu };
   }
 
   // PaddleOCR missing — auto-install into a venv
   const vp = venvPython(DEFAULT_VENV);
   try {
     if (!existsSync(DEFAULT_VENV) || !existsSync(vp)) createVenv(python.cmd);
-    pipInstall(vp);
+    pipInstall(vp, useGpu);
 
     const v = checkPaddle(vp);
     if (!v) throw new Error('Verification failed after pip install.');
 
-    return { cmd: vp, version: python.version, paddleVersion: v };
+    return { cmd: vp, version: python.version, paddleVersion: v, useGpu };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const paddlePkg = useGpu ? 'paddlepaddle-gpu' : 'paddlepaddle';
     if (msg.includes('timeout') || msg.includes('TIMEOUT')) {
       throw new SetupError(
         'Download timed out — PaddleOCR is large (~200 MB).',
@@ -507,13 +523,13 @@ function ensureSetup(): SetupResult {
           '**If you are in mainland China,** use a PyPI mirror:',
           '```bash',
           `${python.cmd} -m venv ${DEFAULT_VENV}`,
-          `${vp} -m pip install paddleocr paddlepaddle -i https://pypi.tuna.tsinghua.edu.cn/simple`,
+          `${vp} -m pip install paddleocr ${paddlePkg} -i https://pypi.tuna.tsinghua.edu.cn/simple`,
           '```',
           '',
           'Or install manually in terminal:',
           '```bash',
           `${python.cmd} -m venv ${DEFAULT_VENV}`,
-          `${vp} -m pip install paddleocr paddlepaddle`,
+          `${vp} -m pip install paddleocr ${paddlePkg}`,
           '```',
           '',
           'After installing, share an image again.',
@@ -528,7 +544,7 @@ function ensureSetup(): SetupResult {
         '**Install manually in terminal:**',
         '```bash',
         `${python.cmd} -m venv ${DEFAULT_VENV}`,
-        `${vp} -m pip install paddleocr paddlepaddle`,
+        `${vp} -m pip install paddleocr ${paddlePkg}`,
         '```',
         '',
         'After installing, share an image again.',
@@ -779,7 +795,7 @@ function registerOcrImageTool(ctx: any): void {
       try {
         const setup = ensureSetup();
         const estimatedSec = 15;
-        const task = startOcrTask(stPath, setup.cmd, scriptPath, imagePath, hash, 'image', estimatedSec);
+        const task = startOcrTask(stPath, setup.cmd, scriptPath, imagePath, hash, 'image', estimatedSec, setup.useGpu);
 
         return {
           content: [{
@@ -793,6 +809,7 @@ function registerOcrImageTool(ctx: any): void {
               `| 状态 | 运行中 |`,
               `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
               `| 预计 | ~${estimatedSec} 秒 |`,
+              `| 加速 | ${setup.useGpu ? '✅ GPU' : 'CPU'} |`,
               `| 结果文件 | \`${task.resultFile}\` |`,
               `| 错误日志 | \`${task.errorFile}\` |`,
               '',
@@ -865,7 +882,7 @@ function registerOcrPdfTool(ctx: any): void {
       try {
         const setup = ensureSetup();
         const estimatedSec = 60;
-        const task = startOcrTask(stPath, setup.cmd, scriptPath, pdfPath, hash, 'pdf', estimatedSec);
+        const task = startOcrTask(stPath, setup.cmd, scriptPath, pdfPath, hash, 'pdf', estimatedSec, setup.useGpu);
 
         return {
           content: [{
@@ -879,6 +896,7 @@ function registerOcrPdfTool(ctx: any): void {
               `| 状态 | 运行中 |`,
               `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
               `| 预计 | ~${estimatedSec} 秒（大文件可能更久） |`,
+              `| 加速 | ${setup.useGpu ? '✅ GPU' : 'CPU'} |`,
               `| 结果文件 | \`${task.resultFile}\` |`,
               `| 错误日志 | \`${task.errorFile}\` |`,
               '',
