@@ -1,6 +1,6 @@
 {
   "name": "计划",
-  "description": "为 Finch 对话提供计划模式",
+  "description": "为 Finch 的对话功能提供计划模式",
   "systemPrompt": "当用户需要先计划、拆解方案、暂不执行时，可使用计划模式扩展。",
 
   "composerActions": {
