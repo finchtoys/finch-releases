@@ -25,6 +25,10 @@ Setup happens automatically on first use (Python venv + pip install).
 - **Python 3.10 – 3.12**
 - Dependencies (`paddleocr`, `paddlepaddle`, `PyMuPDF`, `opencv-python`, `numpy`) auto-installed on first use
 
+## Caching
+
+OCR results are cached for **30 days**, keyed by SHA-256 file hash. Same file = instant result without re-running OCR. Cache is stored in extension private storage.
+
 ## Performance & Limits
 
 | Type | Suggested Limit | Notes |
