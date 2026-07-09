@@ -443,6 +443,11 @@ function checkPyMuPDF(cmd: string): boolean {
   return r.status === 0;
 }
 
+function checkImport(cmd: string, module: string): boolean {
+  const r = spawnSync(cmd, ['-c', `import ${module}`], { stdio: 'pipe', encoding: 'utf-8' });
+  return r.status === 0;
+}
+
 function createVenv(cmd: string): void {
   const r = spawnSync(cmd, ['-m', 'venv', DEFAULT_VENV], { timeout: 60_000, stdio: 'pipe', encoding: 'utf-8' });
   if (r.status !== 0) throw new Error((r.stderr || r.stdout || '').trim() || 'Failed to create virtual environment');
@@ -501,6 +506,17 @@ function ensureSetup(): SetupResult {
   try {
     if (!existsSync(DEFAULT_VENV) || !existsSync(vp)) createVenv(python.cmd);
     pipInstall(vp);
+
+    // Verify ALL dependencies are installed
+    const missingDeps: string[] = [];
+    if (!checkPaddle(vp)) missingDeps.push('paddleocr');
+    if (!checkPyMuPDF(vp)) missingDeps.push('PyMuPDF');
+    if (!checkImport(vp, 'cv2')) missingDeps.push('opencv-python');
+    if (!checkImport(vp, 'numpy')) missingDeps.push('numpy');
+
+    if (missingDeps.length > 0) {
+      throw new Error(`Missing dependencies after install: ${missingDeps.join(', ')}. Run setup_ocr again.`);
+    }
 
     const v = checkPaddle(vp);
     if (!v) throw new Error('Verification failed after pip install.');
