@@ -141,6 +141,9 @@ function taskErrorFile(cacheParent: string, hash: string): string {
 function taskProgressFile(cacheParent: string, hash: string): string {
   return join(taskDir(cacheParent, hash), 'progress.json');
 }
+function taskLogFile(cacheParent: string, hash: string): string {
+  return join(taskDir(cacheParent, hash), 'task.log');
+}
 
 /**
  * Start an OCR task in the background.
@@ -160,13 +163,22 @@ function startOcrTask(
   const tDir = taskDir(cacheParent, hash);
   const rFile = taskResultFile(cacheParent, hash);
   const eFile = taskErrorFile(cacheParent, hash);
+  const lFile = taskLogFile(cacheParent, hash);
   mkdirSync(tDir, { recursive: true });
+
+  // Helper to write timestamped log
+  function log(msg: string): void {
+    const ts = new Date().toISOString();
+    appendFileSync(lFile, `[${ts}] ${msg}\n`, 'utf-8');
+  }
 
   const task: TaskStatus = {
     hash, type, status: 'running', createdAt, estimatedSeconds,
     resultFile: rFile, errorFile: eFile,
   };
   writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+  log(`Task started: type=${type}, hash=${hash}, estimated=${estimatedSeconds}s`);
+  log(`Command: ${pythonCmd} ${type === 'pdf' ? scriptPath + ' ' + filePath + ' --pdf' : scriptPath + ' ' + filePath}`);
 
   const args = type === 'pdf'
     ? [scriptPath, filePath, '--pdf']
@@ -216,6 +228,7 @@ function startOcrTask(
 
       task.status = 'completed';
       writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+      log(`Task completed: ${total} pages, ${withText} with text, ${total - withText} blank`);
     }
 
     proc.stdout!.on('data', (d: Buffer) => {
@@ -229,6 +242,7 @@ function startOcrTask(
           const msg = JSON.parse(line);
           if (msg.type === 'meta') {
             progress.totalPages = msg.total_pages;
+            log(`PDF total pages: ${msg.total_pages}`);
             writeFileSync(taskProgressFile(cacheParent, hash), JSON.stringify(progress), 'utf-8');
           } else if (msg.type === 'page') {
             progress.pages.push({
@@ -236,9 +250,11 @@ function startOcrTask(
               text: (msg.lines || []).join('\n'),
               confidence: msg.confidence || 0,
             });
+            log(`Page ${msg.page} done: ${(msg.lines || []).length} lines, confidence=${(msg.confidence * 100).toFixed(1)}%`);
             updateEstimate();
             writeFileSync(taskProgressFile(cacheParent, hash), JSON.stringify(progress), 'utf-8');
           } else if (msg.type === 'done') {
+            log('Received done signal');
             finalizePdf();
           }
         } catch { /* skip unparseable line */ }
@@ -246,16 +262,19 @@ function startOcrTask(
     });
 
     proc.stderr!.on('data', (d: Buffer) => {
-      appendFileSync(eFile, d.toString(), 'utf-8');
+      const text = d.toString();
+      appendFileSync(eFile, text, 'utf-8');
+      log(`[stderr] ${text.trim()}`);
     });
 
     proc.on('close', (code) => {
+      log(`Process exited with code ${code}`);
       if (!finalized) {
         if (code !== 0) {
           task.status = 'failed';
           writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+          log('Task failed: non-zero exit code');
         } else {
-          // Process exited without a 'done' message — try to finalize anyway
           finalizePdf();
           if (progress.pages.length === 0) {
             const md = '## OCR Result\n\nNo text detected in the PDF.\n\n---\n> *Processed **0** pages*';
@@ -263,31 +282,42 @@ function startOcrTask(
             writeFileSync(rFile, md, 'utf-8');
             task.status = 'completed';
             writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+            log('Task completed: no text detected');
           }
         }
       }
     });
 
     proc.on('error', (err) => {
+      log(`Process error: ${err.message}`);
       appendFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
       task.status = 'failed';
       writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+      log('Task failed: process error');
     });
 
   } else {
     // ── Image: collect stdout, parse on close ──
+    log('Starting image OCR');
     let stdout = '';
     const stderrChunks: Buffer[] = [];
     proc.stdout!.on('data', (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr!.on('data', (d: Buffer) => { stderrChunks.push(d); });
+    proc.stderr!.on('data', (d: Buffer) => {
+      const text = d.toString();
+      stderrChunks.push(d);
+      appendFileSync(eFile, text, 'utf-8');
+      log(`[stderr] ${text.trim()}`);
+    });
 
     proc.on('close', (code) => {
+      log(`Process exited with code ${code}`);
       if (stderrChunks.length > 0) {
-        writeFileSync(eFile, Buffer.concat(stderrChunks).toString(), 'utf-8');
+        // already logged above
       }
       if (code !== 0) {
         task.status = 'failed';
         writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+        log('Task failed: non-zero exit code');
         return;
       }
       try {
@@ -296,6 +326,7 @@ function startOcrTask(
           writeFileSync(eFile, parsed.error, 'utf-8');
           task.status = 'failed';
           writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+          log(`Task failed: ${parsed.error}`);
           return;
         }
         const mdLines: string[] = ['## OCR Result\n'];
@@ -308,18 +339,22 @@ function startOcrTask(
         writeFileSync(rFile, markdown, 'utf-8');
         task.status = 'completed';
         writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+        log(`Task completed: ${(parsed.lines || []).length} lines, confidence=${(parsed.confidence * 100).toFixed(1)}%`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         writeFileSync(eFile, `Parse error: ${msg}\nRaw: ${stdout.slice(0, 500)}`, 'utf-8');
         task.status = 'failed';
         writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+        log(`Task failed: parse error - ${msg}`);
       }
     });
 
     proc.on('error', (err) => {
+      log(`Process error: ${err.message}`);
       writeFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
       task.status = 'failed';
       writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+      log('Task failed: process error');
     });
   }
 
