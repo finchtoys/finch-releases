@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/mini-tool-demo",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Comprehensive Finch mini tool demo — demonstrates all mini tool capabilities including forms, toasts, custom icons, tools, composer actions, and i18n.",
   "author": {

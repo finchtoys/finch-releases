@@ -5,14 +5,14 @@
 
   "composerActions": {
     "plan-mode": {
-      "tooltip": "Plan Mode"
+      "tooltip": "Plan before acting"
     }
   },
 
   "badge.active": "Planning",
 
   "toast.enter.title": "{assistantName} will think before you act",
-  "toast.enter.desc": "Get a plan first, then confirm to execute after each reply.",
+  "toast.enter.desc": "I will plan the task first, then confirm to execute.",
   "toast.exit.title": "{assistantName} will execute tasks directly",
 
   "toast.home.enter.desc": "Next message will be sent in planning mode and auto-closes after sending.",
