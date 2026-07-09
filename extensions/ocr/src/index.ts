@@ -18,7 +18,6 @@ import { tmpdir } from 'node:os';
 // ── Cache ──────────────────────────────────────────────────────────────────
 
 const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const CACHE_DIR = 'cache';
 
 interface CacheEntry {
   hash: string;
@@ -29,46 +28,46 @@ interface CacheEntry {
   createdAt: string;
 }
 
-/** Index: hash → ISO timestamp. */
-function idxPath(extDir: string): string {
-  return join(extDir, CACHE_DIR, 'index.json');
+/** Index: hash → ISO timestamp.  cacheParent 是 extension-data 或 extensionPath。 */
+function idxPath(cacheParent: string): string {
+  return join(cacheParent, 'cache', 'index.json');
 }
-function readIdx(extDir: string): Record<string, string> {
-  const f = idxPath(extDir);
+function readIdx(cacheParent: string): Record<string, string> {
+  const f = idxPath(cacheParent);
   if (!existsSync(f)) return {};
   try { return JSON.parse(readFileSync(f, 'utf-8')); } catch { return {}; }
 }
-function writeIdx(extDir: string, idx: Record<string, string>): void {
-  const f = idxPath(extDir);
+function writeIdx(cacheParent: string, idx: Record<string, string>): void {
+  const f = idxPath(cacheParent);
   mkdirSync(dirname(f), { recursive: true });
   writeFileSync(f, JSON.stringify(idx), 'utf-8');
 }
 
-function entryPath(extDir: string, hash: string): string {
-  return join(extDir, CACHE_DIR, `${hash}.json`);
+function entryPath(cacheParent: string, hash: string): string {
+  return join(cacheParent, 'cache', `${hash}.json`);
 }
 
 function fileHash(fp: string): string {
   return createHash('sha256').update(readFileSync(fp)).digest('hex');
 }
 
-function getCached(extDir: string, hash: string): CacheEntry | null {
-  const idx = readIdx(extDir);
+function getCached(cacheParent: string, hash: string): CacheEntry | null {
+  const idx = readIdx(cacheParent);
   const ts = idx[hash];
   if (!ts) return null;
 
   if (Date.now() - new Date(ts).getTime() > CACHE_MAX_AGE_MS) {
-    const f = entryPath(extDir, hash);
+    const f = entryPath(cacheParent, hash);
     if (existsSync(f)) unlinkSync(f);
     delete idx[hash];
-    writeIdx(extDir, idx);
+    writeIdx(cacheParent, idx);
     return null;
   }
 
-  const f = entryPath(extDir, hash);
+  const f = entryPath(cacheParent, hash);
   if (!existsSync(f)) {
     delete idx[hash];
-    writeIdx(extDir, idx);
+    writeIdx(cacheParent, idx);
     return null;
   }
 
@@ -76,32 +75,36 @@ function getCached(extDir: string, hash: string): CacheEntry | null {
     return JSON.parse(readFileSync(f, 'utf-8')) as CacheEntry;
   } catch {
     delete idx[hash];
-    writeIdx(extDir, idx);
+    writeIdx(cacheParent, idx);
     return null;
   }
 }
 
-function setCached(extDir: string, hash: string, entry: Omit<CacheEntry, 'hash' | 'createdAt'>): void {
+function setCached(cacheParent: string, hash: string, entry: Omit<CacheEntry, 'hash' | 'createdAt'>): void {
   const now = new Date().toISOString();
   const full: CacheEntry = { ...entry, hash, createdAt: now };
 
-  const f = entryPath(extDir, hash);
+  const f = entryPath(cacheParent, hash);
   mkdirSync(dirname(f), { recursive: true });
   writeFileSync(f, JSON.stringify(full), 'utf-8');
 
-  const idx = readIdx(extDir);
+  const idx = readIdx(cacheParent);
   idx[hash] = now;
 
   const cutoff = Date.now() - CACHE_MAX_AGE_MS;
   for (const [h, ts] of Object.entries(idx)) {
     if (new Date(ts).getTime() < cutoff) {
-      const ef = entryPath(extDir, h);
+      const ef = entryPath(cacheParent, h);
       if (existsSync(ef)) unlinkSync(ef);
       delete idx[h];
     }
   }
 
-  writeIdx(extDir, idx);
+  writeIdx(cacheParent, idx);
+}
+
+function storagePath(ctx: any): string {
+  return ctx.extension.storagePath ?? ctx.extension.extensionPath;
 }
 
 // ── Async Task Management ──────────────────────────────────────────────────
@@ -116,28 +119,34 @@ interface TaskStatus {
   errorFile: string;
 }
 
-function taskDir(extDir: string, hash: string): string {
-  return join(extDir, CACHE_DIR, 'tasks', hash);
+interface PdfProgress {
+  totalPages: number;
+  pages: Array<{ page: number; text: string; confidence: number }>;
 }
 
-function taskStatusFile(extDir: string, hash: string): string {
-  return join(taskDir(extDir, hash), 'status.json');
+function taskDir(cacheParent: string, hash: string): string {
+  return join(cacheParent, 'cache', 'tasks', hash);
 }
-
-function taskResultFile(extDir: string, hash: string): string {
-  return join(taskDir(extDir, hash), 'result.json');
+function taskStatusFile(cacheParent: string, hash: string): string {
+  return join(taskDir(cacheParent, hash), 'status.json');
 }
-
-function taskErrorFile(extDir: string, hash: string): string {
-  return join(taskDir(extDir, hash), 'error.log');
+function taskResultFile(cacheParent: string, hash: string): string {
+  return join(taskDir(cacheParent, hash), 'result.json');
+}
+function taskErrorFile(cacheParent: string, hash: string): string {
+  return join(taskDir(cacheParent, hash), 'error.log');
+}
+function taskProgressFile(cacheParent: string, hash: string): string {
+  return join(taskDir(cacheParent, hash), 'progress.json');
 }
 
 /**
  * Start an OCR task in the background.
- * Writes status.json → spawns Python → on completion writes result + cache.
+ * For images: collects all stdout, parses JSON on close.
+ * For PDFs: streams NDJSON lines, writes progress per page.
  */
 function startOcrTask(
-  extDir: string,
+  cacheParent: string,
   pythonCmd: string,
   scriptPath: string,
   filePath: string,
@@ -146,102 +155,170 @@ function startOcrTask(
   estimatedSeconds: number,
 ): TaskStatus {
   const createdAt = new Date().toISOString();
-  const tDir = taskDir(extDir, hash);
-  const rFile = taskResultFile(extDir, hash);
-  const eFile = taskErrorFile(extDir, hash);
+  const tDir = taskDir(cacheParent, hash);
+  const rFile = taskResultFile(cacheParent, hash);
+  const eFile = taskErrorFile(cacheParent, hash);
   mkdirSync(tDir, { recursive: true });
 
   const task: TaskStatus = {
     hash, type, status: 'running', createdAt, estimatedSeconds,
     resultFile: rFile, errorFile: eFile,
   };
-  writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+  writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
 
   const args = type === 'pdf' ? [scriptPath, filePath, '--pdf'] : [scriptPath, filePath];
   const proc = spawn(pythonCmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
-  let stdout = '';
-  const stderrChunks: Buffer[] = [];
-  proc.stdout!.on('data', (d: Buffer) => { stdout += d.toString(); });
-  proc.stderr!.on('data', (d: Buffer) => { stderrChunks.push(d); });
+  if (type === 'pdf') {
+    // ── PDF: NDJSON streaming ──
+    const progress: PdfProgress = { totalPages: 0, pages: [] };
+    let buf = '';
+    let finalized = false;
 
-  proc.on('close', (code) => {
-    if (stderrChunks.length > 0) {
-      writeFileSync(eFile, Buffer.concat(stderrChunks).toString(), 'utf-8');
+    function finalizePdf() {
+      if (finalized) return;
+      finalized = true;
+      progress.pages.sort((a, b) => a.page - b.page);
+
+      const mdLines: string[] = ['## OCR Result\n'];
+      if (progress.pages.length) {
+        for (const pg of progress.pages) {
+          mdLines.push(`### 📄 Page ${pg.page}`);
+          if (pg.confidence > 0) mdLines.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
+          mdLines.push('', pg.text || '*No text detected*', '');
+        }
+      } else {
+        mdLines.push('No text detected in the PDF.');
+      }
+      const total = progress.totalPages || progress.pages.length;
+      const withText = progress.pages.filter(p => p.confidence > 0).length;
+      const markdown = mdLines.join('\n') + `\n---\n> *Processed **${total}** pages: ${withText} with text, ${total - withText} blank*`;
+
+      setCached(cacheParent, hash, {
+        text: markdown, confidence: 0,
+        pages: progress.pages.map(p => ({ ...p })),
+      });
+      writeFileSync(rFile, markdown, 'utf-8');
+
+      task.status = 'completed';
+      writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
     }
 
-    if (code !== 0) {
+    proc.stdout!.on('data', (d: Buffer) => {
+      buf += d.toString();
+      const lines = buf.split('\n');
+      buf = lines.pop() || ''; // keep partial line
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === 'meta') {
+            progress.totalPages = msg.total_pages;
+            writeFileSync(taskProgressFile(cacheParent, hash), JSON.stringify(progress), 'utf-8');
+          } else if (msg.type === 'page') {
+            progress.pages.push({
+              page: msg.page,
+              text: (msg.lines || []).join('\n'),
+              confidence: msg.confidence || 0,
+            });
+            writeFileSync(taskProgressFile(cacheParent, hash), JSON.stringify(progress), 'utf-8');
+          } else if (msg.type === 'done') {
+            finalizePdf();
+          }
+        } catch { /* skip unparseable line */ }
+      }
+    });
+
+    proc.stderr!.on('data', (d: Buffer) => {
+      appendFileSync(eFile, d.toString(), 'utf-8');
+    });
+
+    proc.on('close', (code) => {
+      if (!finalized) {
+        if (code !== 0) {
+          task.status = 'failed';
+          writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+        } else {
+          // Process exited without a 'done' message — try to finalize anyway
+          finalizePdf();
+          if (progress.pages.length === 0) {
+            const md = '## OCR Result\n\nNo text detected in the PDF.\n\n---\n> *Processed **0** pages*';
+            setCached(cacheParent, hash, { text: md, confidence: 0, pages: [] });
+            writeFileSync(rFile, md, 'utf-8');
+            task.status = 'completed';
+            writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+          }
+        }
+      }
+    });
+
+    proc.on('error', (err) => {
+      appendFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
       task.status = 'failed';
-      writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
-      return;
-    }
+      writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+    });
 
-    try {
-      const parsed = JSON.parse(stdout.trim());
-      if (parsed.error) {
-        writeFileSync(eFile, parsed.error, 'utf-8');
+  } else {
+    // ── Image: collect stdout, parse on close ──
+    let stdout = '';
+    const stderrChunks: Buffer[] = [];
+    proc.stdout!.on('data', (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr!.on('data', (d: Buffer) => { stderrChunks.push(d); });
+
+    proc.on('close', (code) => {
+      if (stderrChunks.length > 0) {
+        writeFileSync(eFile, Buffer.concat(stderrChunks).toString(), 'utf-8');
+      }
+      if (code !== 0) {
         task.status = 'failed';
-        writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+        writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
         return;
       }
-
-      let markdown = '';
-      if (type === 'image') {
+      try {
+        const parsed = JSON.parse(stdout.trim());
+        if (parsed.error) {
+          writeFileSync(eFile, parsed.error, 'utf-8');
+          task.status = 'failed';
+          writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+          return;
+        }
         const mdLines: string[] = ['## OCR Result\n'];
         if (parsed.resized) mdLines.push('> ℹ️ Large image was scaled down for processing.\n');
         mdLines.push(parsed.lines?.join('\n') || 'No text detected in the image.');
         if (parsed.confidence > 0) mdLines.push('', `> Confidence: **${(parsed.confidence * 100).toFixed(1)}%**`);
-        markdown = mdLines.join('\n');
-        setCached(extDir, hash, { text: markdown, confidence: parsed.confidence ?? 0, wasResized: parsed.resized });
-      } else {
-        const mdLines: string[] = ['## OCR Result\n'];
-        if (parsed.pages?.length) {
-          for (const pg of parsed.pages) {
-            mdLines.push(`### 📄 Page ${pg.page}`);
-            if (pg.confidence > 0) mdLines.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
-            mdLines.push('', (pg.lines as string[]).join('\n') || '*No text detected*', '');
-          }
-        } else {
-          mdLines.push('No text detected in the PDF.');
-        }
-        const total = parsed.pages?.length || 0;
-        const withText = (parsed.pages || []).filter((p: any) => p.confidence > 0).length;
-        markdown = mdLines.join('\n') + `\n---\n> *Processed **${total}** pages: ${withText} with text, ${total - withText} blank*`;
-        setCached(extDir, hash, {
-          text: markdown, confidence: 0,
-          pages: (parsed.pages || []).map((pg: any) => ({
-            page: pg.page, text: (pg.lines as string[]).join('\n'), confidence: pg.confidence ?? 0,
-          })),
-        });
+        const markdown = mdLines.join('\n');
+
+        setCached(cacheParent, hash, { text: markdown, confidence: parsed.confidence ?? 0, wasResized: parsed.resized });
+        writeFileSync(rFile, markdown, 'utf-8');
+        task.status = 'completed';
+        writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        writeFileSync(eFile, `Parse error: ${msg}\nRaw: ${stdout.slice(0, 500)}`, 'utf-8');
+        task.status = 'failed';
+        writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
       }
+    });
 
-      writeFileSync(rFile, markdown, 'utf-8');
-      task.status = 'completed';
-      writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      writeFileSync(eFile, `Parse error: ${msg}\nRaw output: ${stdout.slice(0, 500)}`, 'utf-8');
+    proc.on('error', (err) => {
+      writeFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
       task.status = 'failed';
-      writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
-    }
-  });
-
-  proc.on('error', (err) => {
-    writeFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
-    task.status = 'failed';
-    writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
-  });
+      writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
+    });
+  }
 
   return task;
 }
 
 /**
- * Poll a task's status. Cleans up task directory on completion or failure.
+ * Poll a task's status. For running PDF tasks, returns progress with partial text.
+ * Cleans up task directory on completion or failure.
  */
-function checkTask(extDir: string, hash: string): { status: string; text: string } {
-  const sf = taskStatusFile(extDir, hash);
+function checkTask(cacheParent: string, hash: string): { status: string; text: string } {
+  const sf = taskStatusFile(cacheParent, hash);
   if (!existsSync(sf)) {
-    const cached = getCached(extDir, hash);
+    const cached = getCached(cacheParent, hash);
     if (cached) return { status: 'completed', text: cached.text };
     return { status: 'not_found', text: '没有找到对应的任务或缓存。' };
   }
@@ -250,16 +327,39 @@ function checkTask(extDir: string, hash: string): { status: string; text: string
   const elapsed = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / 1000);
 
   if (task.status === 'running') {
+    // Check for PDF progress
+    const pf = taskProgressFile(cacheParent, hash);
+    if (task.type === 'pdf' && existsSync(pf)) {
+      const prog: PdfProgress = JSON.parse(readFileSync(pf, 'utf-8'));
+      const done = prog.pages.length;
+      const total = prog.totalPages || '?';
+      const remaining = Math.max(0, task.estimatedSeconds - elapsed);
+
+      if (done > 0) {
+        const mdParts: string[] = [
+          `## PDF OCR 进行中\n\n已完成 **${done}**/${total} 页，已耗时 **${elapsed}s**，预计还需 **~${remaining}s**\n`,
+        ];
+        // Show last few pages as a preview
+        const show = prog.pages.slice(Math.max(0, done - 3));
+        for (const pg of show) {
+          mdParts.push(`### 📄 Page ${pg.page}`);
+          if (pg.confidence > 0) mdParts.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
+          mdParts.push('', pg.text.slice(0, 200) || '*No text detected*', '');
+        }
+        return { status: 'running', text: mdParts.join('\n') };
+      }
+    }
+
     const remaining = Math.max(0, task.estimatedSeconds - elapsed);
     return {
       status: 'running',
-      text: `## OCR 任务进行中\n\n- 已耗时: **${elapsed}s**\n- 预计还需: **~${remaining}s**\n- 结果文件: \`${task.resultFile}\`\n- 错误日志: \`${task.errorFile}\`\n\n请稍后再查。`,
+      text: `## OCR 任务进行中\n\n- 已耗时: **${elapsed}s**\n- 预计还需: **~${remaining}s**\n\n请稍后再查。`,
     };
   }
 
   if (task.status === 'failed') {
     const errLog = existsSync(task.errorFile) ? readFileSync(task.errorFile, 'utf-8').trim() : 'Unknown error';
-    rmSync(taskDir(extDir, hash), { recursive: true, force: true });
+    rmSync(taskDir(cacheParent, hash), { recursive: true, force: true });
     return { status: 'failed', text: `## OCR 任务失败\n\n\`\`\`\n${errLog}\n\`\`\`` };
   }
 
@@ -268,10 +368,10 @@ function checkTask(extDir: string, hash: string): { status: string; text: string
   if (existsSync(task.resultFile)) {
     result = readFileSync(task.resultFile, 'utf-8');
   } else {
-    const cached = getCached(extDir, hash);
+    const cached = getCached(cacheParent, hash);
     if (cached) result = cached.text;
   }
-  rmSync(taskDir(extDir, hash), { recursive: true, force: true });
+  rmSync(taskDir(cacheParent, hash), { recursive: true, force: true });
   return { status: 'completed', text: result };
 }
 
@@ -549,8 +649,8 @@ function registerCacheStatusTool(ctx: any): void {
     risk: 'low',
     async execute() {
       const lines: string[] = ['## OCR Cache\n'];
-      const extDir = ctx.extension.extensionPath;
-      const idx = readIdx(extDir);
+      const stPath = storagePath(ctx);
+      const idx = readIdx(stPath);
       const hashes = Object.keys(idx);
       const now = Date.now();
       let validCount = 0;
@@ -566,7 +666,7 @@ function registerCacheStatusTool(ctx: any): void {
       for (let i = 0; i < hashes.length; i++) {
         const h = hashes[i];
         const ts = idx[h];
-        const file = entryPath(extDir, h);
+        const file = entryPath(stPath, h);
         if (!existsSync(file)) continue;
         try {
           const entry = JSON.parse(readFileSync(file, 'utf-8')) as CacheEntry;
@@ -589,7 +689,7 @@ function registerCacheStatusTool(ctx: any): void {
         lines.push('');
         lines.push(`**Total:** ${validCount} entries`);
         lines.push('');
-        lines.push(`Cache root: \`${join(extDir, CACHE_DIR)}\``);
+        lines.push(`Cache root: \`${join(stPath, 'cache')}\``);
         lines.push('');
         lines.push('To clear all cache, call \`clear_ocr_cache\`.');
       }
@@ -606,7 +706,7 @@ function registerClearCacheTool(ctx: any): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute() {
-      const root = join(ctx.extension.extensionPath, CACHE_DIR);
+      const root = join(storagePath(ctx), 'cache');
       if (existsSync(root)) {
         rmSync(root, { recursive: true, force: true });
       }
@@ -643,17 +743,17 @@ function registerOcrImageTool(ctx: any): void {
       }
 
       const hash = fileHash(imagePath);
-      const extDir = ctx.extension.extensionPath;
+      const stPath = storagePath(ctx);
 
       // ── Cache check ──
-      const cached = getCached(extDir, hash);
+      const cached = getCached(stPath, hash);
       if (cached) {
         ctx.logger.debug(`Cache hit for ${imagePath}`);
         return { content: [{ type: 'text', text: cached.text }] };
       }
 
       // ── Check if already running ──
-      const sf = taskStatusFile(extDir, hash);
+      const sf = taskStatusFile(stPath, hash);
       if (existsSync(sf)) {
         const existing = JSON.parse(readFileSync(sf, 'utf-8')) as TaskStatus;
         if (existing.status === 'running') {
@@ -666,7 +766,7 @@ function registerOcrImageTool(ctx: any): void {
       try {
         const setup = ensureSetup();
         const estimatedSec = 15;
-        const task = startOcrTask(extDir, setup.cmd, scriptPath, imagePath, hash, 'image', estimatedSec);
+        const task = startOcrTask(stPath, setup.cmd, scriptPath, imagePath, hash, 'image', estimatedSec);
 
         return {
           content: [{
@@ -729,17 +829,17 @@ function registerOcrPdfTool(ctx: any): void {
       }
 
       const hash = fileHash(pdfPath);
-      const extDir = ctx.extension.extensionPath;
+      const stPath = storagePath(ctx);
 
       // ── Cache check ──
-      const cached = getCached(extDir, hash);
+      const cached = getCached(stPath, hash);
       if (cached) {
         ctx.logger.debug(`Cache hit for PDF ${pdfPath}`);
         return { content: [{ type: 'text', text: cached.text }] };
       }
 
       // ── Check if already running ──
-      const sf = taskStatusFile(extDir, hash);
+      const sf = taskStatusFile(stPath, hash);
       if (existsSync(sf)) {
         const existing = JSON.parse(readFileSync(sf, 'utf-8')) as TaskStatus;
         if (existing.status === 'running') {
@@ -751,8 +851,8 @@ function registerOcrPdfTool(ctx: any): void {
       // ── Start async task ──
       try {
         const setup = ensureSetup();
-        const estimatedSec = 60; // generic — PDFs vary widely
-        const task = startOcrTask(extDir, setup.cmd, scriptPath, pdfPath, hash, 'pdf', estimatedSec);
+        const estimatedSec = 60;
+        const task = startOcrTask(stPath, setup.cmd, scriptPath, pdfPath, hash, 'pdf', estimatedSec);
 
         return {
           content: [{
@@ -806,7 +906,7 @@ function registerCheckOcrTaskTool(ctx: any): void {
         return { content: [{ type: 'text', text: '请提供任务 ID。' }], isError: true };
       }
 
-      const result = checkTask(ctx.extension.extensionPath, hash);
+      const result = checkTask(storagePath(ctx), hash);
 
       if (result.status === 'running') {
         return { content: [{ type: 'text', text: result.text }] };

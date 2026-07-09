@@ -172,32 +172,34 @@ def ocr_page(ocr, doc, page_num, dpi=PDF_RENDER_DPI):
             os.unlink(path)
 
 
-def process_pdf(pdf_path):
-    """OCR every page of a PDF. Parallel workers for large PDFs."""
+def process_pdf_stream(pdf_path):
+    """OCR every page of a PDF, yielding one JSON line per page (NDJSON)."""
     if not HAS_PDF_SUPPORT:
-        return {"error": "PyMuPDF not installed.", "pages": [], "total_lines": 0}
+        yield json.dumps({"error": "PyMuPDF not installed."})
+        return
 
     doc = fitz.open(pdf_path)
     total_pages = len(doc)
+    yield json.dumps({"type": "meta", "total_pages": total_pages})
+    sys.stdout.flush()
 
     try:
-        page_results = []
         if total_pages <= 8:
             ocr = create_ocr_instance()
             for i in range(total_pages):
-                page_results.append(ocr_page(ocr, doc, i, PDF_RENDER_DPI))
+                result = ocr_page(ocr, doc, i, PDF_RENDER_DPI)
+                yield json.dumps({"type": "page", **result})
+                sys.stdout.flush()
         else:
-            # Parallel — each thread creates its own OCR instance
             with ThreadPoolExecutor(max_workers=PDF_MAX_WORKERS) as pool:
-                futures = []
-                for i in range(total_pages):
-                    futures.append(pool.submit(ocr_page, create_ocr_instance(), doc, i, PDF_RENDER_DPI))
+                futures = {pool.submit(ocr_page, create_ocr_instance(), doc, i, PDF_RENDER_DPI): i for i in range(total_pages)}
                 for f in as_completed(futures):
-                    page_results.append(f.result())
-            page_results.sort(key=lambda x: x["page"])
+                    result = f.result()
+                    yield json.dumps({"type": "page", **result})
+                    sys.stdout.flush()
 
-        total_lines = sum(p["count"] for p in page_results)
-        return {"pages": page_results, "total_pages": len(page_results), "total_lines": total_lines}
+        yield json.dumps({"type": "done"})
+        sys.stdout.flush()
     finally:
         doc.close()
 
@@ -215,10 +217,8 @@ def main():
         sys.exit(1)
 
     if args.pdf:
-        result = process_pdf(args.path)
-        print(json.dumps(result))
-        if "error" in result:
-            sys.exit(1)
+        for line in process_pdf_stream(args.path):
+            print(line)
         return
 
     ocr = create_ocr_instance()
