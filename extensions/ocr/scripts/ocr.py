@@ -32,6 +32,7 @@ except ImportError:
 
 MAX_IMAGE_DIM = 3000          # longest edge; larger images are scaled down
 PDF_RENDER_DPI = 150          # PDF page→PNG resolution
+PDF_CHECK_DPI = 72            # low-res preview for blank-page detection
 PDF_MAX_WORKERS = 4           # parallel pages for large PDFs
 
 
@@ -147,12 +148,24 @@ def pdf_blank_page(pix):
 
 
 def render_page(doc, page_num, dpi=PDF_RENDER_DPI):
-    """Render a PDF page to a temp PNG. Returns path or None if blank."""
-    zoom = dpi / 72.0
+    """
+    Render a PDF page to a temp PNG.
+    Uses a low-res preview (72 DPI) to check for blank content first —
+    only renders at full DPI if the page has content.
+    Returns path or None if blank.
+    """
     page = doc[page_num]
-    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-    if pdf_blank_page(pix):
+
+    # Step 1: low-res preview to check for blank
+    check_zoom = PDF_CHECK_DPI / 72.0
+    check_pix = page.get_pixmap(matrix=fitz.Matrix(check_zoom, check_zoom))
+    if pdf_blank_page(check_pix):
         return None
+    check_pix = None  # let GC free memory
+
+    # Step 2: full-resolution render
+    zoom = dpi / 72.0
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
     tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
     pix.save(tmp.name)
     return tmp.name
