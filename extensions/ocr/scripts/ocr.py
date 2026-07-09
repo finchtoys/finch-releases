@@ -70,12 +70,9 @@ def save_temp(img):
 
 # ── Core OCR ────────────────────────────────────────────────────────────────
 
-USE_GPU = False  # set from --gpu flag
-
 
 def create_ocr_instance():
     return PaddleOCR(
-        use_gpu=USE_GPU,
         lang="ch",
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
@@ -253,13 +250,10 @@ def process_pdf_stream(pdf_path):
 # ── Entry point ─────────────────────────────────────────────────────────────
 
 def main():
-    global USE_GPU
     parser = argparse.ArgumentParser(description='PP-OCRv6 OCR — images and PDFs')
     parser.add_argument('path', help='Path to image or PDF file')
     parser.add_argument('--pdf', action='store_true', help='Process file as PDF')
-    parser.add_argument('--gpu', action='store_true', help='Enable GPU acceleration')
     args = parser.parse_args()
-    USE_GPU = args.gpu
 
     if not os.path.exists(args.path):
         print(json.dumps({"error": f"File not found: {args.path}"}))
