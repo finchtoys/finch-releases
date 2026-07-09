@@ -416,11 +416,14 @@ function pyVersion(cmd: string): string | null {
 }
 
 function findPython(): { cmd: string; version: string } | null {
-  // Prefer existing venv
+  // Prefer existing venv — but only if it has all dependencies
   const vp = venvPython(DEFAULT_VENV);
   if (existsSync(vp)) {
     const ver = pyVersion(vp);
-    if (ver && isVersionInRange(ver)) return { cmd: vp, version: ver };
+    const hasDeps = checkPaddle(vp) !== null && checkPyMuPDF(vp);
+    if (ver && isVersionInRange(ver) && hasDeps) {
+      return { cmd: vp, version: ver };
+    }
   }
 
   for (const c of ['python3.12', 'python3.11', 'python3.10', 'python3', 'python']) {
@@ -433,6 +436,11 @@ function findPython(): { cmd: string; version: string } | null {
 function checkPaddle(cmd: string): string | null {
   const r = spawnSync(cmd, ['-c', 'import paddleocr; print(paddleocr.__version__)'], { stdio: 'pipe', encoding: 'utf-8' });
   return r.status === 0 ? r.stdout.trim() : null;
+}
+
+function checkPyMuPDF(cmd: string): boolean {
+  const r = spawnSync(cmd, ['-c', 'import fitz'], { stdio: 'pipe', encoding: 'utf-8' });
+  return r.status === 0;
 }
 
 function createVenv(cmd: string): void {
