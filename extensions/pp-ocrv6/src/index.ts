@@ -201,25 +201,21 @@ function startOcrTask(
       finalized = true;
       progress.pages.sort((a, b) => a.page - b.page);
 
-      const mdLines: string[] = ['## OCR Result\n'];
+      const parts: string[] = [];
       if (progress.pages.length) {
         for (const pg of progress.pages) {
-          mdLines.push(`### 📄 Page ${pg.page}`);
-          if (pg.confidence > 0) mdLines.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
-          mdLines.push('', pg.text || '*No text detected*', '');
+          parts.push(pg.text || '');
         }
-      } else {
-        mdLines.push('No text detected in the PDF.');
       }
       const total = progress.totalPages || progress.pages.length;
       const withText = progress.pages.filter(p => p.confidence > 0).length;
-      const markdown = mdLines.join('\n') + `\n---\n> *Processed **${total}** pages: ${withText} with text, ${total - withText} blank*`;
+      const text = parts.join('\n\n') || 'No text detected in the PDF.';
 
       setCached(cacheParent, hash, {
-        text: markdown, confidence: 0,
+        text, confidence: 0,
         pages: progress.pages.map(p => ({ ...p })),
       });
-      writeFileSync(rFile, markdown, 'utf-8');
+      writeFileSync(rFile, text, 'utf-8');
 
       task.status = 'completed';
       writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
@@ -270,9 +266,9 @@ function startOcrTask(
         } else {
           finalizePdf();
           if (progress.pages.length === 0) {
-            const md = '## OCR Result\n\nNo text detected in the PDF.\n\n---\n> *Processed **0** pages*';
-            setCached(cacheParent, hash, { text: md, confidence: 0, pages: [] });
-            writeFileSync(rFile, md, 'utf-8');
+            const noText = 'No text detected in the PDF.';
+            setCached(cacheParent, hash, { text: noText, confidence: 0, pages: [] });
+            writeFileSync(rFile, noText, 'utf-8');
             task.status = 'completed';
             writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
             log('Task completed: no text detected');
@@ -318,14 +314,10 @@ function startOcrTask(
           log(`Task failed: ${parsed.error}`);
           return;
         }
-        const mdLines: string[] = ['## OCR Result\n'];
-        if (parsed.resized) mdLines.push('> ℹ️ Large image was scaled down for processing.\n');
-        mdLines.push(parsed.lines?.join('\n') || 'No text detected in the image.');
-        if (parsed.confidence > 0) mdLines.push('', `> Confidence: **${(parsed.confidence * 100).toFixed(1)}%**`);
-        const markdown = mdLines.join('\n');
+        const text = parsed.lines?.join('\n') || 'No text detected in the image.';
 
-        setCached(cacheParent, hash, { text: markdown, confidence: parsed.confidence ?? 0, wasResized: parsed.resized });
-        writeFileSync(rFile, markdown, 'utf-8');
+        setCached(cacheParent, hash, { text, confidence: parsed.confidence ?? 0, wasResized: parsed.resized });
+        writeFileSync(rFile, text, 'utf-8');
         task.status = 'completed';
         writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
         log(`Task completed: ${(parsed.lines || []).length} lines, confidence=${(parsed.confidence * 100).toFixed(1)}%`);
@@ -373,31 +365,26 @@ function checkTask(cacheParent: string, hash: string): { status: string; text: s
       const remaining = prog.dynamicEstimateSeconds ?? Math.max(0, task.estimatedSeconds - elapsed);
 
       if (done > 0) {
-        const mdParts: string[] = [
-          `## PDF OCR in Progress\n\nCompleted **${done}**/${total} pages, elapsed **${elapsed}s**, estimated remaining **~${remaining}s**\n`,
-        ];
-        // Show last few pages as a preview
         const show = prog.pages.slice(Math.max(0, done - 3));
-        for (const pg of show) {
-          mdParts.push(`### 📄 Page ${pg.page}`);
-          if (pg.confidence > 0) mdParts.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
-          mdParts.push('', pg.text.slice(0, 200) || '*No text detected*', '');
-        }
-        return { status: 'running', text: mdParts.join('\n') };
+        const preview = show.map(pg => pg.text.slice(0, 200) || '(no text)').join('\n---\n');
+        return {
+          status: 'running',
+          text: `PDF OCR in progress: ${done}/${total} pages done, elapsed ${elapsed}s, ~${remaining}s remaining\n\n${preview}`,
+        };
       }
     }
 
     const remaining = Math.max(0, task.estimatedSeconds - elapsed);
     return {
       status: 'running',
-      text: `## OCR Task in Progress\n\n- Elapsed: **${elapsed}s**\n- Estimated remaining: **~${remaining}s**\n\nPlease check again later.`,
+      text: `OCR in progress: elapsed ${elapsed}s, ~${remaining}s remaining`,
     };
   }
 
   if (task.status === 'failed') {
     const errLog = existsSync(taskLogFile(cacheParent, hash)) ? readFileSync(taskLogFile(cacheParent, hash), 'utf-8').trim() : 'Unknown error';
     rmSync(taskDir(cacheParent, hash), { recursive: true, force: true });
-    return { status: 'failed', text: `## OCR Task Failed\n\n\`\`\`\n${errLog}\n\`\`\`` };
+    return { status: 'failed', text: `OCR failed:\n${errLog}` };
   }
 
   // completed
