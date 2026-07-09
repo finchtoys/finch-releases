@@ -33,7 +33,8 @@ except ImportError:
 MAX_IMAGE_DIM = 3000          # longest edge; larger images are scaled down
 PDF_RENDER_DPI = 150          # PDF page→PNG resolution
 PDF_CHECK_DPI = 72            # low-res preview for blank-page detection
-PDF_MAX_WORKERS = 4           # parallel pages for large PDFs
+PDF_MAX_WORKERS = 2           # parallel workers for large PDFs (lower = less memory)
+PDF_MAX_TASKS_PER_WORKER = 15 # recycle workers after N pages to prevent memory leaks
 BLANK_PAGE_WHITE_THRESHOLD = 0.95  # ratio of near-white pixels to treat page as blank
 BLANK_PAGE_PIXEL_THRESHOLD = 240   # pixel value considered "white"
 
@@ -217,8 +218,12 @@ def render_and_ocr_page(args):
         # Save to temp (after resize) for PaddleOCR predict
         work_path = tempfile.NamedTemporaryFile(suffix='.png', delete=False).name
         cv2.imwrite(work_path, img)
+        del img  # release image memory before OCR
         lines, confidence = run_ocr(ocr, work_path)
-        os.unlink(work_path)
+        try:
+            os.unlink(work_path)
+        except OSError:
+            pass
         return {
             "page": page_num + 1,
             "lines": lines or [],
@@ -226,9 +231,14 @@ def render_and_ocr_page(args):
             "confidence": round(confidence, 3),
             "resized": was_resized,
         }
+    except Exception as e:
+        return {"page": page_num + 1, "lines": [], "count": 0, "confidence": 0, "error": str(e)}
     finally:
-        if os.path.exists(path):
-            os.unlink(path)
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except OSError:
+            pass
 
 
 def _init_worker():
@@ -288,8 +298,11 @@ def process_pdf_stream(pdf_path):
             with multiprocessing.Pool(
                 processes=workers,
                 initializer=_init_worker,
+                maxtasksperchild=PDF_MAX_TASKS_PER_WORKER,
             ) as pool:
                 for result in pool.imap_unordered(render_and_ocr_page, task_args):
+                    # If a worker returned an error for a page, still yield it
+                    # so the TS side can track progress
                     yield json.dumps({"type": "page", **result})
                     sys.stdout.flush()
 
