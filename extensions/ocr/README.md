@@ -29,7 +29,19 @@ Setup happens automatically on first use (Python venv + pip install).
 
 ## Caching
 
-OCR results are cached for **30 days**, keyed by SHA-256 file hash. Same file = instant result without re-running OCR. Cache is stored in extension private storage.
+OCR results are cached for **30 days**, keyed by SHA-256 file hash. Same file = instant result without re-running OCR.
+
+```
+extensions/ocr/
+├── cache/
+│   ├── index.json         # hash → ISO timestamp
+│   └── <sha256>.json      # result file
+```
+
+- Cache files stored in `cache/` directory alongside the extension
+- `index.json` records creation time for quick expiry checks
+- Expired entries auto-cleaned on each new cache write
+- Use `ocr_cache` to inspect, `clear_ocr_cache` to purge
 
 ## Performance & Limits
 
