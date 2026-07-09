@@ -23,7 +23,19 @@ Setup happens automatically on first use (Python venv + pip install).
 ## Requirements
 
 - **Python 3.10 – 3.12**
-- Dependencies (`paddleocr`, `paddlepaddle`, `PyMuPDF`) auto-installed on first use
+- Dependencies (`paddleocr`, `paddlepaddle`, `PyMuPDF`, `opencv-python`, `numpy`) auto-installed on first use
+
+## Performance & Limits
+
+| Type | Suggested Limit | Notes |
+|------|----------------|-------|
+| Single image | Unlimited | Automatically scaled if longest edge >3000px |
+| PDF pages | Hundreds | 200 DPI rendering, >98% blank pages skipped |
+| Single PDF page | Up to A0 | Very large drawings should be split first |
+
+- **Multi-page PDFs** (>8 pages) use 4 parallel worker threads automatically
+- PDF output includes page headers and confidence per page
+- First model load takes ~10 seconds; subsequent calls are faster
 
 ## Privacy
 
