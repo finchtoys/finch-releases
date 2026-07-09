@@ -116,7 +116,6 @@ interface TaskStatus {
   createdAt: string;
   estimatedSeconds: number;
   resultFile: string;
-  errorFile: string;
 }
 
 interface PdfProgress {
@@ -134,9 +133,6 @@ function taskStatusFile(cacheParent: string, hash: string): string {
 }
 function taskResultFile(cacheParent: string, hash: string): string {
   return join(taskDir(cacheParent, hash), 'result.json');
-}
-function taskErrorFile(cacheParent: string, hash: string): string {
-  return join(taskDir(cacheParent, hash), 'error.log');
 }
 function taskProgressFile(cacheParent: string, hash: string): string {
   return join(taskDir(cacheParent, hash), 'progress.json');
@@ -162,7 +158,6 @@ function startOcrTask(
   const createdAt = new Date().toISOString();
   const tDir = taskDir(cacheParent, hash);
   const rFile = taskResultFile(cacheParent, hash);
-  const eFile = taskErrorFile(cacheParent, hash);
   const lFile = taskLogFile(cacheParent, hash);
   mkdirSync(tDir, { recursive: true });
 
@@ -174,7 +169,7 @@ function startOcrTask(
 
   const task: TaskStatus = {
     hash, type, status: 'running', createdAt, estimatedSeconds,
-    resultFile: rFile, errorFile: eFile,
+    resultFile: rFile,
   };
   writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
   log(`Task started: type=${type}, hash=${hash}, estimated=${estimatedSeconds}s`);
@@ -262,9 +257,7 @@ function startOcrTask(
     });
 
     proc.stderr!.on('data', (d: Buffer) => {
-      const text = d.toString();
-      appendFileSync(eFile, text, 'utf-8');
-      log(`[stderr] ${text.trim()}`);
+      log(`[stderr] ${d.toString().trim()}`);
     });
 
     proc.on('close', (code) => {
@@ -290,7 +283,6 @@ function startOcrTask(
 
     proc.on('error', (err) => {
       log(`Process error: ${err.message}`);
-      appendFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
       task.status = 'failed';
       writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
       log('Task failed: process error');
@@ -303,10 +295,8 @@ function startOcrTask(
     const stderrChunks: Buffer[] = [];
     proc.stdout!.on('data', (d: Buffer) => { stdout += d.toString(); });
     proc.stderr!.on('data', (d: Buffer) => {
-      const text = d.toString();
       stderrChunks.push(d);
-      appendFileSync(eFile, text, 'utf-8');
-      log(`[stderr] ${text.trim()}`);
+      log(`[stderr] ${d.toString().trim()}`);
     });
 
     proc.on('close', (code) => {
@@ -323,7 +313,6 @@ function startOcrTask(
       try {
         const parsed = JSON.parse(stdout.trim());
         if (parsed.error) {
-          writeFileSync(eFile, parsed.error, 'utf-8');
           task.status = 'failed';
           writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
           log(`Task failed: ${parsed.error}`);
@@ -342,7 +331,6 @@ function startOcrTask(
         log(`Task completed: ${(parsed.lines || []).length} lines, confidence=${(parsed.confidence * 100).toFixed(1)}%`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        writeFileSync(eFile, `Parse error: ${msg}\nRaw: ${stdout.slice(0, 500)}`, 'utf-8');
         task.status = 'failed';
         writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
         log(`Task failed: parse error - ${msg}`);
@@ -351,7 +339,6 @@ function startOcrTask(
 
     proc.on('error', (err) => {
       log(`Process error: ${err.message}`);
-      writeFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
       task.status = 'failed';
       writeFileSync(taskStatusFile(cacheParent, hash), JSON.stringify(task), 'utf-8');
       log('Task failed: process error');
@@ -408,7 +395,7 @@ function checkTask(cacheParent: string, hash: string): { status: string; text: s
   }
 
   if (task.status === 'failed') {
-    const errLog = existsSync(task.errorFile) ? readFileSync(task.errorFile, 'utf-8').trim() : 'Unknown error';
+    const errLog = existsSync(taskLogFile(cacheParent, hash)) ? readFileSync(taskLogFile(cacheParent, hash), 'utf-8').trim() : 'Unknown error';
     rmSync(taskDir(cacheParent, hash), { recursive: true, force: true });
     return { status: 'failed', text: `## OCR 任务失败\n\n\`\`\`\n${errLog}\n\`\`\`` };
   }
@@ -855,7 +842,7 @@ function registerOcrImageTool(ctx: any): void {
               `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
               `| 预计 | ~${estimatedSec} 秒 |`,
               `| 结果文件 | \`${task.resultFile}\` |`,
-              `| 错误日志 | \`${task.errorFile}\` |`,
+              `| 日志文件 | \`${taskLogFile(stPath, hash)}\` |`,
               '',
               `约 ${estimatedSec} 秒后使用 \`check_ocr_task\` 查询结果（传入任务 ID）。`,
             ].join('\n'),
@@ -941,7 +928,7 @@ function registerOcrPdfTool(ctx: any): void {
               `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
               `| 预计 | ~${estimatedSec} 秒（大文件可能更久） |`,
               `| 结果文件 | \`${task.resultFile}\` |`,
-              `| 错误日志 | \`${task.errorFile}\` |`,
+              `| 日志文件 | \`${taskLogFile(stPath, hash)}\` |`,
               '',
               '稍后使用 \`check_ocr_task\` 查询结果（传入任务 ID）。',
             ].join('\n'),
