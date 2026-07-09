@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/plan-mode",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Planning mode for Finch conversations.",
   "author": {
     "name": "Finch Team",
@@ -14,9 +14,9 @@
   },
   "license": "MIT",
   "files": [
-    "dist",
-    "i18n",
-    "package.json",
+    "dist/",
+    "i18n/",
+    "icon.png",
     "README.md"
   ],
   "publishConfig": {

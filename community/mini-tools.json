@@ -6,7 +6,7 @@
     "description": "A handy Git branch widget inside your chat dialog.",
     "repo": "finchtoys/finch-releases",
     "npm": "@finch.app/git-branch",
-    "version": "0.2.7",
+    "version": "0.2.8",
     "extensionType": "official",
     "categories": [
       "developer"
@@ -35,11 +35,25 @@
     "description": "A comprehensive demo extension showcasing all Finch mini tool capabilities: forms, toasts, custom icons, composer actions, and i18n.",
     "repo": "finchtoys/finch-releases",
     "npm": "@finch.app/mini-tool-demo",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "extensionType": "official",
     "categories": [
       "developer"
     ]
+  },
+  {
+    "id": "plan-mode",
+    "name": "Plan Mode",
+    "author": "Finch Team",
+    "description": "Planning mode for Finch conversations. Break down tasks before execution.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "@finch.app/plan-mode",
+    "version": "0.1.1",
+    "extensionType": "official",
+    "categories": [
+      "productivity"
+    ],
+    "featured": true
   },
   {
     "id": "tavily-search",
@@ -48,7 +62,7 @@
     "description": "Connect Tavily Search through MCP and make web search, extract, crawl, and map tools available to Finch.",
     "repo": "finchtoys/finch-releases",
     "npm": "finch-tavily-search",
-    "version": "0.1.9",
+    "version": "0.1.10",
     "extensionType": "official",
     "categories": [
       "research"

@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/git-branch",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Git Branch Manager for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",
@@ -67,7 +67,6 @@
     "i18n/",
     "icons/",
     "icon.png",
-    "shot.png",
     "README.md",
     "README.zh-CN.md"
   ]

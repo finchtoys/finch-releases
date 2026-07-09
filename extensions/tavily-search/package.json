@@ -1,6 +1,6 @@
 {
   "name": "finch-tavily-search",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Tavily Search MCP extension for Finch.",
   "author": {
     "name": "Finch Team",
