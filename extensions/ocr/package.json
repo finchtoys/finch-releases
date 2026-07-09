@@ -26,7 +26,7 @@
     "toolMeta": {
       "name": "PP-OCRv6"
     },
-    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. When the user shares a PDF file or asks to extract text from a PDF (especially a scanned PDF without selectable text), call the ocr_pdf tool with the PDF file path. Both tools handle setup automatically on first use.",
+    "systemPrompt": "OCR tasks: DO NOT write Python scripts or use other tools. Always use the dedicated OCR tools: call ocr_image for images (PNG, JPG, WebP, BMP, screenshots) and ocr_pdf for PDF files (especially scanned PDFs). Both tools fully handle Python setup, model loading, and text extraction automatically.",
     "promptGuides": [
       {
         "id": "setup-ocr",
