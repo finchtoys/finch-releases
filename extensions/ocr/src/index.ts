@@ -9,9 +9,9 @@
  * ocr_status → quick health check
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, rmSync, appendFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -102,6 +102,177 @@ function setCached(extDir: string, hash: string, entry: Omit<CacheEntry, 'hash' 
   }
 
   writeIdx(extDir, idx);
+}
+
+// ── Async Task Management ──────────────────────────────────────────────────
+
+interface TaskStatus {
+  hash: string;
+  type: 'image' | 'pdf';
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  createdAt: string;
+  estimatedSeconds: number;
+  resultFile: string;
+  errorFile: string;
+}
+
+function taskDir(extDir: string, hash: string): string {
+  return join(extDir, CACHE_DIR, 'tasks', hash);
+}
+
+function taskStatusFile(extDir: string, hash: string): string {
+  return join(taskDir(extDir, hash), 'status.json');
+}
+
+function taskResultFile(extDir: string, hash: string): string {
+  return join(taskDir(extDir, hash), 'result.json');
+}
+
+function taskErrorFile(extDir: string, hash: string): string {
+  return join(taskDir(extDir, hash), 'error.log');
+}
+
+/**
+ * Start an OCR task in the background.
+ * Writes status.json → spawns Python → on completion writes result + cache.
+ */
+function startOcrTask(
+  extDir: string,
+  pythonCmd: string,
+  scriptPath: string,
+  filePath: string,
+  hash: string,
+  type: 'image' | 'pdf',
+  estimatedSeconds: number,
+): TaskStatus {
+  const createdAt = new Date().toISOString();
+  const tDir = taskDir(extDir, hash);
+  const rFile = taskResultFile(extDir, hash);
+  const eFile = taskErrorFile(extDir, hash);
+  mkdirSync(tDir, { recursive: true });
+
+  const task: TaskStatus = {
+    hash, type, status: 'running', createdAt, estimatedSeconds,
+    resultFile: rFile, errorFile: eFile,
+  };
+  writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+
+  const args = type === 'pdf' ? [scriptPath, filePath, '--pdf'] : [scriptPath, filePath];
+  const proc = spawn(pythonCmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+  let stdout = '';
+  const stderrChunks: Buffer[] = [];
+  proc.stdout!.on('data', (d: Buffer) => { stdout += d.toString(); });
+  proc.stderr!.on('data', (d: Buffer) => { stderrChunks.push(d); });
+
+  proc.on('close', (code) => {
+    if (stderrChunks.length > 0) {
+      writeFileSync(eFile, Buffer.concat(stderrChunks).toString(), 'utf-8');
+    }
+
+    if (code !== 0) {
+      task.status = 'failed';
+      writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(stdout.trim());
+      if (parsed.error) {
+        writeFileSync(eFile, parsed.error, 'utf-8');
+        task.status = 'failed';
+        writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+        return;
+      }
+
+      let markdown = '';
+      if (type === 'image') {
+        const mdLines: string[] = ['## OCR Result\n'];
+        if (parsed.resized) mdLines.push('> ℹ️ Large image was scaled down for processing.\n');
+        mdLines.push(parsed.lines?.join('\n') || 'No text detected in the image.');
+        if (parsed.confidence > 0) mdLines.push('', `> Confidence: **${(parsed.confidence * 100).toFixed(1)}%**`);
+        markdown = mdLines.join('\n');
+        setCached(extDir, hash, { text: markdown, confidence: parsed.confidence ?? 0, wasResized: parsed.resized });
+      } else {
+        const mdLines: string[] = ['## OCR Result\n'];
+        if (parsed.pages?.length) {
+          for (const pg of parsed.pages) {
+            mdLines.push(`### 📄 Page ${pg.page}`);
+            if (pg.confidence > 0) mdLines.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
+            mdLines.push('', (pg.lines as string[]).join('\n') || '*No text detected*', '');
+          }
+        } else {
+          mdLines.push('No text detected in the PDF.');
+        }
+        const total = parsed.pages?.length || 0;
+        const withText = (parsed.pages || []).filter((p: any) => p.confidence > 0).length;
+        markdown = mdLines.join('\n') + `\n---\n> *Processed **${total}** pages: ${withText} with text, ${total - withText} blank*`;
+        setCached(extDir, hash, {
+          text: markdown, confidence: 0,
+          pages: (parsed.pages || []).map((pg: any) => ({
+            page: pg.page, text: (pg.lines as string[]).join('\n'), confidence: pg.confidence ?? 0,
+          })),
+        });
+      }
+
+      writeFileSync(rFile, markdown, 'utf-8');
+      task.status = 'completed';
+      writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      writeFileSync(eFile, `Parse error: ${msg}\nRaw output: ${stdout.slice(0, 500)}`, 'utf-8');
+      task.status = 'failed';
+      writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+    }
+  });
+
+  proc.on('error', (err) => {
+    writeFileSync(eFile, `Process error: ${err.message}`, 'utf-8');
+    task.status = 'failed';
+    writeFileSync(taskStatusFile(extDir, hash), JSON.stringify(task), 'utf-8');
+  });
+
+  return task;
+}
+
+/**
+ * Poll a task's status. Cleans up task directory on completion or failure.
+ */
+function checkTask(extDir: string, hash: string): { status: string; text: string } {
+  const sf = taskStatusFile(extDir, hash);
+  if (!existsSync(sf)) {
+    const cached = getCached(extDir, hash);
+    if (cached) return { status: 'completed', text: cached.text };
+    return { status: 'not_found', text: '没有找到对应的任务或缓存。' };
+  }
+
+  const task: TaskStatus = JSON.parse(readFileSync(sf, 'utf-8'));
+  const elapsed = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / 1000);
+
+  if (task.status === 'running') {
+    const remaining = Math.max(0, task.estimatedSeconds - elapsed);
+    return {
+      status: 'running',
+      text: `## OCR 任务进行中\n\n- 已耗时: **${elapsed}s**\n- 预计还需: **~${remaining}s**\n- 结果文件: \`${task.resultFile}\`\n- 错误日志: \`${task.errorFile}\`\n\n请稍后再查。`,
+    };
+  }
+
+  if (task.status === 'failed') {
+    const errLog = existsSync(task.errorFile) ? readFileSync(task.errorFile, 'utf-8').trim() : 'Unknown error';
+    rmSync(taskDir(extDir, hash), { recursive: true, force: true });
+    return { status: 'failed', text: `## OCR 任务失败\n\n\`\`\`\n${errLog}\n\`\`\`` };
+  }
+
+  // completed
+  let result = '';
+  if (existsSync(task.resultFile)) {
+    result = readFileSync(task.resultFile, 'utf-8');
+  } else {
+    const cached = getCached(extDir, hash);
+    if (cached) result = cached.text;
+  }
+  rmSync(taskDir(extDir, hash), { recursive: true, force: true });
+  return { status: 'completed', text: result };
 }
 
 // ── Python Constants ────────────────────────────────────────────────────────
@@ -264,62 +435,6 @@ class SetupError extends Error {
 
 // ── OCR Runner ──────────────────────────────────────────────────────────────
 
-function runOcrScript(pythonCmd: string, scriptPath: string, imagePath: string): { text: string; confidence: number; wasResized?: boolean } {
-  const r = spawnSync(pythonCmd, [scriptPath, imagePath], {
-    timeout: 120_000, stdio: 'pipe', encoding: 'utf-8',
-  });
-
-  if (r.status !== 0) {
-    throw new Error((r.stderr || r.stdout || '').trim() || 'OCR process failed');
-  }
-
-  const parsed = JSON.parse(r.stdout.trim());
-  if (parsed.error) throw new Error(parsed.error);
-
-  if (parsed.lines?.length > 0) {
-    return { text: parsed.lines.join('\n'), confidence: parsed.confidence || 0, wasResized: parsed.resized };
-  }
-  return { text: 'No text detected in the image.', confidence: 0 };
-}
-
-/** Run OCR on a PDF — the script handles per-page rendering and merging. */
-function runOcrPdfScript(pythonCmd: string, scriptPath: string, pdfPath: string): { text: string; pages: Array<{ page: number; text: string; confidence: number }> } {
-  const r = spawnSync(pythonCmd, [scriptPath, pdfPath, '--pdf'], {
-    timeout: 600_000, stdio: 'pipe', encoding: 'utf-8',
-  });
-
-  if (r.status !== 0) {
-    throw new Error((r.stderr || r.stdout || '').trim() || 'PDF OCR process failed');
-  }
-
-  const parsed = JSON.parse(r.stdout.trim());
-  if (parsed.error) throw new Error(parsed.error);
-
-  if (!parsed.pages || parsed.pages.length === 0) {
-    return { text: 'No text detected in the PDF.', pages: [] };
-  }
-
-  const pages: Array<{ page: number; text: string; confidence: number }> = [];
-  for (const pg of parsed.pages) {
-    const pageText = (pg.lines as string[]).join('\n');
-    pages.push({ page: pg.page, text: pageText, confidence: pg.confidence ?? 0 });
-  }
-
-  // Build Markdown output
-  const mdParts: string[] = [];
-  for (const pg of pages) {
-    mdParts.push(`### 📄 Page ${pg.page}`);
-    if (pg.confidence > 0) {
-      mdParts.push(`> Confidence: **${(pg.confidence * 100).toFixed(1)}%**`);
-    }
-    mdParts.push('');
-    mdParts.push(pg.text || '*No text detected*');
-    mdParts.push('');
-  }
-
-  return { text: mdParts.join('\n'), pages };
-}
-
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 function registerSetupTool(ctx: any): void {
@@ -411,7 +526,6 @@ function registerStatusTool(ctx: any): void {
         const pv = checkPaddle(python.cmd);
         lines.push(`**PaddleOCR:** ${pv ? `✅ ${pv}` : '❌ not installed'}`);
       } else {
-        // Attempt to detect wrong version
         const fallback = ['python3', 'python', 'python3.13', 'python3.9']
           .map(c => ({ cmd: c, ver: pyVersion(c) }))
           .find(x => x.ver);
@@ -528,54 +642,58 @@ function registerOcrImageTool(ctx: any): void {
         return { content: [{ type: 'text', text: 'OCR script missing. Please reinstall the extension.' }], isError: true };
       }
 
-      // ── Cache check ──
       const hash = fileHash(imagePath);
       const extDir = ctx.extension.extensionPath;
+
+      // ── Cache check ──
       const cached = getCached(extDir, hash);
       if (cached) {
         ctx.logger.debug(`Cache hit for ${imagePath}`);
         return { content: [{ type: 'text', text: cached.text }] };
       }
 
+      // ── Check if already running ──
+      const sf = taskStatusFile(extDir, hash);
+      if (existsSync(sf)) {
+        const existing = JSON.parse(readFileSync(sf, 'utf-8')) as TaskStatus;
+        if (existing.status === 'running') {
+          const elapsed = Math.floor((Date.now() - new Date(existing.createdAt).getTime()) / 1000);
+          return { content: [{ type: 'text', text: `OCR 任务已在运行中（已耗时 ${elapsed}s）。使用 \`check_ocr_task\` 查询进度（任务 ID: \`${hash}\`）。` }] };
+        }
+      }
+
+      // ── Start async task ──
       try {
         const setup = ensureSetup();
-        const result = runOcrScript(setup.cmd, scriptPath, imagePath);
+        const estimatedSec = 15;
+        const task = startOcrTask(extDir, setup.cmd, scriptPath, imagePath, hash, 'image', estimatedSec);
 
-        // Build Markdown output
-        const mdLines: string[] = ['## OCR Result\n'];
-        if (result.wasResized) {
-          mdLines.push('> ℹ️ Large image was scaled down for processing.\n');
-        }
-        mdLines.push(result.text);
-        if (result.confidence > 0) {
-          mdLines.push('');
-          mdLines.push(`> Confidence: **${(result.confidence * 100).toFixed(1)}%**`);
-        }
-        const markdown = mdLines.join('\n');
-
-        // Store in cache
-        setCached(extDir, hash, {
-          text: markdown,
-          confidence: result.confidence ?? 0,
-          wasResized: result.wasResized,
-        });
-
-        return { content: [{ type: 'text', text: markdown }] };
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              '## OCR 任务已启动\n',
+              '| 字段 | 值 |',
+              '|---|----|',
+              `| 任务 ID | \`${hash}\` |`,
+              `| 类型 | 图片 |`,
+              `| 状态 | 运行中 |`,
+              `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
+              `| 预计 | ~${estimatedSec} 秒 |`,
+              `| 结果文件 | \`${task.resultFile}\` |`,
+              `| 错误日志 | \`${task.errorFile}\` |`,
+              '',
+              `约 ${estimatedSec} 秒后使用 \`check_ocr_task\` 查询结果（传入任务 ID）。`,
+            ].join('\n'),
+          }],
+        };
       } catch (err) {
         if (err instanceof SetupError) {
-          // User-friendly guidance for setup issues
           return { content: [{ type: 'text', text: err.userMessage }], isError: true };
         }
         const msg = err instanceof Error ? err.message : String(err);
-        // Distinguish common failure modes
         if (msg.includes('PaddleOCR') || msg.includes('No module')) {
-          return {
-            content: [{
-              type: 'text',
-              text: `OCR engine not ready: ${msg}\n\nRun \`setup_ocr\` to check the environment, or install manually:\n\`\`\`bash\n${tmpdir()}/ocr-venv/bin/python3 -m pip install paddleocr paddlepaddle\n\`\`\``,
-            }],
-            isError: true,
-          };
+          return { content: [{ type: 'text', text: `OCR engine not ready: ${msg}\n\nRun \`setup_ocr\` to check the environment.` }], isError: true };
         }
         return { content: [{ type: 'text', text: `OCR failed: ${msg}` }], isError: true };
       }
@@ -610,47 +728,100 @@ function registerOcrPdfTool(ctx: any): void {
         return { content: [{ type: 'text', text: 'OCR 脚本缺失，请重新安装扩展。' }], isError: true };
       }
 
-      // ── Cache check ──
       const hash = fileHash(pdfPath);
       const extDir = ctx.extension.extensionPath;
+
+      // ── Cache check ──
       const cached = getCached(extDir, hash);
       if (cached) {
         ctx.logger.debug(`Cache hit for PDF ${pdfPath}`);
         return { content: [{ type: 'text', text: cached.text }] };
       }
 
+      // ── Check if already running ──
+      const sf = taskStatusFile(extDir, hash);
+      if (existsSync(sf)) {
+        const existing = JSON.parse(readFileSync(sf, 'utf-8')) as TaskStatus;
+        if (existing.status === 'running') {
+          const elapsed = Math.floor((Date.now() - new Date(existing.createdAt).getTime()) / 1000);
+          return { content: [{ type: 'text', text: `PDF OCR 任务已在运行中（已耗时 ${elapsed}s）。使用 \`check_ocr_task\` 查询进度（任务 ID: \`${hash}\`）。` }] };
+        }
+      }
+
+      // ── Start async task ──
       try {
         const setup = ensureSetup();
-        const result = runOcrPdfScript(setup.cmd, scriptPath, pdfPath);
+        const estimatedSec = 60; // generic — PDFs vary widely
+        const task = startOcrTask(extDir, setup.cmd, scriptPath, pdfPath, hash, 'pdf', estimatedSec);
 
-        // result.text is already Markdown
-        const footer = `\n---\n> *Processed **${result.pages.length}** pages: ${result.pages.filter(p => p.confidence > 0).length} with text, ${result.pages.filter(p => p.confidence === 0).length} blank*`;
-        const markdown = result.text + footer;
-
-        // Store in cache
-        setCached(extDir, hash, {
-          text: markdown,
-          confidence: 0,
-          pages: result.pages,
-        });
-
-        return { content: [{ type: 'text', text: markdown }] };
+        return {
+          content: [{
+            type: 'text',
+            text: [
+              '## PDF OCR 任务已启动\n',
+              '| 字段 | 值 |',
+              '|---|----|',
+              `| 任务 ID | \`${hash}\` |`,
+              `| 类型 | PDF |`,
+              `| 状态 | 运行中 |`,
+              `| 创建时间 | ${new Date(task.createdAt).toLocaleString()} |`,
+              `| 预计 | ~${estimatedSec} 秒（大文件可能更久） |`,
+              `| 结果文件 | \`${task.resultFile}\` |`,
+              `| 错误日志 | \`${task.errorFile}\` |`,
+              '',
+              '稍后使用 \`check_ocr_task\` 查询结果（传入任务 ID）。',
+            ].join('\n'),
+          }],
+        };
       } catch (err) {
         if (err instanceof SetupError) {
           return { content: [{ type: 'text', text: err.userMessage }], isError: true };
         }
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('PyMuPDF')) {
-          return {
-            content: [{
-              type: 'text',
-              text: `PDF 解析库未安装: ${msg}\n\n运行 \`setup_ocr\` 重新安装全部依赖。`,
-            }],
-            isError: true,
-          };
+          return { content: [{ type: 'text', text: `PDF 解析库未安装: ${msg}\n\n运行 \`setup_ocr\` 重新安装全部依赖。` }], isError: true };
         }
         return { content: [{ type: 'text', text: `PDF OCR 失败: ${msg}` }], isError: true };
       }
+    },
+  }));
+}
+
+function registerCheckOcrTaskTool(ctx: any): void {
+  ctx.subscriptions.push(ctx.tools.register({
+    name: 'check_ocr_task',
+    title: 'Check OCR Task',
+    description: 'Check the status of an async OCR task and retrieve results when done. Pass the task ID (SHA-256 hash) returned by ocr_image or ocr_pdf.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'Task ID (SHA-256 hash returned by ocr_image or ocr_pdf)' },
+      },
+      required: ['taskId'],
+    },
+    risk: 'low',
+    async execute(input: any) {
+      const hash = String((input as any).taskId ?? '').trim();
+      if (!hash) {
+        return { content: [{ type: 'text', text: '请提供任务 ID。' }], isError: true };
+      }
+
+      const result = checkTask(ctx.extension.extensionPath, hash);
+
+      if (result.status === 'running') {
+        return { content: [{ type: 'text', text: result.text }] };
+      }
+      if (result.status === 'failed') {
+        return { content: [{ type: 'text', text: result.text }], isError: true };
+      }
+      if (result.status === 'not_found') {
+        return { content: [{ type: 'text', text: result.text }], isError: true };
+      }
+      // completed
+      if (result.text) {
+        return { content: [{ type: 'text', text: result.text }] };
+      }
+      return { content: [{ type: 'text', text: '没有找到对应的任务或缓存。' }], isError: true };
     },
   }));
 }
@@ -665,7 +836,8 @@ export async function activate(ctx: any): Promise<void> {
   registerClearCacheTool(ctx);
   registerOcrImageTool(ctx);
   registerOcrPdfTool(ctx);
-  ctx.logger.info('PP-OCRv6 extension activated — OCR ready for images and PDFs');
+  registerCheckOcrTaskTool(ctx);
+  ctx.logger.info('PP-OCRv6 extension activated — async OCR ready');
 }
 
 export function deactivate(): void {

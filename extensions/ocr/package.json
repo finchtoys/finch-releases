@@ -26,7 +26,7 @@
     "toolMeta": {
       "name": "PP-OCRv6"
     },
-    "systemPrompt": "OCR tasks: DO NOT write Python scripts or use other tools. Always use the dedicated OCR tools: call ocr_image for images (PNG, JPG, WebP, BMP, screenshots) and ocr_pdf for PDF files (especially scanned PDFs). Both tools fully handle Python setup, model loading, and text extraction automatically.",
+    "systemPrompt": "OCR tasks: DO NOT write Python scripts or use other tools. Always use the dedicated OCR tools: call ocr_image for images (PNG, JPG, WebP, BMP, screenshots) and ocr_pdf for PDF files (especially scanned PDFs). Both tools handle setup automatically. IMPORTANT: ocr_image and ocr_pdf are ASYNC — they start a background task and return a task ID immediately. AFTER the estimated time, call check_ocr_task with that task ID to retrieve the result. Do NOT ask the user to check manually — call check_ocr_task yourself.",
     "promptGuides": [
       {
         "id": "setup-ocr",
