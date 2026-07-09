@@ -1,9 +1,10 @@
 /**
  * PP-OCRv6 Finch Extension
- * Uses Python PaddleOCR for high-accuracy OCR.
+ * Uses Python PaddleOCR for high-accuracy OCR of images and PDFs.
  *
  * ── Flow ────────────────────────────────────────────────────────────────────
- * ocr_image → ensureSetup() (auto-installs PaddleOCR if needed) → run OCR
+ * ocr_image → ensureSetup() (auto-installs PaddleOCR + PyMuPDF if needed) → run OCR
+ * ocr_pdf   → ensureSetup() → run PDF (per-page OCR, merged output)
  * setup_ocr → diagnostic + fallback manual install
  * ocr_status → quick health check
  */
@@ -64,7 +65,7 @@ function createVenv(cmd: string): void {
 }
 
 function pipInstall(pyCmd: string): void {
-  const r = spawnSync(pyCmd, ['-m', 'pip', 'install', 'paddleocr', 'paddlepaddle', '--timeout', '120'], {
+  const r = spawnSync(pyCmd, ['-m', 'pip', 'install', 'paddleocr', 'paddlepaddle', 'PyMuPDF', '--timeout', '120'], {
     timeout: 300_000, stdio: 'pipe', encoding: 'utf-8',
   });
   if (r.status !== 0) {
@@ -192,6 +193,34 @@ function runOcrScript(pythonCmd: string, scriptPath: string, imagePath: string):
   return { text: 'No text detected in the image.', confidence: 0 };
 }
 
+/** Run OCR on a PDF — the script handles per-page rendering and merging. */
+function runOcrPdfScript(pythonCmd: string, scriptPath: string, pdfPath: string): { text: string; pages: Array<{ page: number; text: string; confidence: number }> } {
+  const r = spawnSync(pythonCmd, [scriptPath, pdfPath, '--pdf'], {
+    timeout: 600_000, stdio: 'pipe', encoding: 'utf-8',
+  });
+
+  if (r.status !== 0) {
+    throw new Error((r.stderr || r.stdout || '').trim() || 'PDF OCR process failed');
+  }
+
+  const parsed = JSON.parse(r.stdout.trim());
+  if (parsed.error) throw new Error(parsed.error);
+
+  if (!parsed.pages || parsed.pages.length === 0) {
+    return { text: 'No text detected in the PDF.', pages: [] };
+  }
+
+  const collected: string[] = [];
+  const pages: Array<{ page: number; text: string; confidence: number }> = [];
+  for (const pg of parsed.pages) {
+    const pageText = (pg.lines as string[]).join('\n');
+    collected.push(`--- Page ${pg.page} ---\n${pageText}`);
+    pages.push({ page: pg.page, text: pageText, confidence: pg.confidence ?? 0 });
+  }
+
+  return { text: collected.join('\n\n'), pages };
+}
+
 // ── Tools ───────────────────────────────────────────────────────────────────
 
 function registerSetupTool(ctx: any): void {
@@ -207,7 +236,6 @@ function registerSetupTool(ctx: any): void {
       // ── Python ──
       const python = findPython();
       if (!python) {
-        // Detect wrong-version Python for better feedback
         const wrong = ['python3.14', 'python3.13', 'python3.9', 'python3.8', 'python3', 'python']
           .map(c => ({ cmd: c, ver: pyVersion(c) }))
           .find(x => x.ver);
@@ -220,7 +248,7 @@ function registerSetupTool(ctx: any): void {
           lines.push('**Required:** Python 3.10 – 3.12');
           if (tooNew) lines.push('PaddlePaddle does not support Python 3.13+ yet.');
           lines.push('');
-          lines.push('**Install Python 3.12** and share an image.');
+          lines.push('**Install Python 3.12** and run setup_ocr again.');
         } else {
           lines.push('❌ **Python not found**');
           lines.push('');
@@ -229,42 +257,40 @@ function registerSetupTool(ctx: any): void {
           lines.push('• **Ubuntu/Debian:** `sudo apt install python3.12`');
           lines.push('• **Windows:** Download from https://www.python.org/downloads/');
           lines.push('');
-          lines.push('After installing Python, share an image and setup completes automatically.');
+          lines.push('After installing Python, run setup_ocr again.');
         }
         return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
       }
 
       lines.push(`✅ **Python:** ${python.cmd} (${python.version})`);
 
-      // ── PaddleOCR ──
-      const paddleVer = checkPaddle(python.cmd);
-      if (paddleVer) {
-        lines.push(`✅ **PaddleOCR:** installed (v${paddleVer})`);
-      } else {
-        lines.push('⏳ **PaddleOCR:** not installed — installing...');
-        try {
-          const vp = venvPython(DEFAULT_VENV);
-          if (!existsSync(DEFAULT_VENV) || !existsSync(vp)) createVenv(python.cmd);
-          pipInstall(vp);
-          const v = checkPaddle(vp);
-          lines.push(v ? `✅ **PaddleOCR installed:** v${v}` : '❌ **Verification failed**');
-        } catch (err) {
-          lines.push(`❌ **Installation failed:** ${err instanceof Error ? err.message : String(err)}`);
+      // ── PaddleOCR (reuse ensureSetup for consistent auto-install) ──
+      try {
+        const result = ensureSetup();
+        lines.push(`✅ **PaddleOCR:** installed (v${result.paddleVersion})`);
+      } catch (err) {
+        if (err instanceof SetupError) {
+          lines.push(`❌ **PaddleOCR:** ${err.message}`);
           lines.push('');
-          lines.push('**Install manually:**');
-          lines.push('```bash');
-          lines.push(`${python.cmd} -m venv ${DEFAULT_VENV}`);
-          lines.push(`${venvPython(DEFAULT_VENV)} -m pip install paddleocr paddlepaddle`);
-          lines.push('```');
+          lines.push(err.userMessage);
+          return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
         }
+        lines.push(`❌ **Installation failed:** ${err instanceof Error ? err.message : String(err)}`);
+        lines.push('');
+        lines.push('**Install manually in terminal:**');
+        lines.push('```bash');
+        lines.push(`${python.cmd} -m venv "${DEFAULT_VENV}"`);
+        lines.push(`"${venvPython(DEFAULT_VENV)}" -m pip install paddleocr paddlepaddle`);
+        lines.push('```');
+        return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
       }
 
       // ── Script ──
       const sp = join(ctx.extension.extensionPath, 'scripts', 'ocr.py');
-      lines.push(existsSync(sp) ? '✅ **OCR Script:** found' : '❌ **OCR Script:** not found (reinstall)');
+      lines.push(existsSync(sp) ? '✅ **OCR Script:** found' : '❌ **OCR Script:** not found — reinstall the extension');
 
       lines.push('');
-      lines.push('**Ready to use.** Share an image to extract text.');
+      lines.push('**All set.** Share an image to extract text.');
       return { content: [{ type: 'text', text: lines.join('\n') }] };
     },
   }));
@@ -360,6 +386,60 @@ function registerOcrImageTool(ctx: any): void {
   }));
 }
 
+function registerOcrPdfTool(ctx: any): void {
+  ctx.subscriptions.push(ctx.tools.register({
+    name: 'ocr_pdf',
+    title: 'OCR PDF',
+    description: 'Extract text from a PDF by OCR-ing each page using PP-OCRv6. Good for scanned PDFs without selectable text. Handles setup automatically.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pdfPath: { type: 'string', description: 'Absolute path to the PDF file' },
+      },
+      required: ['pdfPath'],
+    },
+    risk: 'low',
+    async execute(input: any) {
+      const pdfPath = String((input as any).pdfPath ?? '').trim();
+      if (!pdfPath) {
+        return { content: [{ type: 'text', text: '请提供 PDF 文件路径。' }], isError: true };
+      }
+      if (!existsSync(pdfPath)) {
+        return { content: [{ type: 'text', text: `文件不存在: ${pdfPath}` }], isError: true };
+      }
+
+      const scriptPath = join(ctx.extension.extensionPath, 'scripts', 'ocr.py');
+      if (!existsSync(scriptPath)) {
+        return { content: [{ type: 'text', text: 'OCR 脚本缺失，请重新安装扩展。' }], isError: true };
+      }
+
+      try {
+        const setup = ensureSetup();
+        const result = runOcrPdfScript(setup.cmd, scriptPath, pdfPath);
+
+        let response = result.text;
+        response += `\n\n---\n*共 ${result.pages.length} 页，已识别所有文字*`;
+        return { content: [{ type: 'text', text: response }] };
+      } catch (err) {
+        if (err instanceof SetupError) {
+          return { content: [{ type: 'text', text: err.userMessage }], isError: true };
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('PyMuPDF')) {
+          return {
+            content: [{
+              type: 'text',
+              text: `PDF 解析库未安装: ${msg}\n\n运行 \`setup_ocr\` 重新安装全部依赖。`,
+            }],
+            isError: true,
+          };
+        }
+        return { content: [{ type: 'text', text: `PDF OCR 失败: ${msg}` }], isError: true };
+      }
+    },
+  }));
+}
+
 // ── Activation ──────────────────────────────────────────────────────────────
 
 export async function activate(ctx: any): Promise<void> {
@@ -367,7 +447,8 @@ export async function activate(ctx: any): Promise<void> {
   registerSetupTool(ctx);
   registerStatusTool(ctx);
   registerOcrImageTool(ctx);
-  ctx.logger.info('PP-OCRv6 extension activated — OCR is ready when you are');
+  registerOcrPdfTool(ctx);
+  ctx.logger.info('PP-OCRv6 extension activated — OCR ready for images and PDFs');
 }
 
 export function deactivate(): void {

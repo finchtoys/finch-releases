@@ -22,11 +22,11 @@
     "manifestVersion": 1,
     "id": "pp-ocrv6",
     "name": "PP-OCRv6",
-    "description": "Extract text from images using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
+    "description": "Extract text from images and scanned PDFs using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
     "toolMeta": {
       "name": "PP-OCRv6"
     },
-    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. The extension handles setup automatically on first use.",
+    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. When the user shares a PDF file or asks to extract text from a PDF (especially a scanned PDF without selectable text), call the ocr_pdf tool with the PDF file path. Both tools handle setup automatically on first use.",
     "promptGuides": [
       {
         "id": "setup-ocr",
@@ -39,6 +39,12 @@
         "title": "Extract text from image",
         "description": "Recognize text in an image using PP-OCRv6.",
         "prompt": "Extract text from this image"
+      },
+      {
+        "id": "ocr-pdf",
+        "title": "Extract text from PDF",
+        "description": "OCR a scanned PDF to extract text page by page.",
+        "prompt": "Extract text from this PDF"
       }
     ],
     "main": "dist/index.js",

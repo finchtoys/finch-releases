@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""PP-OCRv6 adaptive OCR with retry logic."""
+"""PP-OCRv6 adaptive OCR with retry logic. Supports both images and PDFs."""
 import sys
 import json
 import os
 import tempfile
+import argparse
 
 os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
@@ -19,6 +20,17 @@ except ImportError as e:
     }))
     sys.exit(1)
 
+# PyMuPDF is optional — only needed for PDF processing
+try:
+    import fitz  # PyMuPDF
+    HAS_PDF_SUPPORT = True
+except ImportError:
+    HAS_PDF_SUPPORT = False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Image preprocessing
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def analyze_image(img):
     """Analyze image characteristics to choose preprocessing strategy."""
@@ -47,17 +59,13 @@ def preprocess_adaptive(img_path, strategy='default'):
     modified = False
 
     if strategy == 'enhance':
-        # Enhanced preprocessing for low-confidence results
         if info['is_small']:
-            # Upscale small images 2x
             img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
             modified = True
 
-        # Normalize contrast
         img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
         modified = True
 
-        # Light sharpen
         kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
         img = cv2.filter2D(img, -1, kernel)
         modified = True
@@ -68,6 +76,22 @@ def preprocess_adaptive(img_path, strategy='default'):
         return tmp.name, True
 
     return img_path, False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Core OCR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_ocr_instance():
+    return PaddleOCR(
+        lang="ch",
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False,
+        text_det_limit_side_len=1536,
+        text_det_thresh=0.2,
+        text_det_box_thresh=0.4,
+    )
 
 
 def run_ocr(ocr, image_path):
@@ -93,50 +117,115 @@ def run_ocr(ocr, image_path):
     return lines, scores, avg_score
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Usage: ocr.py <image_path>"}))
-        sys.exit(1)
-
-    image_path = sys.argv[1]
-    if not os.path.exists(image_path):
-        print(json.dumps({"error": f"File not found: {image_path}"}))
-        sys.exit(1)
-
-    # High-accuracy configuration
-    ocr = PaddleOCR(
-        lang="ch",
-        use_doc_orientation_classify=False,
-        use_doc_unwarping=False,
-        use_textline_orientation=False,
-        text_det_limit_side_len=1536,
-        text_det_thresh=0.2,
-        text_det_box_thresh=0.4,
-    )
-
+def run_ocr_with_retry(ocr, image_path):
+    """Run OCR with adaptive retry if confidence is low."""
     enhanced_path = None
     try:
-        # First attempt: default preprocessing
         lines1, scores1, avg1 = run_ocr(ocr, image_path)
 
-        # If confidence is low, try enhanced preprocessing
         if avg1 < 0.85 or len(lines1) < 3:
             enhanced_path, was_enhanced = preprocess_adaptive(image_path, 'enhance')
             if was_enhanced:
                 lines2, scores2, avg2 = run_ocr(ocr, enhanced_path)
-
-                # Use enhanced result if it's better
                 if avg2 > avg1 or len(lines2) > len(lines1):
                     lines1, scores1, avg1 = lines2, scores2, avg2
 
-        print(json.dumps({
-            "lines": lines1,
-            "count": len(lines1),
-            "confidence": round(avg1, 3),
-        }))
+        return lines1, round(avg1, 3)
     finally:
         if enhanced_path and os.path.exists(enhanced_path):
             os.unlink(enhanced_path)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PDF processing
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def pdf_page_to_image(doc, page_num, zoom=2.0):
+    """Render a PDF page as a PIL/PyMuPDF pixmap → temp PNG file."""
+    page = doc[page_num]
+    mat = fitz.Matrix(zoom, zoom)  # 2x for better OCR
+    pix = page.get_pixmap(matrix=mat)
+    tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+    pix.save(tmp.name)
+    return tmp.name
+
+
+def process_pdf(pdf_path):
+    """OCR every page of a PDF and return merged results."""
+    if not HAS_PDF_SUPPORT:
+        return {
+            "error": "PyMuPDF not installed. Run `pip install PyMuPDF` in your venv, or run setup_ocr to reinstall all dependencies.",
+            "pages": [],
+            "total_lines": 0,
+        }
+
+    doc = fitz.open(pdf_path)
+    ocr = create_ocr_instance()
+
+    page_results = []
+    total_lines = 0
+    page_files = []
+
+    try:
+        for i in range(len(doc)):
+            img_path = pdf_page_to_image(doc, i)
+            page_files.append(img_path)
+
+            lines, confidence = run_ocr_with_retry(ocr, img_path)
+            page_results.append({
+                "page": i + 1,
+                "lines": lines,
+                "count": len(lines),
+                "confidence": confidence,
+            })
+            total_lines += len(lines)
+
+        return {
+            "pages": page_results,
+            "total_pages": len(page_results),
+            "total_lines": total_lines,
+        }
+    finally:
+        doc.close()
+        for f in page_files:
+            try:
+                if os.path.exists(f):
+                    os.unlink(f)
+            except OSError:
+                pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Entry point
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def main():
+    parser = argparse.ArgumentParser(description='PP-OCRv6 OCR — images and PDFs')
+    parser.add_argument('path', help='Path to image or PDF file')
+    parser.add_argument('--pdf', action='store_true', help='Process file as PDF')
+    args = parser.parse_args()
+
+    file_path = args.path
+    if not os.path.exists(file_path):
+        print(json.dumps({"error": f"File not found: {file_path}"}))
+        sys.exit(1)
+
+    if args.pdf:
+        result = process_pdf(file_path)
+        print(json.dumps(result))
+        if "error" in result:
+            sys.exit(1)
+        return
+
+    # Image mode
+    ocr = create_ocr_instance()
+    lines, confidence = run_ocr_with_retry(ocr, file_path)
+
+    print(json.dumps({
+        "lines": lines,
+        "count": len(lines),
+        "confidence": confidence,
+    }))
 
 
 if __name__ == "__main__":
