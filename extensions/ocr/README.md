@@ -15,12 +15,15 @@ Setup happens automatically on first use (Python venv + pip install).
 
 | Tool | Description |
 |------|-------------|
-| `ocr_image` | Extract text from an image (PNG, JPG, WebP, BMP, etc.) |
-| `ocr_pdf` | OCR a scanned PDF page by page |
+| `ocr_image` | Start async OCR on an image (PNG, JPG, WebP, BMP, etc.) — returns a task ID |
+| `ocr_pdf` | Start async OCR on a scanned PDF — returns a task ID |
+| `check_ocr_task` | Poll a running task by task ID and retrieve the result when done |
 | `ocr_cache` | View cached OCR results (age, expiry) |
 | `clear_ocr_cache` | Clear all cached results |
 | `setup_ocr` | Check environment and install dependencies |
 | `ocr_status` | Quick health check |
+
+> **Async flow:** `ocr_image` / `ocr_pdf` launch a background process and return immediately with a task ID + estimated time. Finch will automatically call `check_ocr_task` after the estimated time to retrieve the result.
 
 ## Requirements
 

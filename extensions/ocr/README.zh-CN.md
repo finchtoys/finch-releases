@@ -15,12 +15,15 @@
 
 | 工具 | 说明 |
 |------|------|
-| `ocr_image` | 从图片（PNG、JPG、WebP、BMP 等）提取文字 |
-| `ocr_pdf` | 逐页 OCR 扫描版 PDF |
+| `ocr_image` | 异步启动图片 OCR（PNG、JPG、WebP、BMP 等），返回任务 ID |
+| `ocr_pdf` | 异步启动扫描版 PDF OCR，返回任务 ID |
+| `check_ocr_task` | 通过任务 ID 查询进度并获取结果 |
 | `ocr_cache` | 查看缓存的 OCR 结果（时间、过期） |
 | `clear_ocr_cache` | 清空所有缓存 |
 | `setup_ocr` | 检查环境并安装依赖 |
 | `ocr_status` | 快速健康检查 |
+
+> **异步流程：** `ocr_image` / `ocr_pdf` 会在后台启动识别进程，立即返回任务 ID + 预计时间。Finch 会在预计时间后自动调用 `check_ocr_task` 获取结果。
 
 ## 环境要求
 
