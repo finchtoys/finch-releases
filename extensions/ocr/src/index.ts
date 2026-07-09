@@ -11,18 +11,20 @@
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 
-// ── Constants ───────────────────────────────────────────────────────────────
+// ── Cache ──────────────────────────────────────────────────────────────────
+
+const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const CACHE_DIR = 'ocr-cache';
+
+// ── Python Constants ────────────────────────────────────────────────────────
 
 const PYTHON_MIN = [3, 10];
 const PYTHON_MAX = [3, 12];
 const DEFAULT_VENV = join(tmpdir(), 'ocr-venv');
-
-const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const CACHE_FILENAME = 'ocr-cache.json';
 
 interface CacheEntry {
   hash: string;
@@ -33,28 +35,39 @@ interface CacheEntry {
   createdAt: string;
 }
 
-interface CacheStore {
-  entries: Record<string, CacheEntry>;
+/** Maps hash → "YYYY/MM/DD" date path. */
+function cacheIndexPath(extDir: string): string {
+  return join(extDir, CACHE_DIR, 'index.json');
 }
 
-function cacheFilePath(extDir: string): string {
-  return join(extDir, CACHE_FILENAME);
+function readIndex(extDir: string): Record<string, string> {
+  const f = cacheIndexPath(extDir);
+  if (!existsSync(f)) return {};
+  try { return JSON.parse(readFileSync(f, 'utf-8')); } catch { return {}; }
 }
 
-function readCache(extDir: string): CacheStore {
-  const file = cacheFilePath(extDir);
-  if (!existsSync(file)) return { entries: {} };
-  try {
-    return JSON.parse(readFileSync(file, 'utf-8')) as CacheStore;
-  } catch {
-    return { entries: {} };
-  }
+function writeIndex(extDir: string, idx: Record<string, string>): void {
+  const f = cacheIndexPath(extDir);
+  mkdirSync(dirname(f), { recursive: true });
+  writeFileSync(f, JSON.stringify(idx), 'utf-8');
 }
 
-function writeCache(extDir: string, store: CacheStore): void {
-  const file = cacheFilePath(extDir);
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(store, null, 2), 'utf-8');
+function cacheEntryPath(extDir: string, datePath: string, hash: string): string {
+  return join(extDir, CACHE_DIR, datePath, `${hash}.json`);
+}
+
+function todayDatePath(): string {
+  const d = new Date();
+  const y = d.getFullYear().toString();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${y}/${m}/${day}`;
+}
+
+function parseDatePath(s: string): Date | null {
+  const m = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
 }
 
 function fileHash(filePath: string): string {
@@ -63,31 +76,73 @@ function fileHash(filePath: string): string {
 }
 
 function getCached(extDir: string, hash: string): CacheEntry | null {
-  const store = readCache(extDir);
-  const entry = store.entries[hash];
-  if (!entry) return null;
-  const age = Date.now() - new Date(entry.createdAt).getTime();
-  if (age > CACHE_MAX_AGE_MS) {
-    delete store.entries[hash];
-    writeCache(extDir, store);
+  const idx = readIndex(extDir);
+  const datePath = idx[hash];
+  if (!datePath) return null;
+
+  const file = cacheEntryPath(extDir, datePath, hash);
+  if (!existsSync(file)) {
+    delete idx[hash];
+    writeIndex(extDir, idx);
     return null;
   }
-  return entry;
+
+  try {
+    const entry = JSON.parse(readFileSync(file, 'utf-8')) as CacheEntry;
+    const age = Date.now() - new Date(entry.createdAt).getTime();
+    if (age > CACHE_MAX_AGE_MS) {
+      unlinkSync(file);
+      delete idx[hash];
+      writeIndex(extDir, idx);
+      return null;
+    }
+    return entry;
+  } catch {
+    delete idx[hash];
+    writeIndex(extDir, idx);
+    return null;
+  }
 }
 
 function setCached(extDir: string, hash: string, entry: Omit<CacheEntry, 'hash' | 'createdAt'>): void {
-  const store = readCache(extDir);
-  store.entries[hash] = { ...entry, hash, createdAt: new Date().toISOString() };
+  const datePath = todayDatePath();
+  const full: CacheEntry = { ...entry, hash, createdAt: new Date().toISOString() };
 
-  // Clean expired entries on write
+  // Write entry file
+  const file = cacheEntryPath(extDir, datePath, hash);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(full), 'utf-8');
+
+  // Update index
+  const idx = readIndex(extDir);
+  idx[hash] = datePath;
+  writeIndex(extDir, idx);
+
+  // Cleanup: remove expired entries and empty date dirs
   const now = Date.now();
-  for (const [k, v] of Object.entries(store.entries)) {
-    if (now - new Date(v.createdAt).getTime() > CACHE_MAX_AGE_MS) {
-      delete store.entries[k];
+  let changed = false;
+  for (const [h, dp] of Object.entries(idx)) {
+    const ef = cacheEntryPath(extDir, dp, h);
+    if (!existsSync(ef)) {
+      delete idx[h];
+      changed = true;
+      continue;
+    }
+    try {
+      const e = JSON.parse(readFileSync(ef, 'utf-8')) as CacheEntry;
+      if (now - new Date(e.createdAt).getTime() > CACHE_MAX_AGE_MS) {
+        unlinkSync(ef);
+        delete idx[h];
+        changed = true;
+      }
+    } catch {
+      // If we can't read it, delete it
+      try { unlinkSync(ef); } catch {}
+      delete idx[h];
+      changed = true;
     }
   }
-
-  writeCache(extDir, store);
+  if (changed) writeIndex(extDir, idx);
 }
 
 // ── Python Utilities ────────────────────────────────────────────────────────
@@ -416,34 +471,48 @@ function registerCacheStatusTool(ctx: any): void {
     async execute() {
       const lines: string[] = ['## OCR Cache\n'];
       const extDir = ctx.extension.extensionPath;
-      const store = readCache(extDir);
-      const entries = Object.values(store.entries);
+      const idx = readIndex(extDir);
+      const hashes = Object.keys(idx);
       const now = Date.now();
+      let validCount = 0;
 
-      if (entries.length === 0) {
+      if (hashes.length === 0) {
         lines.push('No cached results.');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       }
 
-      lines.push(`| # | Type | Hash | Age | Expires |`);
+      lines.push(`| # | Type | Date | Age | Expires |`);
       lines.push('|---|------|------|-----|---------|');
 
-      entries.forEach((entry, i) => {
-        const age = now - new Date(entry.createdAt).getTime();
-        const ageDays = Math.floor(age / (24 * 60 * 60 * 1000));
-        const ageHours = Math.floor((age % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-        const expiresIn = Math.max(0, 30 - ageDays);
-        const type = entry.pages ? 'PDF' : 'Image';
-        const shortHash = entry.hash.slice(0, 12);
-        lines.push(`| ${i + 1} | ${type} | \`${shortHash}…\` | ${ageDays}d ${ageHours}h | ${expiresIn}d |`);
-      });
+      for (let i = 0; i < hashes.length; i++) {
+        const h = hashes[i];
+        const dp = idx[h];
+        const file = cacheEntryPath(extDir, dp, h);
+        if (!existsSync(file)) continue;
+        try {
+          const entry = JSON.parse(readFileSync(file, 'utf-8')) as CacheEntry;
+          const age = now - new Date(entry.createdAt).getTime();
+          if (age > CACHE_MAX_AGE_MS) continue;
+          validCount++;
+          const ageDays = Math.floor(age / (24 * 60 * 60 * 1000));
+          const ageHours = Math.floor((age % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+          const expiresIn = Math.max(0, 30 - ageDays);
+          const type = entry.pages ? 'PDF' : 'Image';
+          const shortHash = h.slice(0, 12);
+          lines.push(`| ${validCount} | ${type} | \`${shortHash}…\` | ${dp} | ${ageDays}d ${ageHours}h | ${expiresIn}d |`);
+        } catch { /* skip unreadable */ }
+      }
 
-      lines.push('');
-      lines.push(`**Total:** ${entries.length} entries`);
-      lines.push('');
-      lines.push(`Cache file: \`${cacheFilePath(extDir)}\``);
-      lines.push('');
-      lines.push('To clear all cache, call \`clear_ocr_cache\`.');
+      if (validCount === 0) {
+        lines.push('No cached results.');
+      } else {
+        lines.push('');
+        lines.push(`**Total:** ${validCount} entries`);
+        lines.push('');
+        lines.push(`Cache root: \`${join(extDir, CACHE_DIR)}\``);
+        lines.push('');
+        lines.push('To clear all cache, call \`clear_ocr_cache\`.');
+      }
       return { content: [{ type: 'text', text: lines.join('\n') }] };
     },
   }));
@@ -457,9 +526,9 @@ function registerClearCacheTool(ctx: any): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute() {
-      const file = cacheFilePath(ctx.extension.extensionPath);
-      if (existsSync(file)) {
-        unlinkSync(file);
+      const root = join(ctx.extension.extensionPath, CACHE_DIR);
+      if (existsSync(root)) {
+        rmSync(root, { recursive: true, force: true });
       }
       return { content: [{ type: 'text', text: 'OCR 缓存已清空。' }] };
     },
