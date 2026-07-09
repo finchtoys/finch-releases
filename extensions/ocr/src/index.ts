@@ -517,13 +517,13 @@ function ensureSetup(): SetupResult {
           '**If you are in mainland China,** use a PyPI mirror:',
           '```bash',
           `${python.cmd} -m venv ${DEFAULT_VENV}`,
-          `${vp} -m pip install paddleocr paddlepaddle -i https://pypi.tuna.tsinghua.edu.cn/simple`,
+          `${vp} -m pip install paddleocr paddlepaddle PyMuPDF opencv-python numpy -i https://pypi.tuna.tsinghua.edu.cn/simple`,
           '```',
           '',
           'Or install manually in terminal:',
           '```bash',
           `${python.cmd} -m venv ${DEFAULT_VENV}`,
-          `${vp} -m pip install paddleocr paddlepaddle`,
+          `${vp} -m pip install paddleocr paddlepaddle PyMuPDF opencv-python numpy`,
           '```',
           '',
           'After installing, share an image again.',
@@ -538,7 +538,7 @@ function ensureSetup(): SetupResult {
         '**Install manually in terminal:**',
         '```bash',
         `${python.cmd} -m venv ${DEFAULT_VENV}`,
-        `${vp} -m pip install paddleocr paddlepaddle`,
+        `${vp} -m pip install paddleocr paddlepaddle PyMuPDF opencv-python numpy`,
         '```',
         '',
         'After installing, share an image again.',
@@ -617,7 +617,7 @@ function registerSetupTool(ctx: any): void {
         lines.push('**Install manually in terminal:**');
         lines.push('```bash');
         lines.push(`${python.cmd} -m venv "${DEFAULT_VENV}"`);
-        lines.push(`"${venvPython(DEFAULT_VENV)}" -m pip install paddleocr paddlepaddle`);
+        lines.push(`"${venvPython(DEFAULT_VENV)}" -m pip install paddleocr paddlepaddle PyMuPDF opencv-python numpy`);
         lines.push('```');
         return { content: [{ type: 'text', text: lines.join('\n') }], isError: true };
       }
