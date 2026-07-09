@@ -1,6 +1,6 @@
 # PP-OCRv6
 
-PP-OCRv6 uses Python PaddleOCR for high-accuracy OCR — supports 50+ languages with adaptive preprocessing and retry logic.
+PP-OCRv6 uses Python PaddleOCR for high-accuracy OCR — optimized for Chinese and English text, with adaptive preprocessing and retry logic.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ When PaddleOCR runs for the first time, it automatically downloads model files:
 |-------|------|-------------|
 | **PP-OCRv6_medium_det** | ~59 MB | Text detection model |
 | **PP-OCRv6_medium_rec** | ~73 MB | Text recognition model |
-| **Character dict** | ~150 KB | Character dictionary for 50+ languages |
+| **Character dict** | ~150 KB | Character dictionary for Chinese and English text |
 
 **Total download size:** ~132 MB
 
@@ -129,7 +129,7 @@ This ensures good results for:
 
 ## Permissions
 
-- `filesystem: readwrite`: Reads image files for OCR
+- `filesystem: read`: Reads image files for OCR
 - `shell: true`: Calls Python PaddleOCR via subprocess
 - `network: true`: Downloads models on first use (optional)
 

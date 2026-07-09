@@ -8,9 +8,16 @@ import tempfile
 os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
-from paddleocr import PaddleOCR
-import cv2
-import numpy as np
+try:
+    from paddleocr import PaddleOCR
+    import cv2
+    import numpy as np
+except ImportError as e:
+    missing = getattr(e, 'name', None) or str(e).split(':')[-1].strip() or 'required package'
+    print(json.dumps({
+        "error": f"Missing Python dependency: {missing}. Run setup_ocr to install PaddleOCR."
+    }))
+    sys.exit(1)
 
 
 def analyze_image(img):
@@ -107,25 +114,29 @@ def main():
         text_det_box_thresh=0.4,
     )
 
-    # First attempt: default preprocessing
-    lines1, scores1, avg1 = run_ocr(ocr, image_path)
+    enhanced_path = None
+    try:
+        # First attempt: default preprocessing
+        lines1, scores1, avg1 = run_ocr(ocr, image_path)
 
-    # If confidence is low, try enhanced preprocessing
-    if avg1 < 0.85 or len(lines1) < 3:
-        enhanced_path, was_enhanced = preprocess_adaptive(image_path, 'enhance')
-        if was_enhanced:
-            lines2, scores2, avg2 = run_ocr(ocr, enhanced_path)
-            os.unlink(enhanced_path)  # Clean up temp file
+        # If confidence is low, try enhanced preprocessing
+        if avg1 < 0.85 or len(lines1) < 3:
+            enhanced_path, was_enhanced = preprocess_adaptive(image_path, 'enhance')
+            if was_enhanced:
+                lines2, scores2, avg2 = run_ocr(ocr, enhanced_path)
 
-            # Use enhanced result if it's better
-            if avg2 > avg1 or len(lines2) > len(lines1):
-                lines1, scores1, avg1 = lines2, scores2, avg2
+                # Use enhanced result if it's better
+                if avg2 > avg1 or len(lines2) > len(lines1):
+                    lines1, scores1, avg1 = lines2, scores2, avg2
 
-    print(json.dumps({
-        "lines": lines1,
-        "count": len(lines1),
-        "confidence": round(avg1, 3),
-    }))
+        print(json.dumps({
+            "lines": lines1,
+            "count": len(lines1),
+            "confidence": round(avg1, 3),
+        }))
+    finally:
+        if enhanced_path and os.path.exists(enhanced_path):
+            os.unlink(enhanced_path)
 
 
 if __name__ == "__main__":

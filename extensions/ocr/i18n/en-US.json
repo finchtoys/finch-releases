@@ -1,12 +1,12 @@
 {
   "name": "PP-OCRv6",
-  "description": "Extract text from images using PP-OCRv6 ONNX models — supports 50 languages with high accuracy, fully local.",
-  "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. If PP-OCRv6 is not set up yet, call setup_ocr first to download models.",
+  "description": "Extract text from images using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
+  "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. The extension handles setup automatically on first use.",
   "toolMeta": { "name": "PP-OCRv6" },
   "promptGuides": {
     "setup-ocr": {
       "title": "Set up OCR",
-      "description": "Download PP-OCRv6 models and configure OCR.",
+      "description": "Check the Python environment and install PaddleOCR for OCR.",
       "prompt": "Set up PP-OCRv6 for image text extraction"
     },
     "ocr-image": {
@@ -14,18 +14,5 @@
       "description": "Recognize text in an image using PP-OCRv6.",
       "prompt": "Extract text from this image"
     }
-  },
-  "toast.saved.title": "OCR configuration saved",
-  "toast.saved.description": "PP-OCRv6 models are ready and loaded into memory.",
-  "status.noModels": "**No models cached.** Run `setup_ocr` to download models.",
-  "status.cachedModels": "**Cached models:**",
-  "status.charsCount": "Character dictionary: {count} entries",
-  "error.downloadFailed": "Failed to download OCR models: {message}",
-  "error.nativeDepsFailed": "Failed to install native dependencies (onnxruntime-node / sharp): {message}",
-  "error.configSaveFailed": "Failed to save OCR config: {message}",
-  "error.notConfigured": "PP-OCRv6 is not configured yet. Run `setup_ocr` first.",
-  "error.noImagePath": "No image path provided.",
-  "error.fileNotFound": "File not found: {path}",
-  "error.ocrFailed": "OCR recognition failed: {message}",
-  "error.ocrNoResult": "OCR returned no result."
+  }
 }

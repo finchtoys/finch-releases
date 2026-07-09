@@ -1,6 +1,6 @@
 # PP-OCRv6
 
-PP-OCRv6 使用 Python PaddleOCR 提供高精度文字识别能力，支持 50+ 种语言，具备自适应预处理和重试逻辑。
+PP-OCRv6 使用 Python PaddleOCR 提供高精度文字识别能力，针对中文与英文文本优化，具备自适应预处理和重试逻辑。
 
 ## 架构
 
@@ -72,7 +72,7 @@ PaddleOCR 首次运行时会自动下载模型文件：
 |------|------|------|
 | **PP-OCRv6_medium_det** | ~59 MB | 文本检测模型 |
 | **PP-OCRv6_medium_rec** | ~73 MB | 文本识别模型 |
-| **字符字典** | ~150 KB | 50+ 语言字符字典 |
+| **字符字典** | ~150 KB | 中文与英文字符字典 |
 
 **总下载大小：** ~132 MB
 
@@ -129,7 +129,7 @@ Python 脚本使用优化参数以获得更好的识别效果：
 
 ## 权限
 
-- `filesystem: readwrite`：读取图片文件进行 OCR
+- `filesystem: read`：读取图片文件进行 OCR
 - `shell: true`：通过子进程调用 Python PaddleOCR
 - `network: true`：首次使用时下载模型（可选）
 

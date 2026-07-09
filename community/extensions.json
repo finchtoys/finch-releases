@@ -29,6 +29,21 @@
     "version": "1.1.10"
   },
   {
+    "id": "pp-ocrv6",
+    "name": "PP-OCRv6",
+    "author": "Finch Team",
+    "description": "Extract text from images using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "@finch.app/ext-ocr",
+    "extensionType": "official",
+    "categories": [
+      "productivity",
+      "research"
+    ],
+    "featured": true,
+    "version": "0.1.0"
+  },
+  {
     "id": "tavily-search",
     "name": "Tavily Search",
     "author": "Finch Team",

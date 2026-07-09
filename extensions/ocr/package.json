@@ -1,7 +1,7 @@
 {
   "name": "@finch.app/ext-ocr",
   "version": "0.1.0",
-  "description": "OCR extension powered by PP-OCRv6 — extract text from images using Python PaddleOCR.",
+  "description": "OCR extension powered by PP-OCRv6 — extract Chinese and English text from images using Python PaddleOCR.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
@@ -20,13 +20,13 @@
   },
   "finch": {
     "manifestVersion": 1,
-    "id": "PP-OCRv6",
+    "id": "pp-ocrv6",
     "name": "PP-OCRv6",
-    "description": "Extract text from images using PP-OCRv6 via Python PaddleOCR — supports 50 languages with high accuracy.",
+    "description": "Extract text from images using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
     "toolMeta": {
       "name": "PP-OCRv6"
     },
-    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. If PP-OCRv6 is not set up yet, call setup_ocr first to download models.",
+    "systemPrompt": "When the user shares an image, pastes a screenshot, or asks to extract text from an image, call the ocr_image tool with the image file path. The extension handles setup automatically on first use.",
     "promptGuides": [
       {
         "id": "setup-ocr",
@@ -56,7 +56,7 @@
       "tools": true
     },
     "permissions": {
-      "filesystem": "readwrite",
+      "filesystem": "read",
       "network": true,
       "shell": true,
       "secrets": []
@@ -66,6 +66,7 @@
   "files": [
     "dist/",
     "i18n/",
+    "scripts/",
     "README.md",
     "README.zh-CN.md",
     "package.json"
@@ -73,7 +74,6 @@
   "devDependencies": {
     "@finch.app/minitool-api": "^0.1.13",
     "@types/node": "^26.1.0",
-    "esbuild": "^0.28.1",
     "typescript": "^5.6.0"
   }
 }

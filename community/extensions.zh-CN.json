@@ -10,6 +10,11 @@
     "description": "连接 Model Context Protocol 服务，并把它们的工具暴露给 Finch。"
   },
   {
+    "id": "pp-ocrv6",
+    "name": "PP-OCRv6",
+    "description": "使用 PP-OCRv6 从图片中提取文字——针对中文与英文文本优化。"
+  },
+  {
     "id": "tavily-search",
     "name": "Tavily 搜索",
     "description": "通过 MCP 连接 Tavily Search，让 Finch 使用网页搜索、内容提取、站点抓取和站点地图工具。"
