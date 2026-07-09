@@ -3,9 +3,9 @@
  * Uses Python PaddleOCR for high-accuracy OCR.
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
 import { execSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 // ── Python Version Management ───────────────────────────────────────────────
 
