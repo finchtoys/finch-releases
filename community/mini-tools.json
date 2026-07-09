@@ -48,7 +48,7 @@
     "description": "Planning mode for Finch conversations. Break down tasks before execution.",
     "repo": "finchtoys/finch-releases",
     "npm": "@finch.app/plan-mode",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "extensionType": "official",
     "categories": [
       "productivity"

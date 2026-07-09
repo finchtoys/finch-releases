@@ -9,7 +9,7 @@
     }
   },
 
-  "badge.active": "创建计划",
+  "badge.active": "计划优先",
 
   "toast.enter.title": "{assistantName}先计划再行动",
   "toast.enter.desc": "我会先计划任务，再确认是否执行",

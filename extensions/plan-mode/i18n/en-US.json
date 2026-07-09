@@ -9,7 +9,7 @@
     }
   },
 
-  "badge.active": "Planning",
+  "badge.active": "Planning First",
 
   "toast.enter.title": "{assistantName} will think before you act",
   "toast.enter.desc": "I will plan the task first, then confirm to execute.",
