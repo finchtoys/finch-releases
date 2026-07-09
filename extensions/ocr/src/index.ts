@@ -11,8 +11,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ const PYTHON_MAX = [3, 12];
 const DEFAULT_VENV = join(tmpdir(), 'ocr-venv');
 
 const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-const CACHE_KEY = 'ocr-cache';
+const CACHE_FILENAME = 'ocr-cache.json';
 
 interface CacheEntry {
   hash: string;
@@ -33,48 +33,61 @@ interface CacheEntry {
   createdAt: string;
 }
 
+interface CacheStore {
+  entries: Record<string, CacheEntry>;
+}
+
+function cacheFilePath(extDir: string): string {
+  return join(extDir, CACHE_FILENAME);
+}
+
+function readCache(extDir: string): CacheStore {
+  const file = cacheFilePath(extDir);
+  if (!existsSync(file)) return { entries: {} };
+  try {
+    return JSON.parse(readFileSync(file, 'utf-8')) as CacheStore;
+  } catch {
+    return { entries: {} };
+  }
+}
+
+function writeCache(extDir: string, store: CacheStore): void {
+  const file = cacheFilePath(extDir);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(store, null, 2), 'utf-8');
+}
+
 function fileHash(filePath: string): string {
   const data = readFileSync(filePath);
   return createHash('sha256').update(data).digest('hex');
 }
 
-async function getCached(storage: any, hash: string): Promise<CacheEntry | null> {
-  try {
-    const raw = await storage.get(CACHE_KEY);
-    if (!raw) return null;
-    const cache = JSON.parse(raw) as Record<string, CacheEntry>;
-    const entry = cache[hash];
-    if (!entry) return null;
-    const age = Date.now() - new Date(entry.createdAt).getTime();
-    if (age > CACHE_MAX_AGE_MS) {
-      delete cache[hash];
-      await storage.set(CACHE_KEY, JSON.stringify(cache));
-      return null;
-    }
-    return entry;
-  } catch {
+function getCached(extDir: string, hash: string): CacheEntry | null {
+  const store = readCache(extDir);
+  const entry = store.entries[hash];
+  if (!entry) return null;
+  const age = Date.now() - new Date(entry.createdAt).getTime();
+  if (age > CACHE_MAX_AGE_MS) {
+    delete store.entries[hash];
+    writeCache(extDir, store);
     return null;
   }
+  return entry;
 }
 
-async function setCached(storage: any, hash: string, entry: Omit<CacheEntry, 'hash' | 'createdAt'>): Promise<void> {
-  try {
-    const raw = await storage.get(CACHE_KEY);
-    const cache: Record<string, CacheEntry> = raw ? JSON.parse(raw) : {};
-    cache[hash] = { ...entry, hash, createdAt: new Date().toISOString() };
+function setCached(extDir: string, hash: string, entry: Omit<CacheEntry, 'hash' | 'createdAt'>): void {
+  const store = readCache(extDir);
+  store.entries[hash] = { ...entry, hash, createdAt: new Date().toISOString() };
 
-    // Clean expired entries on write
-    const now = Date.now();
-    for (const [k, v] of Object.entries(cache)) {
-      if (now - new Date(v.createdAt).getTime() > CACHE_MAX_AGE_MS) {
-        delete cache[k];
-      }
+  // Clean expired entries on write
+  const now = Date.now();
+  for (const [k, v] of Object.entries(store.entries)) {
+    if (now - new Date(v.createdAt).getTime() > CACHE_MAX_AGE_MS) {
+      delete store.entries[k];
     }
-
-    await storage.set(CACHE_KEY, JSON.stringify(cache));
-  } catch {
-    // Cache write failure is non-fatal
   }
+
+  writeCache(extDir, store);
 }
 
 // ── Python Utilities ────────────────────────────────────────────────────────
@@ -402,44 +415,35 @@ function registerCacheStatusTool(ctx: any): void {
     risk: 'low',
     async execute() {
       const lines: string[] = ['## OCR Cache\n'];
+      const extDir = ctx.extension.extensionPath;
+      const store = readCache(extDir);
+      const entries = Object.values(store.entries);
+      const now = Date.now();
 
-      try {
-        const raw = await ctx.storage.get(CACHE_KEY);
-        if (!raw) {
-          lines.push('No cached results.');
-          return { content: [{ type: 'text', text: lines.join('\n') }] };
-        }
-
-        const cache = JSON.parse(raw) as Record<string, CacheEntry>;
-        const entries = Object.values(cache);
-        const now = Date.now();
-
-        if (entries.length === 0) {
-          lines.push('No cached results.');
-          return { content: [{ type: 'text', text: lines.join('\n') }] };
-        }
-
-        lines.push(`| # | Type | Age | Expires | Files`);
-        lines.push('|---|------|-----|---------|------');
-
-        entries.forEach((entry, i) => {
-          const age = now - new Date(entry.createdAt).getTime();
-          const ageDays = Math.floor(age / (24 * 60 * 60 * 1000));
-          const ageHours = Math.floor((age % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-          const expiresIn = Math.max(0, 30 - ageDays);
-          const type = entry.pages ? 'PDF' : 'Image';
-          const shortHash = entry.hash.slice(0, 12);
-          lines.push(`| ${i + 1} | ${type} | \`${shortHash}...\` | ${ageDays}d ${ageHours}h ago | ${expiresIn}d | 1 file`);
-        });
-
-        lines.push('');
-        lines.push(`**Total:** ${entries.length} entries`);
-        lines.push('');
-        lines.push('To clear all cache, call `clear_ocr_cache`.');
-      } catch (err) {
-        lines.push(`Failed to read cache: ${err instanceof Error ? err.message : String(err)}`);
+      if (entries.length === 0) {
+        lines.push('No cached results.');
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
       }
 
+      lines.push(`| # | Type | Hash | Age | Expires |`);
+      lines.push('|---|------|------|-----|---------|');
+
+      entries.forEach((entry, i) => {
+        const age = now - new Date(entry.createdAt).getTime();
+        const ageDays = Math.floor(age / (24 * 60 * 60 * 1000));
+        const ageHours = Math.floor((age % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+        const expiresIn = Math.max(0, 30 - ageDays);
+        const type = entry.pages ? 'PDF' : 'Image';
+        const shortHash = entry.hash.slice(0, 12);
+        lines.push(`| ${i + 1} | ${type} | \`${shortHash}…\` | ${ageDays}d ${ageHours}h | ${expiresIn}d |`);
+      });
+
+      lines.push('');
+      lines.push(`**Total:** ${entries.length} entries`);
+      lines.push('');
+      lines.push(`Cache file: \`${cacheFilePath(extDir)}\``);
+      lines.push('');
+      lines.push('To clear all cache, call \`clear_ocr_cache\`.');
       return { content: [{ type: 'text', text: lines.join('\n') }] };
     },
   }));
@@ -453,12 +457,11 @@ function registerClearCacheTool(ctx: any): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'medium',
     async execute() {
-      try {
-        await ctx.storage.delete(CACHE_KEY);
-        return { content: [{ type: 'text', text: 'OCR cache cleared.' }] };
-      } catch (err) {
-        return { content: [{ type: 'text', text: `Failed to clear cache: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+      const file = cacheFilePath(ctx.extension.extensionPath);
+      if (existsSync(file)) {
+        unlinkSync(file);
       }
+      return { content: [{ type: 'text', text: 'OCR 缓存已清空。' }] };
     },
   }));
 }
@@ -492,7 +495,8 @@ function registerOcrImageTool(ctx: any): void {
 
       // ── Cache check ──
       const hash = fileHash(imagePath);
-      const cached = await getCached(ctx.storage, hash);
+      const extDir = ctx.extension.extensionPath;
+      const cached = getCached(extDir, hash);
       if (cached) {
         ctx.logger.debug(`Cache hit for ${imagePath}`);
         return { content: [{ type: 'text', text: cached.text }] };
@@ -515,7 +519,7 @@ function registerOcrImageTool(ctx: any): void {
         const markdown = mdLines.join('\n');
 
         // Store in cache
-        await setCached(ctx.storage, hash, {
+        setCached(extDir, hash, {
           text: markdown,
           confidence: result.confidence ?? 0,
           wasResized: result.wasResized,
@@ -573,7 +577,8 @@ function registerOcrPdfTool(ctx: any): void {
 
       // ── Cache check ──
       const hash = fileHash(pdfPath);
-      const cached = await getCached(ctx.storage, hash);
+      const extDir = ctx.extension.extensionPath;
+      const cached = getCached(extDir, hash);
       if (cached) {
         ctx.logger.debug(`Cache hit for PDF ${pdfPath}`);
         return { content: [{ type: 'text', text: cached.text }] };
@@ -588,7 +593,7 @@ function registerOcrPdfTool(ctx: any): void {
         const markdown = result.text + footer;
 
         // Store in cache
-        await setCached(ctx.storage, hash, {
+        setCached(extDir, hash, {
           text: markdown,
           confidence: 0,
           pages: result.pages,
