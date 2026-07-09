@@ -122,6 +122,8 @@ interface TaskStatus {
 interface PdfProgress {
   totalPages: number;
   pages: Array<{ page: number; text: string; confidence: number }>;
+  /** Per-page moving average estimate of remaining seconds. */
+  dynamicEstimateSeconds?: number;
 }
 
 function taskDir(cacheParent: string, hash: string): string {
@@ -172,8 +174,18 @@ function startOcrTask(
   if (type === 'pdf') {
     // ── PDF: NDJSON streaming ──
     const progress: PdfProgress = { totalPages: 0, pages: [] };
+    const startTime = Date.now();
     let buf = '';
     let finalized = false;
+
+    function updateEstimate() {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const done = progress.pages.length;
+      if (done > 0 && progress.totalPages > done) {
+        const avgPerPage = elapsed / done;
+        progress.dynamicEstimateSeconds = Math.round(avgPerPage * (progress.totalPages - done));
+      }
+    }
 
     function finalizePdf() {
       if (finalized) return;
@@ -222,6 +234,7 @@ function startOcrTask(
               text: (msg.lines || []).join('\n'),
               confidence: msg.confidence || 0,
             });
+            updateEstimate();
             writeFileSync(taskProgressFile(cacheParent, hash), JSON.stringify(progress), 'utf-8');
           } else if (msg.type === 'done') {
             finalizePdf();
@@ -333,7 +346,7 @@ function checkTask(cacheParent: string, hash: string): { status: string; text: s
       const prog: PdfProgress = JSON.parse(readFileSync(pf, 'utf-8'));
       const done = prog.pages.length;
       const total = prog.totalPages || '?';
-      const remaining = Math.max(0, task.estimatedSeconds - elapsed);
+      const remaining = prog.dynamicEstimateSeconds ?? Math.max(0, task.estimatedSeconds - elapsed);
 
       if (done > 0) {
         const mdParts: string[] = [

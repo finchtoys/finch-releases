@@ -31,7 +31,7 @@ except ImportError:
 # ── Constants ────────────────────────────────────────────────────────────────
 
 MAX_IMAGE_DIM = 3000          # longest edge; larger images are scaled down
-PDF_RENDER_DPI = 200          # PDF page→PNG resolution
+PDF_RENDER_DPI = 150          # PDF page→PNG resolution
 PDF_MAX_WORKERS = 4           # parallel pages for large PDFs
 
 
