@@ -46,23 +46,34 @@ async function main() {
     return;
   }
 
+  const latestStableRelease = releases.find((release) => !release.draft && !release.prerelease) || null;
+  releases.sort(compareReleasesAscending);
+
   console.log(`Found ${releases.length} release(s) to sync.`);
+  if (latestStableRelease) {
+    console.log(`Latest stable release should be: ${latestStableRelease.tag_name}`);
+  }
 
   for (const release of releases) {
-    await syncRelease(release);
+    const makeLatest = latestStableRelease && release.tag_name === latestStableRelease.tag_name ? 'true' : 'false';
+    await syncRelease(release, makeLatest);
+  }
+
+  if (latestStableRelease) {
+    await ensureLatestRelease(latestStableRelease.tag_name);
   }
 
   console.log('Release sync completed.');
 }
 
-async function syncRelease(sourceRelease) {
+async function syncRelease(sourceRelease, makeLatest) {
   const tag = sourceRelease.tag_name;
   console.log(`\n==> Syncing ${tag}`);
 
   let targetRelease = await getReleaseByTag(targetOwner, targetName, tag);
 
   if (!targetRelease) {
-    targetRelease = await createReleaseFromSource(sourceRelease);
+    targetRelease = await createReleaseFromSource(sourceRelease, makeLatest);
     console.log(`Created target release for ${tag}`);
   } else {
     console.log(`Target release already exists for ${tag}`);
@@ -71,7 +82,7 @@ async function syncRelease(sourceRelease) {
       return;
     }
     if (overwriteBody) {
-      targetRelease = await updateRelease(targetRelease.id, sourceRelease);
+      targetRelease = await updateRelease(targetRelease.id, sourceRelease, makeLatest);
       console.log(`Updated release metadata for ${tag}`);
     }
   }
@@ -142,7 +153,7 @@ async function getReleaseByTag(owner, repo, tag) {
   return response.json();
 }
 
-async function createReleaseFromSource(sourceRelease) {
+async function createReleaseFromSource(sourceRelease, makeLatest = 'false') {
   return githubJson(`https://api.github.com/repos/${targetOwner}/${targetName}/releases`, {
     method: 'POST',
     body: JSON.stringify({
@@ -151,12 +162,13 @@ async function createReleaseFromSource(sourceRelease) {
       body: sourceRelease.body || '',
       draft: includeDrafts ? sourceRelease.draft : false,
       prerelease: sourceRelease.prerelease,
+      make_latest: makeLatest,
       target_commitish: targetRepoInfo.default_branch,
     }),
   });
 }
 
-async function updateRelease(releaseId, sourceRelease) {
+async function updateRelease(releaseId, sourceRelease, makeLatest = 'false') {
   return githubJson(`https://api.github.com/repos/${targetOwner}/${targetName}/releases/${releaseId}`, {
     method: 'PATCH',
     body: JSON.stringify({
@@ -164,6 +176,7 @@ async function updateRelease(releaseId, sourceRelease) {
       body: sourceRelease.body || '',
       draft: includeDrafts ? sourceRelease.draft : false,
       prerelease: sourceRelease.prerelease,
+      make_latest: makeLatest,
     }),
   });
 }
@@ -220,6 +233,28 @@ async function githubJson(url, init = {}, expectJson = true) {
   }
 
   return expectJson ? response.json() : null;
+}
+
+async function ensureLatestRelease(tag) {
+  const release = await getReleaseByTag(targetOwner, targetName, tag);
+  if (!release) {
+    throw new Error(`Cannot set latest release, tag not found: ${tag}`);
+  }
+
+  await githubJson(`https://api.github.com/repos/${targetOwner}/${targetName}/releases/${release.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      make_latest: 'true',
+    }),
+  });
+
+  console.log(`Ensured latest release: ${tag}`);
+}
+
+function compareReleasesAscending(a, b) {
+  const aTime = new Date(a.published_at || a.created_at || 0).getTime();
+  const bTime = new Date(b.published_at || b.created_at || 0).getTime();
+  return aTime - bTime;
 }
 
 function splitRepo(value) {
