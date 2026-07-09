@@ -10,6 +10,13 @@ import multiprocessing
 os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
+# Prevent thread oversubscription in multiprocessing workers.
+# PaddlePaddle/OpenBLAS each spawn internal thread pools; without these
+# limits, N workers × M threads = system-wide contention and SIGSEGV.
+os.environ.setdefault('OMP_NUM_THREADS', '1')
+os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
+os.environ.setdefault('MKL_NUM_THREADS', '1')
+
 try:
     from paddleocr import PaddleOCR
     import cv2
