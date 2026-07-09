@@ -13,7 +13,7 @@ import { spawnSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, rmSync, appendFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 
 // ── Cache ──────────────────────────────────────────────────────────────────
 
@@ -394,7 +394,7 @@ function checkTask(cacheParent: string, hash: string): { status: string; text: s
 
 const PYTHON_MIN = [3, 10];
 const PYTHON_MAX = [3, 12];
-const DEFAULT_VENV = join(tmpdir(), 'ocr-venv');
+const DEFAULT_VENV = join(homedir(), '.finch', 'venvs', 'pp-ocrv6');
 
 // ── Python Utilities ────────────────────────────────────────────────────────
 
