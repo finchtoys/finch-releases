@@ -86,6 +86,29 @@ def create_ocr_instance():
     )
 
 
+def warmup_ocr(ocr):
+    """Run a dummy prediction to warm up the model (cold start ~10s). No-op if already warm."""
+    warmup_path = os.path.join(os.path.dirname(__file__), 'warmup.png')
+    if not os.path.exists(warmup_path):
+        # Create a 64×64 white dummy image on the fly
+        try:
+            tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            cv2.imwrite(tmp.name, np.ones((64, 64, 3), dtype=np.uint8) * 255)
+            warmup_path = tmp.name
+        except Exception:
+            return  # skip warmup if we can't create a temp file
+    try:
+        ocr.predict(warmup_path)
+    except Exception:
+        pass  # warmup failure is non-fatal
+    finally:
+        if warmup_path and warmup_path.startswith(tempfile.gettempdir()):
+            try:
+                os.unlink(warmup_path)
+            except Exception:
+                pass
+
+
 def run_ocr(ocr, image_path):
     """Run OCR and return (lines, avg_confidence)."""
     result = ocr.predict(image_path)
@@ -203,11 +226,17 @@ def process_pdf_stream(pdf_path):
     try:
         if total_pages <= 8:
             ocr = create_ocr_instance()
+            warmup_ocr(ocr)
             for i in range(total_pages):
                 result = ocr_page(ocr, doc, i, PDF_RENDER_DPI)
                 yield json.dumps({"type": "page", **result})
                 sys.stdout.flush()
         else:
+            # Warm up one model first (cold start), then spawn workers
+            warmup_ocr_instance = create_ocr_instance()
+            warmup_ocr(warmup_ocr_instance)
+            del warmup_ocr_instance  # release after warmup
+
             with ThreadPoolExecutor(max_workers=PDF_MAX_WORKERS) as pool:
                 futures = {pool.submit(ocr_page, create_ocr_instance(), doc, i, PDF_RENDER_DPI): i for i in range(total_pages)}
                 for f in as_completed(futures):
@@ -242,6 +271,7 @@ def main():
         return
 
     ocr = create_ocr_instance()
+    warmup_ocr(ocr)
     lines, confidence, was_resized = ocr_image(ocr, args.path)
     print(json.dumps({
         "lines": lines or [],
