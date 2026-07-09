@@ -10,7 +10,8 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -19,6 +20,62 @@ import { tmpdir } from 'node:os';
 const PYTHON_MIN = [3, 10];
 const PYTHON_MAX = [3, 12];
 const DEFAULT_VENV = join(tmpdir(), 'ocr-venv');
+
+const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const CACHE_KEY = 'ocr-cache';
+
+interface CacheEntry {
+  hash: string;
+  text: string;
+  confidence: number;
+  wasResized?: boolean;
+  pages?: Array<{ page: number; text: string; confidence: number }>;
+  createdAt: string;
+}
+
+function fileHash(filePath: string): string {
+  const data = readFileSync(filePath);
+  return createHash('sha256').update(data).digest('hex');
+}
+
+async function getCached(storage: any, hash: string): Promise<CacheEntry | null> {
+  try {
+    const raw = await storage.get(CACHE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw) as Record<string, CacheEntry>;
+    const entry = cache[hash];
+    if (!entry) return null;
+    const age = Date.now() - new Date(entry.createdAt).getTime();
+    if (age > CACHE_MAX_AGE_MS) {
+      delete cache[hash];
+      await storage.set(CACHE_KEY, JSON.stringify(cache));
+      return null;
+    }
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+async function setCached(storage: any, hash: string, entry: Omit<CacheEntry, 'hash' | 'createdAt'>): Promise<void> {
+  try {
+    const raw = await storage.get(CACHE_KEY);
+    const cache: Record<string, CacheEntry> = raw ? JSON.parse(raw) : {};
+    cache[hash] = { ...entry, hash, createdAt: new Date().toISOString() };
+
+    // Clean expired entries on write
+    const now = Date.now();
+    for (const [k, v] of Object.entries(cache)) {
+      if (now - new Date(v.createdAt).getTime() > CACHE_MAX_AGE_MS) {
+        delete cache[k];
+      }
+    }
+
+    await storage.set(CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Cache write failure is non-fatal
+  }
+}
 
 // ── Python Utilities ────────────────────────────────────────────────────────
 
@@ -363,8 +420,15 @@ function registerOcrImageTool(ctx: any): void {
         return { content: [{ type: 'text', text: 'OCR script missing. Please reinstall the extension.' }], isError: true };
       }
 
+      // ── Cache check ──
+      const hash = fileHash(imagePath);
+      const cached = await getCached(ctx.storage, hash);
+      if (cached) {
+        ctx.logger.debug(`Cache hit for ${imagePath}`);
+        return { content: [{ type: 'text', text: cached.text }] };
+      }
+
       try {
-        // ensureSetup auto-installs dependencies if needed
         const setup = ensureSetup();
         const result = runOcrScript(setup.cmd, scriptPath, imagePath);
 
@@ -378,7 +442,16 @@ function registerOcrImageTool(ctx: any): void {
           mdLines.push('');
           mdLines.push(`> Confidence: **${(result.confidence * 100).toFixed(1)}%**`);
         }
-        return { content: [{ type: 'text', text: mdLines.join('\n') }] };
+        const markdown = mdLines.join('\n');
+
+        // Store in cache
+        await setCached(ctx.storage, hash, {
+          text: markdown,
+          confidence: result.confidence ?? 0,
+          wasResized: result.wasResized,
+        });
+
+        return { content: [{ type: 'text', text: markdown }] };
       } catch (err) {
         if (err instanceof SetupError) {
           // User-friendly guidance for setup issues
@@ -428,13 +501,30 @@ function registerOcrPdfTool(ctx: any): void {
         return { content: [{ type: 'text', text: 'OCR 脚本缺失，请重新安装扩展。' }], isError: true };
       }
 
+      // ── Cache check ──
+      const hash = fileHash(pdfPath);
+      const cached = await getCached(ctx.storage, hash);
+      if (cached) {
+        ctx.logger.debug(`Cache hit for PDF ${pdfPath}`);
+        return { content: [{ type: 'text', text: cached.text }] };
+      }
+
       try {
         const setup = ensureSetup();
         const result = runOcrPdfScript(setup.cmd, scriptPath, pdfPath);
 
         // result.text is already Markdown
         const footer = `\n---\n> *Processed **${result.pages.length}** pages: ${result.pages.filter(p => p.confidence > 0).length} with text, ${result.pages.filter(p => p.confidence === 0).length} blank*`;
-        return { content: [{ type: 'text', text: result.text + footer }] };
+        const markdown = result.text + footer;
+
+        // Store in cache
+        await setCached(ctx.storage, hash, {
+          text: markdown,
+          confidence: 0,
+          pages: result.pages,
+        });
+
+        return { content: [{ type: 'text', text: markdown }] };
       } catch (err) {
         if (err instanceof SetupError) {
           return { content: [{ type: 'text', text: err.userMessage }], isError: true };
