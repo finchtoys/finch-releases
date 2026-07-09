@@ -5,11 +5,14 @@ description: >
   Invoke this skill whenever the user wants to create a new Finch mini tool,
   extend Finch with custom Agent tools or Composer toolbar buttons, understand
   the finch.d.ts API, debug an existing mini tool, install/deploy/update/remove
-  a mini tool with the official `npx @finch.app/minitools` CLI, or publish a
-  mini tool to npm/the community catalog. Trigger on phrases like "write a finch
-  mini tool", "create a finch mini tool", "add a tool to finch", "debug my
-  mini tool", "mini tool not loading", "how do I make a composer button",
-  "install this finch mini tool", "deploy/publish a finch mini tool", etc.
+  a mini tool with the official `npx @finch.app/minitools` CLI, publish a
+  mini tool to npm/the community catalog, package a mini tool for distribution,
+  list a mini tool on the official community, or submit a mini tool to
+  finch-releases. Trigger on phrases like "write a finch mini tool", "create a
+  finch mini tool", "add a tool to finch", "debug my mini tool", "mini tool not
+  loading", "how do I make a composer button", "install this finch mini tool",
+  "deploy/publish a finch mini tool", "package my mini tool", "publish to npm",
+  "how to list on community", "submit to finch community", etc.
 ---
 
 # Finch Mini Tool Creator

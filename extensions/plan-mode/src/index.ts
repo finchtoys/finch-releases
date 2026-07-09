@@ -34,7 +34,12 @@ const knownSessions = new Set<string>();
 
 // ── Activation ────────────────────────────────────────────────────────────────
 export function activate(ctx: finch.ExtensionContext): void {
-  const t = (key: string) => ctx.i18n.t(key);
+  // 拉取助手名称，缓存在内存里，fallback 到 'Finch'
+  let assistantName = 'Finch';
+  void ctx.app.getInfo().then((info) => { assistantName = info.assistantName; }).catch(() => undefined);
+
+  const t = (key: string, extra?: Record<string, string>) =>
+    ctx.i18n.t(key, { assistantName, ...extra });
 
   const action = ctx.composerActions.register('plan-mode', {
 

@@ -1,4 +1,4 @@
-# Finch Mini Tool Demo
+## Finch Mini Tool Demo | 小工具演示
 
 A comprehensive demo extension that showcases all Finch mini tool capabilities — forms, toasts, custom icons, composer actions, and i18n.
 
@@ -83,7 +83,7 @@ npm run build
 本地安装或更新：
 
 ```bash
-npx @finch.app/extensions add .
+npx @finch.app/minitools add @finch.app/mini-tool-demo
 # 或更新已有安装
-npx @finch.app/extensions update mini-tool-demo
+npx @finch.app/minitools update @finch.app/mini-tool-demo
 ```

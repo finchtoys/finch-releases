@@ -13,6 +13,7 @@ This is the detailed reference area for Finch mini tools. The main guide should 
 - [`icons.md`](./icons.md) — built-in icons, runtime packs, `IconRef`, SVG rules
 - [`capabilities.md`](./capabilities.md) — `ctx.capabilities` provide/get, versioning, collaboration
 - [`mcp.md`](./mcp.md) — MCP contributions, bridge behavior, tool naming, and debugging notes
+- [`publish.md`](./publish.md) — packaging for npm, `.npmignore` / `files` best practices, versioning, and community listing via finch-releases
 
 ## How to use this section
 
