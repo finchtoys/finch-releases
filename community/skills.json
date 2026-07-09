@@ -13,10 +13,10 @@
     "featured": true
   },
   {
-    "id": "finch-extension-creator",
-    "name": "Finch Extension Creator",
+    "id": "finch-mini-tool-creator",
+    "name": "Finch Mini Tool Creator",
     "author": "Finch Team",
-    "description": "Guide for developing, debugging, and testing Finch extensions. Use when creating a new extension, adding custom agent tools or composer buttons, or debugging an existing extension.",
+    "description": "Guide for developing, debugging, and testing Finch mini tools. Use when creating a new tool, adding custom agent tools or composer action buttons, or debugging an existing tool.",
     "repo": "finchtoys/finch-releases",
     "installScope": "global",
     "categories": [

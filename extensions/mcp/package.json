@@ -1,6 +1,6 @@
 {
-  "name": "@finch.app/mcp-bridge",
-  "version": "1.1.11",
+  "name": "@finch.app/mcp-client",
+  "version": "1.1.19",
   "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
@@ -9,14 +9,21 @@
   "homepage": "https://finchwork.app",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/puterjam/finch.git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
     "directory": "extensions/mcp"
   },
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "README.zh-CN.md",
+    "i18n/**/*"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
   },
   "finch": {
     "manifestVersion": 1,

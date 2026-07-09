@@ -1,0 +1,19 @@
+{
+  "name": "@finch.app/minitool-api",
+  "version": "0.1.16",
+  "description": "Finch Mini Tool API — type contract for Finch mini tool authors. Zero runtime dependencies.",
+  "type": "module",
+  "exports": {
+    ".": "./finch.d.ts"
+  },
+  "keywords": [
+    "finch",
+    "extension",
+    "api"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git"
+  },
+  "license": "MIT"
+}

@@ -13,6 +13,23 @@ Use Tavily MCP tools for web research that needs current information, citations,
 2. If status says Tavily is not configured or tools are missing because of the API key, call `setup_tavily_search`. It opens a secure form; never ask the user to paste `TAVILY_API_KEY` in chat.
 3. To use Tavily MCP tools in a Finch session, first call Finch `ToolSearch` with `source: "mcp"` and a natural-language query such as `Tavily search tools`. MCP tools are injected on demand and are named like `mcp__tavily__<tool>`.
 
+### How Tavily's MCP server is managed (do NOT configure it manually)
+
+`setup_tavily_search` is the ONLY thing you need. Once the user submits the key,
+this extension registers the `tavily` MCP server with the MCP Client **for you** —
+you do NOT create a `servers.json` entry and you do NOT touch it via the `MCP`
+tool. Specifically:
+
+- **Never** call `MCP` with `action=add/edit/remove` for `tavily`. It is registered
+  at runtime and bound to this extension's lifecycle; manual edits will be
+  overwritten or orphaned.
+- If `MCP` `action=list` shows `tavily` as `pending` with 0 tools, that just means
+  the API key hasn't been stored yet — call `setup_tavily_search`, **not** `MCP edit`.
+- Uninstalling or disabling Tavily Search automatically removes the `tavily` MCP
+  server and its stored key. No cleanup is needed.
+- After `setup_tavily_search` succeeds, the server connects automatically; just run
+  `ToolSearch` (`source: "mcp"`) and then call the `mcp__tavily__<tool>` functions.
+
 ## Tool selection
 
 Tavily MCP exposes 5 tools. Choose by task shape:

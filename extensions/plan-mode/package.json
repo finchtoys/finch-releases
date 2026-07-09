@@ -1,0 +1,57 @@
+{
+  "name": "@finch.app/plan",
+  "version": "0.1.0",
+  "description": "Toggle planning mode from the Finch Composer toolbar.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/plan-mode"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "plan-mode",
+    "name": "plan",
+    "description": "Toggle planning mode from the Finch Composer toolbar.",
+    "systemPrompt": "When the user wants to plan before acting, or break down a task before execution, suggest using Plan Mode.",
+    "main": "dist/index.js",
+    "activationEvents": [
+      "onStartup"
+    ],
+    "extensionType": "official",
+    "categories": [
+      "productivity"
+    ],
+    "privacyPolicyUrl": "https://finchwork.app/privacy",
+    "termsOfServiceUrl": "https://finchwork.app/terms",
+    "contributes": {
+      "composerActions": [
+        {
+          "id": "plan-mode",
+          "icon": "clipboard",
+          "tooltip": "Plan Mode"
+        }
+      ]
+    },
+    "permissions": {
+      "filesystem": "none",
+      "network": false,
+      "shell": false
+    }
+  },
+  "devDependencies": {
+    "@finch.app/minitool-api": "^0.1.13",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

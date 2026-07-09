@@ -1,6 +1,8 @@
 # Git Branch
 
-A handy Git branch widget right inside your chat dialog.
+Git Branch is a mini tool for [Finch](https://finchwork.app/) — a desktop AI agent you can download at [finchwork.app](https://finchwork.app/). 
+
+It puts a handy Git branch widget right inside your chat dialog.
 
 ## What it does
 
@@ -35,5 +37,5 @@ npm run build
 Install or update locally:
 
 ```bash
-npx @finch.app/extensions update git-branch
+npx @finch.app/minitools update git-branch
 ```

@@ -1,12 +1,17 @@
 {
   "name": "finch-tavily-search",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "description": "Tavily Search MCP extension for Finch.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
   },
   "homepage": "https://www.tavily.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/tavily-search"
+  },
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -37,27 +42,28 @@
       }
     ],
     "main": "dist/index.js",
-    "activationEvents": ["onStartup"],
+    "activationEvents": [
+      "onStartup"
+    ],
     "extensionType": "official",
-    "categories": ["research", "developer"],
+    "categories": [
+      "research",
+      "developer"
+    ],
     "privacyPolicyUrl": "https://www.tavily.com/privacy",
     "termsOfServiceUrl": "https://www.tavily.com/terms",
     "requires": {
-      "capabilities": ["mcp.client"]
+      "capabilities": [
+        "mcp.client"
+      ]
     },
     "contributes": {
       "tools": true,
       "skills": true,
       "mcpServers": [
         {
-          "name": "tavily",
-          "command": "npx",
-          "args": ["-y", "tavily-mcp@latest"],
-          "description": "Tavily Search MCP server. Run setup_tavily_search to store TAVILY_API_KEY before using it.",
-          "env": {
-            "TAVILY_API_KEY": "",
-            "DEFAULT_PARAMETERS": "{\"include_images\": true, \"max_results\": 15, \"search_depth\": \"advanced\"}"
-          },
+          "name": "Tavily",
+          "description": "Tavily Search MCP server. Call setup_tavily_search to configure. The actual transport is registered dynamically by the extension after the API key is collected.",
           "toolMeta": {
             "titles": {
               "tavily_search": "Tavily Search",
@@ -72,28 +78,51 @@
               "tavily_search": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "query", "maxLength": 80 }],
+                  "fields": [
+                    {
+                      "path": "query",
+                      "maxLength": 80
+                    }
+                  ],
                   "template": "{query}"
                 }
               },
               "tavily_extract": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "urls", "format": "truncate", "maxLength": 80 }],
+                  "fields": [
+                    {
+                      "path": "urls",
+                      "format": "truncate",
+                      "maxLength": 80
+                    }
+                  ],
                   "template": "{urls}"
                 }
               },
               "tavily_crawl": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "url", "format": "truncate", "maxLength": 80 }],
+                  "fields": [
+                    {
+                      "path": "url",
+                      "format": "truncate",
+                      "maxLength": 80
+                    }
+                  ],
                   "template": "{url}"
                 }
               },
               "tavily_map": {
                 "inline": {
                   "mode": "join",
-                  "fields": [{ "path": "url", "format": "truncate", "maxLength": 60 }],
+                  "fields": [
+                    {
+                      "path": "url",
+                      "format": "truncate",
+                      "maxLength": 60
+                    }
+                  ],
                   "template": "{url}"
                 }
               },
@@ -101,9 +130,18 @@
                 "inline": {
                   "mode": "join",
                   "fields": [
-                    { "path": "input", "maxLength": 80 },
-                    { "path": "query", "maxLength": 80 },
-                    { "path": "topic", "maxLength": 40 }
+                    {
+                      "path": "input",
+                      "maxLength": 80
+                    },
+                    {
+                      "path": "query",
+                      "maxLength": 80
+                    },
+                    {
+                      "path": "topic",
+                      "maxLength": 40
+                    }
                   ],
                   "template": "{input}{query}{topic}"
                 }
@@ -120,6 +158,7 @@
     }
   },
   "devDependencies": {
+    "@finch.app/minitool-api": "^0.1.6",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },

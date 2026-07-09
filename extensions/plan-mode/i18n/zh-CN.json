@@ -1,0 +1,27 @@
+{
+  "name": "规划模式",
+  "description": "在 Finch Composer 工具栏切换规划模式。",
+  "systemPrompt": "当用户需要先规划、拆解方案、暂不执行时，可使用规划模式扩展。",
+
+  "composerActions": {
+    "plan-mode": {
+      "tooltip": "规划模式"
+    }
+  },
+
+  "badge.active": "创建规划",
+
+  "toast.enter.title": "先规划再行动",
+  "toast.enter.desc": "Finch 将只输出方案，对话回复后确认是否执行。",
+  "toast.exit.title": "不做规划",
+
+  "toast.home.enter.desc": "首页下一条消息将以规划模式发送，发送后自动关闭。",
+  "toast.home.exit.title": "不做规划",
+  "toast.home.exit.desc": "已取消规划模式。",
+
+  "confirm.text": "继续规划，还是开始执行？",
+  "confirm.label": "执行",
+  "confirm.cancel": "继续规划",
+
+  "execute.prompt": "方案已确认，请按上面的计划开始执行。"
+}

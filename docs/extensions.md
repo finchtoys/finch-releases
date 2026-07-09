@@ -700,25 +700,25 @@ ctx.tools.register({
 
 ```bash
 # 从 npm 安装到当前项目
-npx @finch.app/extensions add @scope/finch-extension-example
+npx @finch.app/minitools add @scope/finch-extension-example
 
 # 从本地目录安装
-npx @finch.app/extensions add ./my-extension
+npx @finch.app/minitools add ./my-extension
 
 # 从 zip 文件安装（本地或远程 URL）
-npx @finch.app/extensions add ./my-extension.zip
-npx @finch.app/extensions add https://github.com/user/repo/archive/refs/heads/main.zip
+npx @finch.app/minitools add ./my-extension.zip
+npx @finch.app/minitools add https://github.com/user/repo/archive/refs/heads/main.zip
 
 # 安装到全局 ~/.finch/extensions/
-npx @finch.app/extensions add @finch/extension-mcp --global
+npx @finch.app/minitools add @finch/extension-mcp --global
 
 # 更新到最新发布版本（npm 来源按 lock 记录的包名重装；zip URL 来源重新下载；本地来源从原路径重拷）
-npx @finch.app/extensions update my-extension
+npx @finch.app/minitools update my-extension
 
 # 列出、删除、校验
-npx @finch.app/extensions list
-npx @finch.app/extensions remove my-extension
-npx @finch.app/extensions doctor ./my-extension
+npx @finch.app/minitools list
+npx @finch.app/minitools remove my-extension
+npx @finch.app/minitools doctor ./my-extension
 ```
 
 CLI 只负责安装。安装后扩展默认不启用，请在 Finch → Toolcase → Extensions 中审查权限并启用。启用前 Finch 会展示扩展声明的权限、secrets 和 capabilities，用户确认后才写入授权记录。

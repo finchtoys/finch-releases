@@ -1,51 +1,209 @@
-# MCP Client
+## MCP Client
 
-MCP Client 是 Finch 官方内置扩展，用来把 Model Context Protocol（MCP）服务连接到 Finch。
+MCP Client 是 [Finch](https://finchwork.app/) 为小工具提供的 MCP 桥接扩展，用来把 Model Context Protocol（MCP）server 暴露给 Agent 使用。
 
-它负责三件事：
+对小工具作者来说，推荐做法是：
 
-1. 连接 MCP server，缓存每个服务的工具列表，并通过 Finch 标准 `ToolSearch` 按需激活 MCP 工具。
-2. 提供 `mcp.client` capability，其他 Finch 插件可以通过它调用 MCP 服务，而不需要自己实现 MCP client。
-3. 通过 `ctx.extensions.listContributions('mcpServers')` 读取其他扩展声明的 MCP 服务，并按桥接扩展策略自动连接。
+1. 在 manifest 中声明依赖 `mcp.client` capability。
+2. 在 `contributes.mcpServers` 中只声明**展示元数据**：server name、工具标题、ToolCallCard 展示规则。
+3. 用自己的 setup 工具通过安全表单收集密钥。
+4. 把密钥保存在小工具自己的 `ctx.storage` 中。
+5. 在运行时通过 `mcp.client#registerServer()` 注册真实 MCP transport。
 
-## 动态工具加载
+Tavily Search 采用的就是这条路径：manifest 只描述 Tavily 工具在 Finch 里如何展示；真正的 MCP server 则在 API Key 可用后，由 `activate()` 动态注册。
 
-为了避免把所有 MCP 工具一次性平铺进模型上下文（MCP server 多、工具多时会很占空间），MCP Client 接入 Finch 标准 `ToolSearch`：初始上下文只包含 `ToolSearch` 与少量管理工具；模型需要 MCP 能力时，通过 `ToolSearch({ source: "mcp", query })` 按需发现工具。
+## 最佳实践：manifest 放 metadata，运行时注册 transport
 
-| 入口 | 作用 |
-|---|---|
-| `ToolSearch` | Finch 标准动态工具搜索；`source: "mcp"` 时由 MCP Client 连接服务、发现工具并注入当前 run |
-| `MCP action=list` | 列出已配置的 MCP 服务及各自连接状态/工具数量 |
-| `mcp__<server>__<tool>` | ToolSearch 命中后注入的真实 MCP 工具，可直接调用 |
+### 1. 声明依赖和 MCP 展示元数据
 
-模型的典型流程是：先 `MCP({ action: "list" })` 了解有哪些服务（可选）→ 调用 `ToolSearch({ source: "mcp", query: "..." })` → 再直接调用被注入的 `mcp__<server>__<tool>`。
+在 `package.json` 里声明 `requires.capabilities: ["mcp.client"]`，并添加一个 metadata-only 的 `contributes.mcpServers` 条目。
 
-## 管理 MCP 服务
+当 server 依赖用户配置时，不要在这里写 `command`、`args`、`url`、`headers` 或任何密钥。
 
-MCP Client 还向 AI 提供一个 dispatcher 管理工具，用户可以直接用自然语言让 AI 增改删 MCP 服务：
+```json
+{
+  "finch": {
+    "requires": {
+      "capabilities": ["mcp.client"]
+    },
+    "contributes": {
+      "mcpServers": [
+        {
+          "name": "my-service",
+          "description": "My Service MCP server. Call setup_my_service to configure it.",
+          "toolMeta": {
+            "titles": {
+              "search": "My Service Search",
+              "extract": "My Service Extract"
+            }
+          },
+          "toolDisplay": {
+            "tools": {
+              "search": {
+                "inline": {
+                  "mode": "join",
+                  "fields": [{ "path": "query", "maxLength": 80 }],
+                  "template": "{query}"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
 
-| 工具 | 作用 |
-|---|---|
-| `MCP action=add` | 新增一个 MCP 服务，用户在安全表单里填写命令/URL 与密钥 |
-| `MCP action=edit` | 修改已有 MCP 服务的命令、参数、URL 或环境变量 |
-| `MCP action=remove` | 删除一个 MCP 服务，使其不再连接 |
+`toolMeta.titles` 控制 Finch 工具卡片上的短标题；`toolDisplay.tools` 控制工具调用旁边的 inline 摘要。
 
-这些工具只能管理本地 `servers.json` 中的服务；其他插件通过 manifest 注入的 MCP 服务不能在这里被修改或删除。密钥值始终由用户在表单中填写，不会回传给模型。
+### 2. 运行时注册真实 MCP server
 
-## 支持的连接方式
+在小工具代码中，等配置可用后通过 `mcp.client` capability 注册 server。
 
-MCP Client 支持两类 transport。
+```ts
+import type * as finch from 'finch';
 
-### 1. stdio / stdout 子进程
+const SERVER_NAME = 'my-service';
+const STORAGE_KEY = 'my-service.setup';
 
-适合本地命令行 MCP server，例如 filesystem、git、database 等服务。
+interface StoredSetup {
+  apiKey: string;
+}
+
+type McpServerConfig =
+  | { name: string; command: string; args?: string[]; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string }
+  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string };
+
+interface McpClientCapability {
+  registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
+  unregisterServer(name: string): Promise<{ ok: boolean }>;
+}
+
+async function readSetup(ctx: finch.ExtensionContext): Promise<StoredSetup | undefined> {
+  return ctx.storage.get<StoredSetup>(STORAGE_KEY);
+}
+
+async function registerRuntimeServer(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<void> {
+  if (!ctx.capabilities.has('mcp.client')) {
+    ctx.logger.warn('mcp.client capability is not available');
+    return;
+  }
+
+  const mcp = ctx.capabilities.get<McpClientCapability>('mcp.client');
+  const result = await mcp.registerServer({
+    name: SERVER_NAME,
+    url: `https://example.com/mcp?apiKey=${encodeURIComponent(setup.apiKey)}`,
+    ownerExtensionId: ctx.extension.id,
+    ownerExtensionName: ctx.extension.displayName,
+  });
+
+  if (!result.ok) {
+    ctx.logger.warn('failed to register MCP server', result.error);
+  }
+}
+
+export function activate(ctx: finch.ExtensionContext): void {
+  void readSetup(ctx).then((setup) => {
+    if (setup) return registerRuntimeServer(ctx, setup);
+  });
+}
+```
+
+runtime 注册是内存态，并绑定到小工具生命周期。小工具禁用或卸载后，这个 runtime server 会一起消失，不会在 MCP Client 的用户配置里留下孤儿条目。
+
+### 3. 用 setup 工具收集密钥
+
+用 setup 工具通过 Finch 安全表单收集密钥，写入自己扩展的 storage，然后调用 `registerServer()`。
+
+```ts
+ctx.subscriptions.push(ctx.tools.register({
+  name: 'setup_my_service',
+  title: 'Set up My Service',
+  description: 'Collect the API key and register the My Service MCP server.',
+  inputSchema: { type: 'object', properties: {} },
+  risk: 'medium',
+  async execute(_input, exec) {
+    const form = await exec.ui.requestForm({
+      title: 'Set up My Service',
+      fields: [
+        { key: 'apiKey', label: 'API Key', type: 'password', secret: true, required: true },
+      ],
+    });
+
+    if (!form.submitted) {
+      return { content: [{ type: 'text', text: 'Setup cancelled.' }] };
+    }
+
+    const apiKey = String(form.values.apiKey ?? '').trim();
+    if (!apiKey) {
+      return { content: [{ type: 'text', text: 'No API key was provided.' }], isError: true };
+    }
+
+    const setup = { apiKey };
+    await ctx.storage.set(STORAGE_KEY, setup);
+    await registerRuntimeServer(ctx, setup);
+
+    return { content: [{ type: 'text', text: 'My Service MCP server is configured.' }] };
+  },
+}));
+```
+
+密钥不要写进 `package.json`，不要提交进小工具包，也不要在工具结果里回传给模型。
+
+## Server name 匹配规则
+
+MCP Client 会用归一化后的 server name，把 runtime server config 和静态 contribution 合并起来。仅大小写不同可以兼容，但仍建议两边使用同一个稳定名称：
+
+```text
+contributes.mcpServers[].name = "My Service"
+registerServer({ name: "my-service", ... })
+→ 内部会按归一化后的名称匹配
+```
+
+模型可见的 MCP 工具名不会加小工具 id 前缀，格式是：
+
+```text
+mcp__<server>__<tool>
+```
+
+Finch 只在内部保留类似 `my-plugin.my-service` 的 owner-qualified key，用于 UI 归属和所有权展示，不作为模型看到的工具名。
+
+## MCP Client 提供什么
+
+`mcp.client` capability 主要给小工具使用，核心方法是：
+
+```ts
+interface McpClientCapability {
+  listServers(): Promise<string[]>;
+  getServerStatuses?(): Promise<Array<{ name: string; status: string; toolCount: number; ownerExtensionId?: string; qualifiedName?: string }>>;
+  listTools(server: string): Promise<Array<{ name: string; title?: string; description?: string; inputSchema?: Record<string, unknown> }>>;
+  registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
+  unregisterServer(name: string): Promise<{ ok: boolean }>;
+}
+```
+
+普通小工具应优先使用 `registerServer()`，不要直接写 MCP Client 的配置文件。
+
+## 手动 MCP 配置：支持，但不推荐给小工具使用
+
+MCP Client 仍然支持用户手写 `servers.json`，用于本地高级配置和排障。这适合高级用户手动配置，但小工具不应该写这个文件：否则卸载小工具后会留下孤儿 server 配置。
+
+路径：
+
+```text
+~/.finch/extension-data/mcp/servers.json
+```
+
+开发模式下根目录为 `~/.finch-dev/`。
+
+### stdio server
 
 ```json
 {
   "servers": [
     {
       "name": "filesystem",
-      "transport": "stdio",
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/me/Documents"],
       "env": {
@@ -56,18 +214,13 @@ MCP Client 支持两类 transport。
 }
 ```
 
-为了兼容旧配置，省略 `transport` 且包含 `command` 时，也会按 `stdio` 处理。
-
-### 2. HTTP Stream
-
-适合远程 MCP 服务或由网关暴露的 MCP endpoint。Finch 会向 `url` 发送 JSON-RPC POST 请求，并支持 `application/json` 或 `text/event-stream` 响应。
+### HTTP Stream server
 
 ```json
 {
   "servers": [
     {
       "name": "remote-search",
-      "transport": "httpStream",
       "url": "https://example.com/mcp",
       "headers": {
         "Authorization": "Bearer ${MCP_TOKEN}"
@@ -80,88 +233,10 @@ MCP Client 支持两类 transport。
 }
 ```
 
-`env` 不会作为 HTTP body 发送；它只用于替换 `headers` 里的 `${KEY}` 占位。
+HTTP Stream 中的 `env` 只用于替换 `headers` 里的 `${KEY}` 占位，不会作为请求 body 发送。
 
-## 配置文件
+## Agent 使用方式
 
-当前版本暂时不提供 MCP 配置 UI。MCP Client 会读取这些配置来源：
+Agent 不应该在工具尚未激活前直接调用 `mcp__<server>__<tool>`。它应先调用 Finch 的 `ToolSearch`，并设置 `source: "mcp"`；MCP Client 会连接匹配的 server、发现工具，并把命中的 MCP 工具注入当前 run。
 
-| 来源 | 用途 |
-|---|---|
-| `servers.json` | 用户手写 / 本地配置的 MCP server |
-| `ctx.extensions.listContributions('mcpServers')` | 其他已启用扩展通过 manifest 贡献的 MCP server |
-
-如果本地配置和插件贡献里有同名 server，`servers.json` 优先级更高，可覆盖插件贡献配置。
-
-这两个文件的绝对路径是：
-
-```
-~/.finch/extension-data/mcp/servers.json
-```
-
-开发模式下根目录为 `~/.finch-dev/`。开发者可直接手写 `servers.json`（格式见上文），改动后重启 Finch 生效。插件贡献的 MCP server 来自 enabled plugin 的 manifest contribution 快照。
-
-## 给其他插件使用
-
-MCP Client 提供 `mcp.client` capability。其他插件可以在 manifest 中声明依赖：
-
-```json
-{
-  "finch": {
-    "requires": {
-      "capabilities": ["mcp.client"]
-    }
-  }
-}
-```
-
-然后在插件中调用：
-
-```ts
-const mcp = await ctx.capabilities.get('mcp.client');
-const servers = await mcp.listServers();
-const tools = await mcp.listTools('filesystem');
-const result = await mcp.callTool('filesystem', 'read_file', { path: '/tmp/a.txt' });
-```
-
-## 贡献 MCP 服务
-
-其他插件可以通过 `contributes.mcpServers` 声明自己要注入的 MCP server：
-
-```json
-{
-  "finch": {
-    "requires": {
-      "capabilities": ["mcp.client"]
-    },
-    "contributes": {
-      "mcpServers": [
-        {
-          "name": "my-server",
-          "transport": "stdio",
-          "command": "node",
-          "args": ["dist/server.js"]
-        }
-      ]
-    }
-  }
-}
-```
-
-Finch 会把名字自动加上插件 id 前缀，例如 `my-plugin.my-server`，避免不同插件冲突。
-
-## 环境变量与密钥
-
-- `stdio`：`env` 会合并到 MCP server 子进程环境变量中。
-- `httpStream`：`env` 用于替换请求 header 中的 `${KEY}` 占位。
-- 不要把真实密钥写进插件 manifest。需要密钥时，优先通过本地 `servers.json` 或 Finch 后续恢复的密钥配置 UI 注入。
-
-## 多语言 README
-
-插件 README 支持多语言文件名：
-
-- `README.zh-CN.md`
-- `README.en-US.md`
-- `README.md`（默认回退）
-
-Finch 会按当前界面语言选择最合适的 README。
+这是 Agent 运行时优化细节。小工具作者通常只需要关注上面的 contribution + `registerServer()` 模式。

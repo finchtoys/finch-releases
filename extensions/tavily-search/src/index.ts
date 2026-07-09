@@ -1,115 +1,97 @@
 import type * as finch from 'finch';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 
 const SERVER_NAME = 'tavily';
 const REMOTE_URL = 'https://mcp.tavily.com/mcp/';
 const DEFAULT_PARAMETERS = '{"include_images": true, "max_results": 15, "search_depth": "advanced"}';
+/** ctx.storage key holding the user's setup inputs (apiKey + mode + params).
+ *  This is the extension's OWN storage, removed automatically on uninstall — so
+ *  Tavily's config never lingers inside the MCP Client after removal. */
+const STORAGE_KEY = 'tavily.setup';
 
 type TavilyMode = 'local' | 'remote' | 'http';
 
-type McpServerUi = {
-  toolMeta?: {
-    titles?: Record<string, string>;
-  };
-  toolDisplay?: {
-    tools?: Record<string, finch.ToolCallDisplay>;
-  };
-};
-
-type McpServerConfig = McpServerUi & (
-  | { name: string; command: string; args?: string[]; env?: Record<string, string>; description?: string }
-  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; description?: string }
-);
-
-const TAVILY_MCP_UI: McpServerUi = {
-  toolMeta: {
-    titles: {
-      tavily_search: 'Tavily Search',
-      tavily_extract: 'Tavily Extract',
-      tavily_crawl: 'Tavily Crawl',
-      tavily_map: 'Tavily Map',
-      tavily_research: 'Tavily Research',
-    },
-  },
-  toolDisplay: {
-    tools: {
-      tavily_search: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'query', maxLength: 80 }],
-          template: '{query}',
-        },
-      },
-      tavily_extract: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'urls', format: 'truncate', maxLength: 80 }],
-          template: '{urls}',
-        },
-      },
-      tavily_crawl: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'url', format: 'truncate', maxLength: 80 }],
-          template: '{url}',
-        },
-      },
-      tavily_map: {
-        inline: {
-          mode: 'join',
-          fields: [{ path: 'url', format: 'truncate', maxLength: 60 }],
-          template: '{url}',
-        },
-      },
-      tavily_research: {
-        inline: {
-          mode: 'join',
-          fields: [
-            { path: 'input', maxLength: 80 },
-            { path: 'query', maxLength: 80 },
-            { path: 'topic', maxLength: 40 },
-          ],
-          template: '{input}{query}{topic}',
-        },
-      },
-    },
-  },
-};
-
-interface ServersFile {
-  servers?: McpServerConfig[];
+/** Persisted setup inputs. The resolved MCP server config is rebuilt from these
+ *  on every activation, so buildServer() logic can evolve without migrations. */
+interface StoredSetup {
+  apiKey: string;
+  mode: TavilyMode;
+  defaultParameters: string;
 }
+
+// Transport is built dynamically here (command/url + env with the resolved API key)
+// and registered via mcp.client#registerServer() at activate time.
+// Presentation metadata (tool titles, ToolCallCard inline summaries) is declared
+// statically in package.json under `contributes.mcpServers[].toolMeta / toolDisplay`.
+// The MCP bridge merges both: transport from the runtime registration, presentation
+// from the contribution, and writes the result to the global tool catalog
+// (~/.finch/tools.json) when the tools connect.
+// This separation means no secrets ever appear in the static manifest, and the
+// extension never writes to the shared servers.json user config file.
+type McpServerConfig =
+  | { name: string; command: string; args?: string[]; env?: Record<string, string>; description?: string; ownerExtensionId?: string; ownerExtensionName?: string }
+  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; description?: string; ownerExtensionId?: string; ownerExtensionName?: string };
 
 interface McpClientCapability {
   listServers(): Promise<string[]>;
   getServerStatuses?(): Promise<Array<{ name: string; status: string; toolCount: number; ownerExtensionId?: string; qualifiedName?: string }>>;
   listTools(server: string): Promise<Array<{ name: string; title?: string; description?: string; inputSchema?: Record<string, unknown> }>>;
+  /** Register a runtime MCP server bound to this extension's lifecycle. In-memory
+   *  only on the MCP Client side; leaves no orphaned config on uninstall. */
+  registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
+  unregisterServer(name: string): Promise<{ ok: boolean }>;
 }
+
+/** Active context, captured on activate so deactivate() can unregister the
+ *  runtime server (deactivate has no ctx parameter). */
+let activeCtx: finch.ExtensionContext | null = null;
 
 function t(ctx: finch.ExtensionContext, key: string, values?: Record<string, string | number | boolean>): string {
   return ctx.i18n?.t ? ctx.i18n.t(key, values) : key;
 }
 
-function mcpServersFile(ctx: finch.ExtensionContext): string {
-  // MCP Bridge stores its own user config at <extension-data>/mcp/servers.json.
-  // Extension storage directories are siblings, so derive it from this extension's storagePath.
-  return join(dirname(ctx.storagePath), 'mcp', 'servers.json');
+async function readSetup(ctx: finch.ExtensionContext): Promise<StoredSetup | undefined> {
+  const raw = await ctx.storage.get<StoredSetup>(STORAGE_KEY);
+  if (!raw || typeof raw.apiKey !== 'string' || !raw.apiKey) return undefined;
+  let mode = parseMode(raw.mode);
+  // Migrate legacy setups: `remote` is the deprecated mcp-remote proxy shim —
+  // Finch connects to the same endpoint directly over HTTP, so upgrade it to
+  // `http` and persist the change. `local` is left untouched (deliberate choice).
+  if (mode === 'remote') {
+    mode = 'http';
+    await ctx.storage.set(STORAGE_KEY, { ...raw, mode });
+  }
+  return { apiKey: raw.apiKey, mode, defaultParameters: String(raw.defaultParameters ?? DEFAULT_PARAMETERS) };
 }
 
-function readServers(file: string): ServersFile {
-  if (!existsSync(file)) return { servers: [] };
-  const parsed = JSON.parse(readFileSync(file, 'utf-8')) as ServersFile;
-  return { servers: Array.isArray(parsed.servers) ? parsed.servers : [] };
+/** Persist setup inputs, then (re)register the resolved server with MCP Client. */
+async function saveAndRegister(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<{ ok: boolean; error?: string }> {
+  await ctx.storage.set(STORAGE_KEY, setup);
+  return registerRuntimeServer(ctx, setup);
 }
 
-function upsertServer(file: string, server: McpServerConfig): void {
-  mkdirSync(dirname(file), { recursive: true });
-  const data = readServers(file);
-  const next = (data.servers ?? []).filter((item) => item.name !== server.name);
-  next.push(server);
-  next.sort((a, b) => a.name.localeCompare(b.name));
-  writeFileSync(file, JSON.stringify({ servers: next }, null, 2) + '\n', 'utf-8');
+/** Build the resolved server from stored setup and hand it to MCP Client. */
+async function registerRuntimeServer(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<{ ok: boolean; error?: string }> {
+  if (!ctx.capabilities.has('mcp.client')) return { ok: false, error: 'mcp.client capability unavailable' };
+  const mcp = ctx.capabilities.get<McpClientCapability>('mcp.client');
+  const server = buildServer(setup.mode, setup.apiKey, setup.defaultParameters);
+  server.ownerExtensionId = ctx.extension.id;
+  server.ownerExtensionName = ctx.extension.displayName;
+  try {
+    return await mcp.registerServer(server);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Remove Tavily's runtime server from MCP Client (best-effort). */
+async function unregisterRuntimeServer(ctx: finch.ExtensionContext): Promise<void> {
+  if (!ctx.capabilities.has('mcp.client')) return;
+  try {
+    await ctx.capabilities.get<McpClientCapability>('mcp.client').unregisterServer(SERVER_NAME);
+  } catch {
+    // App shutdown or MCP Client already gone — runtime state is in-memory, so
+    // it disappears anyway; nothing to clean up.
+  }
 }
 
 function buildTavilyUrl(apiKey: string): string {
@@ -119,8 +101,11 @@ function buildTavilyUrl(apiKey: string): string {
 }
 
 function parseMode(value: unknown): TavilyMode {
-  if (value === 'local' || value === 'http') return value;
-  return 'remote';
+  if (value === 'local' || value === 'remote') return value;
+  // Default to direct Streamable HTTP: no local child process / npx cold start,
+  // no stdio proxy hop — Finch's MCP Client connects straight to Tavily's hosted
+  // MCP endpoint, which is the lowest-overhead path on Finch.
+  return 'http';
 }
 
 function normalizeDefaultParameters(value: unknown): string {
@@ -130,14 +115,16 @@ function normalizeDefaultParameters(value: unknown): string {
 }
 
 function buildServer(mode: TavilyMode, apiKey: string, defaultParameters: string): McpServerConfig {
-  if (mode === 'http') {
+  if (mode === 'local') {
     return {
       name: SERVER_NAME,
-      url: buildTavilyUrl(apiKey),
-      headers: { DEFAULT_PARAMETERS: '${DEFAULT_PARAMETERS}' },
-      env: { DEFAULT_PARAMETERS: defaultParameters },
-      description: 'Tavily remote MCP server connected directly over Streamable HTTP.',
-      ...TAVILY_MCP_UI,
+      command: 'npx',
+      args: ['-y', 'tavily-mcp@latest'],
+      env: {
+        TAVILY_API_KEY: apiKey,
+        DEFAULT_PARAMETERS: defaultParameters,
+      },
+      description: 'Local Tavily MCP server launched with npx. Recommended when DEFAULT_PARAMETERS should be passed through env.',
     };
   }
 
@@ -148,20 +135,16 @@ function buildServer(mode: TavilyMode, apiKey: string, defaultParameters: string
       args: ['-y', 'mcp-remote', buildTavilyUrl(apiKey)],
       env: { DEFAULT_PARAMETERS: defaultParameters },
       description: 'Tavily remote MCP server connected through mcp-remote.',
-      ...TAVILY_MCP_UI,
     };
   }
 
+  // Default: direct Streamable HTTP — no local child process, lowest overhead.
   return {
     name: SERVER_NAME,
-    command: 'npx',
-    args: ['-y', 'tavily-mcp@latest'],
-    env: {
-      TAVILY_API_KEY: apiKey,
-      DEFAULT_PARAMETERS: defaultParameters,
-    },
-    description: 'Local Tavily MCP server launched with npx. Recommended when DEFAULT_PARAMETERS should be passed through env.',
-    ...TAVILY_MCP_UI,
+    url: buildTavilyUrl(apiKey),
+    headers: { DEFAULT_PARAMETERS: '${DEFAULT_PARAMETERS}' },
+    env: { DEFAULT_PARAMETERS: defaultParameters },
+    description: 'Tavily remote MCP server connected directly over Streamable HTTP.',
   };
 }
 
@@ -211,7 +194,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
         fields: [
           {
             key: 'apiKey',
-            label: 'API 密钥',
+            label: 'API Key',
             type: 'password',
             secret: true,
             required: true,
@@ -236,14 +219,13 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       }
 
       const selectedMode = parseMode(result.values.mode);
+      const setup: StoredSetup = { apiKey, mode: selectedMode, defaultParameters: params };
       const server = buildServer(selectedMode, apiKey, params);
-      const file = mcpServersFile(ctx);
 
-      try {
-        upsertServer(file, server);
-      } catch (err) {
-        ctx.logger.error('failed to save Tavily MCP config', err);
-        return { content: [{ type: 'text', text: `Failed to save Tavily MCP config: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+      const registration = await saveAndRegister(ctx, setup);
+      if (!registration.ok) {
+        ctx.logger.error('failed to register Tavily MCP server', registration.error);
+        return { content: [{ type: 'text', text: `Saved Tavily setup, but MCP Client did not accept the server: ${registration.error ?? 'unknown error'}.` }], isError: true };
       }
 
       await ctx.ui.showToast({
@@ -256,7 +238,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       return {
         content: [{
           type: 'text',
-          text: `Tavily Search has been configured locally as MCP server "${SERVER_NAME}" (${serverSummary(server, selectedMode)}). The API key was not returned to the model. ${validation}`,
+          text: `Tavily Search has been registered with MCP Client as server "${SERVER_NAME}" (${serverSummary(server, selectedMode)}). The API key was not returned to the model and is stored in this extension's own storage, so removing Tavily also removes it. ${validation}`,
         }],
       };
     },
@@ -271,11 +253,10 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
     inputSchema: { type: 'object', properties: {} },
     risk: 'low',
     async execute() {
-      const file = mcpServersFile(ctx);
-      const configured = existsSync(file) && readServers(file).servers?.some((server) => server.name === SERVER_NAME);
+      const configured = Boolean(await readSetup(ctx));
 
       if (!ctx.capabilities.has('mcp.client')) {
-        return { content: [{ type: 'text', text: `MCP Client capability is unavailable. Tavily configured in user config: ${configured ? 'yes' : 'no'}.` }], isError: !configured };
+        return { content: [{ type: 'text', text: `MCP Client capability is unavailable. Tavily configured in extension storage: ${configured ? 'yes' : 'no'}.` }], isError: !configured };
       }
 
       const mcp = ctx.capabilities.get<McpClientCapability>('mcp.client');
@@ -302,10 +283,42 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
   }));
 }
 
-export function activate(ctx: finch.ExtensionContext): void {
-  ctx.logger.info('Tavily Search extension activated');
-  registerSetupTool(ctx);
-  registerStatusTool(ctx);
+/** Wait for the mcp.client capability to come online, then register. Extension
+ *  activation order is not guaranteed (Finch activates alphabetically by display
+ *  name), so if the MCP Client host hasn't provided its capability yet, poll a
+ *  few times before giving up. Finch seeds + pushes capability availability, so
+ *  has() flips to true as soon as MCP Client is up. */
+async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<void> {
+  const MAX_ATTEMPTS = 20;
+  const INTERVAL_MS = 250;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (ctx.capabilities.has('mcp.client')) {
+      const res = await registerRuntimeServer(ctx, setup);
+      if (res.ok) return;
+      ctx.logger.warn('Tavily runtime server registration failed:', res.error);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS));
+  }
+  ctx.logger.warn('Tavily: mcp.client capability never became available; server not registered. Is MCP Client enabled?');
 }
 
-export function deactivate(): void {}
+export function activate(ctx: finch.ExtensionContext): void {
+  ctx.logger.info('Tavily Search extension activated');
+  activeCtx = ctx;
+  registerSetupTool(ctx);
+  registerStatusTool(ctx);
+  // Re-register the runtime MCP server from stored setup. Runtime registrations
+  // are in-memory on the MCP Client side and lost across restarts, so we restore
+  // them on every activation. No-op when Tavily hasn't been set up yet.
+  void readSetup(ctx).then((setup) => {
+    if (!setup) return;
+    return registerWhenReady(ctx, setup);
+  }).catch((err) => ctx.logger.error('Tavily activation registration failed', err));
+}
+
+export function deactivate(): void {
+  const ctx = activeCtx;
+  activeCtx = null;
+  if (ctx) void unregisterRuntimeServer(ctx);
+}

@@ -3,11 +3,11 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "我想在社区推荐里加一个新的扩展。这个扩展叫 'GitHub Copilot Chat'，id 是 github-copilot-chat，作者是 'Finch Team'，描述是 'Integrate GitHub Copilot Chat into Finch for AI-powered code assistance.'，中文名是 'GitHub Copilot Chat 扩展'，中文描述是 '将 GitHub Copilot Chat 集成到 Finch 中，提供 AI 辅助编码能力。'，仓库是 'finchtoys/finch-releases'，npm 包名是 '@finch.app/github-copilot-chat'，类型是官方扩展，分类是 developer 和 tools。帮我加到 community/extensions.json 和对应的中文文件里。",
-      "expected_output": "一个新扩展条目被成功添加到 community/extensions.json 和 community/extensions.zh-CN.json，保持字母序，并在对话中展示变更摘要。",
+      "prompt": "我想在社区推荐里加一个新的扩展。这个扩展叫 'GitHub Copilot Chat'，id 是 github-copilot-chat，作者是 'Finch Team'，描述是 'Integrate GitHub Copilot Chat into Finch for AI-powered code assistance.'，中文名是 'GitHub Copilot Chat 扩展'，中文描述是 '将 GitHub Copilot Chat 集成到 Finch 中，提供 AI 辅助编码能力。'，仓库是 'finchtoys/finch-releases'，npm 包名是 '@finch.app/github-copilot-chat'，类型是官方扩展，分类是 developer 和 tools。帮我加到 community/mini-tools.json 和对应的中文文件里。",
+      "expected_output": "一个新小工具条目被成功添加到 community/mini-tools.json 和 community/mini-tools.zh-CN.json，保持字母序，并在对话中展示变更摘要。",
       "files": [
-        "community/extensions.json",
-        "community/extensions.zh-CN.json"
+        "community/mini-tools.json",
+        "community/mini-tools.zh-CN.json"
       ]
     },
     {

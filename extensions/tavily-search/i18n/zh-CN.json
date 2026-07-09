@@ -1,5 +1,5 @@
 {
-  "name": "Tavily Search",
+  "name": "Tavily 搜索",
   "description": "通过 Tavily Search，让 Finch 使用网页搜索、内容提取、站点抓取和站点地图工具。",
   "systemPrompt": "当用户需要最新网页研究、深度搜索、网页提取、站点抓取或带来源答案时，优先使用内置 tavily-search skill 和 Tavily MCP 工具。如果 Tavily 尚未配置，先调用 setup_tavily_search 安全收集 API Key。",
   "toolMeta": { "name": "Tavily Search" },

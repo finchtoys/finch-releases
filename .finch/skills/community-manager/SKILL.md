@@ -17,16 +17,16 @@ description: >
 
 | 文件 | 内容 | 用途 |
 |---|---|---|
-| `community/extensions.json` | 扩展推荐索引（英文） | Finch App 扩展市场数据源 |
+| `community/mini-tools.json` | 小工具推荐索引（英文） | Finch App 小工具市场数据源 |
 | `community/skills.json` | 技能推荐索引（英文） | Finch 技能市场数据源 |
-| `community/extensions.zh-CN.json` | 扩展中文覆盖 | 中文界面降级回退到英文 |
+| `community/mini-tools.zh-CN.json` | 小工具中文覆盖 | 中文界面降级回退到英文 |
 | `community/skills.zh-CN.json` | 技能中文覆盖 | 中文界面降级回退到英文 |
 
 这些文件通过 Cloudflare Worker（`community/worker.js`）发布到 `community.finchwork.app`，修改后约 1 小时生效。
 
 ## 文件格式规范
 
-### extensions.json 条目 schema
+### mini-tools.json 条目 schema
 
 ```json
 {
@@ -36,7 +36,6 @@ description: >
   "description": "一句话描述",               // 英文描述
   "repo": "finchtoys/finch-releases",       // GitHub owner/repo
   "npm": "@finch.app/mcp-bridge",           // (可选) npm 包名，支持一键安装
-  "version": "1.1.8",                        // (可选) npm 最新版本，由 sync_npm_versions.py 自动更新
   "extensionType": "official",              // (可选) "official" | "community"，默认 "community"
   "installScope": "global",                 // (可选) "global" | "local"
   "categories": ["developer"],               // 分类标签
@@ -101,7 +100,6 @@ cd ../../..  # finch-releases 仓库根目录
 | **弃用** | 「把 xx 标记为不再推荐」「下架 xx」 | `manage_registry.py deprecate` |
 | **恢复** | 「取消弃用 xx」 | `manage_registry.py undeprecate` |
 | **校验** | 「检查一下配置文件有没有问题」 | `validate.py` |
-| **版本同步** | 「更新一下 npm 版本」「检查一下扩展版本」 | `sync_npm_versions.py` |
 
 > **为什么用脚本而不是直接 Edit JSON？** JSON 数组的 Edit 操作容易破坏格式（尾逗号、缩进不对、字母序错乱）。用 Python 脚本保证写入格式一致，自动排序。查看和展示变更摘要时用 Read 工具即可。
 
@@ -112,14 +110,14 @@ cd ../../..  # finch-releases 仓库根目录
 ### 操作 1：查看（使用 Read 工具）
 
 ```bash
-# 列出所有扩展
-Read community/extensions.json
+# 列出所有小工具
+Read community/mini-tools.json
 
 # 列出所有技能
 Read community/skills.json
 
 # 查看中文覆盖
-Read community/extensions.zh-CN.json
+Read community/mini-tools.zh-CN.json
 Read community/skills.zh-CN.json
 ```
 
@@ -147,7 +145,7 @@ Read community/skills.zh-CN.json
 ```bash
 cd ../../..
 
-python3 .finch/skills/community-manager/scripts/manage_registry.py add extension '{
+python3 .finch/skills/community-manager/scripts/manage_registry.py add mini-tool '{
   "id": "my-ext",
   "name": "My Extension",
   "author": "Me",
@@ -177,14 +175,14 @@ python3 .finch/skills/community-manager/scripts/manage_registry.py add skill '{
 ### 操作 3：更新（使用脚本）
 
 ```bash
-# 更新扩展的 description 和 categories
-python3 .finch/skills/community-manager/scripts/manage_registry.py update extension mcp '{
+# 更新小工具的 description 和 categories
+python3 .finch/skills/community-manager/scripts/manage_registry.py update mini-tool mcp '{
   "description": "New description.",
   "categories": ["developer"]
 }'
 
 # 同时更新中文覆盖（name_zh/description_zh 字段触发 zh-CN 写入）
-python3 .finch/skills/community-manager/scripts/manage_registry.py update extension mcp '{
+python3 .finch/skills/community-manager/scripts/manage_registry.py update mini-tool mcp '{
   "description": "New description.",
   "description_zh": "新描述。"
 }'
@@ -200,8 +198,8 @@ python3 .finch/skills/community-manager/scripts/manage_registry.py update extens
 > 等 Finch 支持 deprecated 过滤后再改为软删除方案。
 
 ```bash
-# 删除一个扩展或技能条目
-python3 .finch/skills/community-manager/scripts/manage_registry.py remove extension old-ext
+# 删除一个小工具或技能条目
+python3 .finch/skills/community-manager/scripts/manage_registry.py remove mini-tool old-ext
 python3 .finch/skills/community-manager/scripts/manage_registry.py remove skill theme-factory
 ```
 
@@ -221,24 +219,8 @@ python3 .finch/skills/community-manager/scripts/validate.py
 7. **中文覆盖完整** — 每个英文条目有对应 zh-CN 条目
 8. **中文覆盖无多余** — zh-CN 中无已移除的条目
 9. **扩展 id 一致性** — 检查 id 是否与 `extensions/<id>/package.json#finch.id` 匹配
-10. **npm 版本** — 有 `npm` 字段的条目是否都有 `version` 字段
 
-### 操作 6：同步 npm 版本（使用脚本）
-
-从 npm registry 拉取所有扩展的最新版本，写入 `version` 字段，供客户端做版本更新提醒。
-
-```bash
-cd ../../..
-python3 .finch/skills/community-manager/scripts/sync_npm_versions.py
-```
-
-带 `--dry-run` 预览不写文件：
-
-```bash
-python3 .finch/skills/community-manager/scripts/sync_npm_versions.py --dry-run
-```
-
-### 操作 7：同步中文覆盖（交互式）
+### 操作 6：同步中文覆盖（交互式）
 
 当英文文件新增了条目但 zh-CN 还没跟随时执行：
 
@@ -267,8 +249,8 @@ python3 .finch/skills/community-manager/scripts/sync_npm_versions.py --dry-run
 - [skill] `theme-factory` — 已移除
 
 ### 文件变更
-- community/extensions.json — 新增 1 条
-- community/extensions.zh-CN.json — 新增 1 条
+- community/mini-tools.json — 新增 1 条
+- community/mini-tools.zh-CN.json — 新增 1 条
 - community/skills.json — 修改 1 条
 
 ### 下一步

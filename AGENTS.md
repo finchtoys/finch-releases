@@ -15,7 +15,7 @@ finch-releases/
 ├── README.md          # 项目入口说明
 ├── package.json       # npm workspaces 根配置
 ├── docs/              # Finch App 文档、用户指南、开发文档
-├── extensions/        # Finch 扩展源码（每个子目录一个独立扩展项目）
+├── extensions/        # Finch 小工具（mini-tools）的源码（每个子目录一个独立扩展项目）
 ├── skills/            # Finch 技能（skills）相关配置与说明
 ├── community/         # 社区贡献内容：推荐配置、插件清单、最佳实践等
 └── packages/          # 需要发布到 npm 的官方包 / CLI 工具源码
@@ -24,7 +24,7 @@ finch-releases/
 ### 目录说明
 
 - **docs/**：面向用户和开发者的文档。可包含用户指南、API 文档、插件开发教程、FAQ 等。
-- **extensions/**：存放 Finch 扩展的 **完整源码**。每个子目录是一个独立扩展项目，内含 `package.json`、TypeScript 源码、i18n 等。编译产物置于 `dist/`。发布时同步更新 `community/extensions.json` 索引。
+- **extensions/**：存放 Finch 小工具（mini-tools）的 **完整源码**。每个子目录是一个独立扩展项目，内含 `package.json`、TypeScript 源码、i18n 等。编译产物置于 `dist/`。发布时同步更新 `community/mini-tools.json` 索引。
 - **skills/**：Finch 技能的配置、索引或说明文件。可包含官方技能列表、技能贡献模板等。
 - **community/**：社区贡献区。推荐插件清单、主题合集、工作流模板、用户案例等都可以放在这里。
 - **packages/**：以 npm 包 / CLI 工具形式发布的官方包源码。本目录启用 npm workspaces，每个子目录是一个独立可发布的包。
@@ -53,8 +53,9 @@ finch-releases/
 
 ## 注意事项
 
+- **术语说明**：Finch 中的「小工具」即「扩展（Extension）」，两者指同一概念，文档和代码中统一使用「扩展」。
 - 本仓库不存放 Finch App 主程序源码；主程序源码位于独立的开发仓库。
-- 扩展开发统一放在 `extensions/` 目录下，每个子目录一个扩展项目。如需独立维护（如大项目迁移至单独仓库），在 `extensions/` 保留配置文件索引并指向外部仓库链接。
+- 小工具（mini-tools）开发统一放在 `extensions/` 目录下，每个子目录一个扩展项目。如需独立维护（如大项目迁移至单独仓库），在 `extensions/` 保留配置文件索引并指向外部仓库链接。
 - `packages/` 使用 npm workspaces 管理，发布脚本位于 `scripts/publish-all.sh`，CI 配置位于 `.github/workflows/publish.yml`。
 - 如需调整空间规则，请修改本文件并同步更新 `README.md`。
 
@@ -68,9 +69,9 @@ finch-releases/
 
 | 文件 | 内容 |
 |---|---|
-| `community/extensions.json` | 扩展推荐索引（英文） |
+| `community/mini-tools.json` | 小工具推荐索引（英文） |
 | `community/skills.json` | 技能推荐索引（英文） |
-| `community/extensions.zh-CN.json` | 扩展中文覆盖 |
+| `community/mini-tools.zh-CN.json` | 小工具中文覆盖 |
 | `community/skills.zh-CN.json` | 技能中文覆盖 |
 
 这些文件通过 Cloudflare Worker 发布到 `community.finchwork.app`，修改后约 1 小时生效。
@@ -95,7 +96,7 @@ finch-releases/
 cd ../../..
 
 # 新增扩展（中英文同时）
-python3 .finch/skills/community-manager/scripts/manage_registry.py add extension '{
+python3 .finch/skills/community-manager/scripts/manage_registry.py add mini-tool '{
   "id": "my-ext",
   "name": "My Extension",
   "author": "Me",
@@ -117,8 +118,6 @@ python3 .finch/skills/community-manager/scripts/manage_registry.py remove skill 
 # 全量校验
 python3 .finch/skills/community-manager/scripts/validate.py
 
-# 同步 npm 版本（拉取最新版本到 version 字段）
-python3 .finch/skills/community-manager/scripts/sync_npm_versions.py
 ```
 
 ### 格式规则
@@ -128,7 +127,6 @@ python3 .finch/skills/community-manager/scripts/sync_npm_versions.py
 - 新增条目时**必须同时提供中英文 name 和 description**
 - `extensionType` 默认 `"community"`，官方扩展设为 `"official"`
 - `featured: true` 标记为精选推荐，客户端会以此过滤；所有官方推荐默认为 `true`
-- 有 `npm` 字段的扩展条目，`version` 由 `sync_npm_versions.py` 自动拉取更新
 - 永远不要直接删除条目后不更新 zh-CN 覆盖
 
 ### 校验
