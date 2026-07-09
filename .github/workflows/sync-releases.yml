@@ -1,0 +1,75 @@
+name: Sync GitHub Releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: Source repository (owner/repo)
+        required: true
+        default: puterjam/finch
+      target_repo:
+        description: Target repository (owner/repo)
+        required: true
+        default: finchtoys/finch-releases
+      include_drafts:
+        description: Include draft releases
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      overwrite_assets:
+        description: Overwrite assets with the same name
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      overwrite_body:
+        description: Update existing release title/body/prerelease
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      skip_existing_releases:
+        description: Skip release if tag already exists and no overwrite is enabled
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      max_releases:
+        description: Limit count, 0 means all releases
+        required: true
+        default: '0'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sync releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          INCLUDE_DRAFTS: ${{ inputs.include_drafts }}
+          OVERWRITE_ASSETS: ${{ inputs.overwrite_assets }}
+          OVERWRITE_BODY: ${{ inputs.overwrite_body }}
+          SKIP_EXISTING_RELEASES: ${{ inputs.skip_existing_releases }}
+          MAX_RELEASES: ${{ inputs.max_releases }}
+        run: node scripts/sync-github-releases.mjs
