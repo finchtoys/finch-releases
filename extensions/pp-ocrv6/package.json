@@ -1,5 +1,5 @@
 {
-  "name": "@finch.app/ext-ocr",
+  "name": "@finch.app/pp-ocrv6",
   "version": "0.1.0",
   "description": "OCR extension powered by PP-OCRv6 — extract Chinese and English text from images using Python PaddleOCR.",
   "author": {

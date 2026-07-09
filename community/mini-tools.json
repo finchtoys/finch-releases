@@ -44,7 +44,7 @@
     "author": "Finch Team",
     "description": "Extract text from images using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
     "repo": "finchtoys/finch-releases",
-    "npm": "@finch.app/ext-ocr",
+    "npm": "@finch.app/pp-ocrv6",
     "extensionType": "official",
     "categories": [
       "productivity",
