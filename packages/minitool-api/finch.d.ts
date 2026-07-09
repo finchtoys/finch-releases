@@ -737,16 +737,56 @@ declare module 'finch' {
     readonly mode?: ComposerFillMode;
   }
 
-  /** Composer Action 执行期间可用的 UI 动作。 */
-  export interface ComposerActionActions {
+  /** 内联 Composer confirm 条的选项。 */
+  export interface ComposerConfirmOptions {
+    /** confirm 条上显示的提示文字。 */
+    readonly text: string;
+    /** 主按钮（确认）文案，默认本地化的「确认」。 */
+    readonly confirmLabel?: string;
+    /** 次按钮（取消）文案，默认本地化的「取消」。 */
+    readonly cancelLabel?: string;
+  }
+
+  /**
+   * 内联 Composer confirm 条的结果：
+   *  - `'confirm'`   用户点了主按钮。
+   *  - `'cancel'`    用户点了次按钮。
+   *  - `'dismissed'` confirm 条被自动收起（用户忽略它、直接发消息 / 清空了会话），
+   *    未做选择——按「无决定」处理。
+   */
+  export type ComposerConfirmResult = 'confirm' | 'cancel' | 'dismissed';
+
+  /** Composer 域 helper。 */
+  export interface ComposerActionComposerActions {
     /**
      * 向当前激活的 Composer 输入框填入文字。
      * `/skill` 指令和 `@[path]` 文件引用会渲染为富文本 token。
+     */
+    fill(text: string, options?: ComposerFillOptions): Promise<void>;
+    /**
+     * 在 Composer 上弹出一个内联 confirm 条（样式类似待发送消息，而非原生弹框），
+     * 等待用户选择。与 `ctx.ui.showConfirmDialog` 不同，它不会用模态弹框阻塞整个 app，
+     * 且当用户忽略它、直接发送消息时会自动收起（返回 `'dismissed'`）。
+     * 在用户确认、取消或 confirm 条被收起时 resolve。
      *
      * @example
-     * await actions.fillComposer('帮我总结这段内容');
-     * await actions.fillComposer('/pdf 请总结 @[docs/report.pdf]');
-     * await actions.fillComposer('\n补充一句', { mode: 'append' });
+     * const r = await actions.composer.confirm({ text: '方案已就绪，开始执行？', confirmLabel: '开始执行', cancelLabel: '继续规划' });
+     * if (r === 'confirm') { …关闭计划模式、注入文案… }
+     */
+    confirm(options: ComposerConfirmOptions): Promise<ComposerConfirmResult>;
+  }
+
+  /** Composer Action 执行期间可用的 UI 动作。 */
+  export interface ComposerActionActions {
+    /** Composer 域 helper：内联 confirm、填充输入框等。 */
+    composer: ComposerActionComposerActions;
+    /**
+     * @deprecated 请使用 `actions.composer.fill(text, options)`。
+     *
+     * @example
+     * await actions.composer.fill('帮我总结这段内容');
+     * await actions.composer.fill('/pdf 请总结 @[docs/report.pdf]');
+     * await actions.composer.fill('\n补充一句', { mode: 'append' });
      */
     fillComposer(text: string, options?: ComposerFillOptions): Promise<void>;
   }
@@ -908,6 +948,26 @@ declare module 'finch' {
      * ctx.subscriptions.push(action);
      */
     onClick?(ctx: ComposerActionContext, actions: ComposerActionActions): Promise<void>;
+    /**
+     * 每次助手回复结束后触发一次（对应 app 的「本轮回复完成」时刻）。
+     * 用来对刚产出的回复做反应——例如规划类工具在此弹出内联 `actions.confirm()` 条，
+     * 询问用户是否退出计划模式、开始执行。
+     *
+     * 仅在 `surface === 'session'` 且存在真实 `ctx.sessionId` 时触发。
+     * 抛错会被吞掉，绝不影响对话。
+     *
+     * @example
+     * async onTurnEnd(ctx, actions) {
+     *   if (!isPlanning(ctx.sessionId)) return;
+     *   const r = await actions.composer.confirm({ text: '方案已就绪，开始执行？', confirmLabel: '开始执行', cancelLabel: '继续规划' });
+     *   if (r === 'confirm') {
+     *     setPlanning(ctx.sessionId, false);
+     *     action.notifyUpdate();
+     *     await actions.composer.fill('按上面的方案开始执行。');
+     *   }
+     * }
+     */
+    onTurnEnd?(ctx: ComposerActionContext, actions: ComposerActionActions): Promise<void>;
   }
 
   // ════════════════════════════════════════════════════════════════════════════

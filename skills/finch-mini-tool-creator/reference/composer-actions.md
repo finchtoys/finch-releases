@@ -41,7 +41,7 @@ ctx.subscriptions.push(
       return [{ id: 'main', label: 'main' }];
     },
     async execute({ cwd }, itemId, actions) {
-      await actions.fillComposer(`Selected ${itemId}`);
+      await actions.composer.fill(`Selected ${itemId}`);
     }
   })
 );
@@ -98,9 +98,13 @@ async getBadge() {
 }
 ```
 
-`getBadge` is **pulled** by the app — it is called when the toolbar mounts, after
-`execute`, or when `notifyUpdate()` signals a refresh. It is not called on a timer
-by itself; see `notifyUpdate()` below.
+`getBadge` is **pulled** by the app — it is called when the toolbar mounts, when
+`cwd` / `surface` / `sessionId` / `spaceId` changes, after `execute`, or when
+`notifyUpdate()` signals a refresh. It is not called on a timer by itself; see
+`notifyUpdate()` below.
+
+`ctx.sessionId` is available on the `session` surface, so toggle state can be keyed
+per conversation instead of being global.
 
 ### `notifyUpdate()` — handle method
 
@@ -134,26 +138,37 @@ Finch wraps the returned string in a `<reminder>` block and appends it to the ou
 Use it for stateful mode switches where you want to constrain the model every turn without requiring the user to type anything:
 
 ```ts
-let planningMode = false;
+const planningBySession = new Map<string, boolean>();
+const isPlanning = (sessionId?: string) => !!sessionId && planningBySession.get(sessionId) === true;
 
-ctx.composerActions.register('plan-mode', {
-  async getBadge() {
-    return planningMode ? 'Plan' : undefined;
+const action = ctx.composerActions.register('plan-mode', {
+  async getBadge({ sessionId }) {
+    return isPlanning(sessionId) ? { text: 'Plan', active: true } : undefined;
   },
-  async getIcon() {
-    return planningMode ? 'Clipboard' : 'ClipboardList';
+  async getIcon({ sessionId }) {
+    return isPlanning(sessionId) ? 'clipboard-check' : 'clipboard';
   },
-  async getMenu() {
-    return [
-      { id: 'toggle', label: planningMode ? '退出计划模式' : '进入计划模式', current: planningMode },
-    ];
+  async onClick({ sessionId }) {
+    if (!sessionId) return;
+    planningBySession.set(sessionId, !isPlanning(sessionId));
+    action.notifyUpdate();
   },
-  async execute(_ctx, itemId, _actions) {
-    if (itemId === 'toggle') planningMode = !planningMode;
-  },
-  async getReminder({ surface }) {
-    if (!planningMode || surface === 'home') return undefined;
+  async getReminder({ sessionId, surface }) {
+    if (!isPlanning(sessionId) || surface === 'home') return undefined;
     return 'This turn is planning only — output a plan, do not execute any tools or perform side effects.';
+  },
+  async onTurnEnd({ sessionId, surface }, actions) {
+    if (!isPlanning(sessionId) || surface === 'home') return;
+    const result = await actions.composer.confirm({
+      text: 'Plan is ready. Start implementation?',
+      confirmLabel: 'Start',
+      cancelLabel: 'Keep planning',
+    });
+    if (result === 'confirm') {
+      planningBySession.set(sessionId!, false);
+      action.notifyUpdate();
+      await actions.composer.fill('Start implementing the plan above.');
+    }
   },
 });
 ```
@@ -166,7 +181,31 @@ Rules:
 
 ### `execute(ctx, itemId, actions)`
 
-Handle the selected item. Use `actions.fillComposer()` when the button should write into the current Composer input.
+Handle the selected item. Use `actions.composer.fill()` when the button should write into the current Composer input.
+
+### `onTurnEnd(ctx, actions)`
+
+Called once after each assistant turn finishes in a session. Use it for post-response UI such as asking the user whether to leave a mode.
+
+```ts
+async onTurnEnd(ctx, actions) {
+  if (!ctx.sessionId || ctx.surface === 'home') return;
+  const result = await actions.composer.confirm({
+    text: '方案已就绪，开始执行？',
+    confirmLabel: '开始执行',
+    cancelLabel: '继续规划',
+  });
+  if (result === 'confirm') {
+    await actions.composer.fill('按上面的方案开始执行。');
+  }
+}
+```
+
+`actions.composer.confirm()` renders an inline Composer confirm bar, not a timeline card and not a modal dialog. It resolves to:
+
+- `'confirm'` — user clicked the primary button
+- `'cancel'` — user clicked the secondary button
+- `'dismissed'` — user ignored the bar and sent a message / the request was cleared
 
 ## 5. Menu item patterns
 
@@ -216,9 +255,9 @@ async getBadge({ surface }) {
 - Use `cwd`-based checks for repo-specific actions.
 - Avoid noisy errors for expected states.
 
-## 8. fillComposer()
+## 8. Composer helpers
 
-`actions.fillComposer(text, options)` can:
+`actions.composer.fill(text, options)` can:
 
 - replace the current input
 - append text to the current input
@@ -226,6 +265,8 @@ async getBadge({ surface }) {
 It also parses `/skill` and `@[path]` tokens.
 
 Use it for quick drafts, templates, and file-linked prompts.
+
+`actions.fillComposer(text, options)` is still supported for backward compatibility, but new code should use `actions.composer.fill()`.
 
 ## 9. Common mistakes
 
@@ -237,4 +278,5 @@ Use it for quick drafts, templates, and file-linked prompts.
 - Discarding the `register()` return value and losing access to `notifyUpdate()`
 - Expecting `getBadge` to be called automatically without `notifyUpdate()` when state changes in the background
 - Returning a reminder string unconditionally even on the `home` surface — use `surface === 'home'` guard
-- Writing user-visible text in `getReminder` — it's invisible in the UI; use `getBadge` for UI feedback
+- Writing user-visible text in `getReminder` — it's invisible in the UI; use `getBadge` or `actions.composer.confirm()` for UI feedback
+- Using `ctx.ui.showConfirmDialog()` for Composer-only choices — prefer `actions.composer.confirm()` so the decision appears inline and restores with the session
