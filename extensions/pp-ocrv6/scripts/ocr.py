@@ -11,11 +11,16 @@ os.environ['FLAGS_logging_level'] = '3'
 os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
 # Prevent thread oversubscription in multiprocessing workers.
-# PaddlePaddle/OpenBLAS each spawn internal thread pools; without these
-# limits, N workers × M threads = system-wide contention and SIGSEGV.
-os.environ.setdefault('OMP_NUM_THREADS', '1')
-os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
-os.environ.setdefault('MKL_NUM_THREADS', '1')
+# PaddlePaddle has its OWN thread pool (ThreadPoolTempl) that ignores
+# OMP_NUM_THREADS. We must also set PaddlePaddle-specific flags.
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['FLAGS_use_mkldnn'] = '0'          # disable MKL-DNN threading
+os.environ['FLAGS_paddle_num_threads'] = '1'   # limit PaddlePaddle internal pool
+os.environ['FLAGS_enable_parallel_graph'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = ''        # no GPU, skip detection
+os.environ['MALLOC_ARENA_MAX'] = '2'           # limit glibc memory fragmentation
 
 try:
     from paddleocr import PaddleOCR
