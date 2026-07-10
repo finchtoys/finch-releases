@@ -2,6 +2,8 @@
 
 A Finch mini tool that adds a **Plan Mode** button to the Composer toolbar. When enabled, your AI assistant will output a structured plan only — no tool calls, no file writes — and ask for your confirmation before executing.
 
+![Plan Mode](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/extensions/plan-mode/shot.png)
+
 ## Usage
 
 1. Click the **Plan Mode** button (📋) in the Composer toolbar to toggle planning mode on.
