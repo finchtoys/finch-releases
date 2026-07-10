@@ -75,6 +75,9 @@ export function activate(ctx: finch.ExtensionContext): void {
       // Home: one-shot
       if (surface === 'home') {
         homePlanningEnabled = !homePlanningEnabled;
+        // 提前同步 pending flag：确保后续任何时序的 getBadge 都能拿到正确状态
+        // 用户若再次点击关闭，同步清掉
+        pendingNewSessionPlan = homePlanningEnabled;
         action.notifyUpdate();
         void ctx.ui.showToast({
           title: homePlanningEnabled ? t('toast.enter.title') : t('toast.home.exit.title'),
@@ -108,7 +111,7 @@ export function activate(ctx: finch.ExtensionContext): void {
       if (surface === 'home') {
         if (!homePlanningEnabled) return undefined;
         homePlanningEnabled = false;
-        pendingNewSessionPlan = true;
+        // pendingNewSessionPlan 已在 onClick 时提前设好，此处只需清 home 高亮
         queueMicrotask(() => action.notifyUpdate());
         return REMINDER;
       }
