@@ -1,5 +1,18 @@
 [
   {
+    "id": "agently-mail",
+    "name": "QQ Agent Mail",
+    "author": "Finch Team",
+    "description": "Connect QQ Agent Mail through the official CLI and MCP tools.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "@finch.app/agently-mail",
+    "extensionType": "official",
+    "categories": [
+      "productivity"
+    ],
+    "featured": true
+  },
+  {
     "id": "browser-tools",
     "name": "Browser Tools",
     "author": "JoeHe",

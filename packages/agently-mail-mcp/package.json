@@ -1,0 +1,28 @@
+{
+  "name": "@finch.app/agently-mail-mcp",
+  "version": "0.1.0",
+  "description": "MCP adapter for Tencent QQ Agently Mail CLI.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "finch-agently-mail-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
