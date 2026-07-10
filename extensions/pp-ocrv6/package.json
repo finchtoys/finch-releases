@@ -51,7 +51,7 @@
     "activationEvents": [
       "onStartup"
     ],
-    "extensionType": "official",
+    "extensionType": "community",
     "categories": [
       "productivity",
       "research"
