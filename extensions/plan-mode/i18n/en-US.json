@@ -9,10 +9,10 @@
     }
   },
 
-  "badge.active": "Planning First",
+  "badge.active": "Plan",
 
-  "toast.enter.title": "{assistantName} will think before you act",
-  "toast.enter.desc": "I will plan the task first, then confirm to execute.",
+  "toast.enter.title": "{assistantName} will plan first",
+  "toast.enter.desc": "Plan the task first, then confirm to execute after each reply.",
   "toast.exit.title": "{assistantName} will execute tasks directly",
 
   "toast.home.enter.desc": "Next message will be sent in planning mode and auto-closes after sending.",
