@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/frontend-design",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Frontend design skill and Composer shortcut for Finch.",
   "author": {
     "name": "Finch Team",
@@ -47,5 +47,5 @@
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },
-  "files": ["dist/", "i18n/", "skills/", "README.md", "README.zh-CN.md"]
+  "files": ["dist/", "i18n/", "skills/", "icon.png", "README.md", "README.zh-CN.md"]
 }

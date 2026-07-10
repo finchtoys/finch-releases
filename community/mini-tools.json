@@ -1,6 +1,7 @@
 [
   {
     "id": "agently-mail",
+    "version": "0.1.0",
     "name": "QQ Agent Mail",
     "author": "Finch Team",
     "description": "Connect QQ Agent Mail through the official CLI and MCP tools.",
@@ -14,6 +15,7 @@
   },
   {
     "id": "browser-tools",
+    "version": "0.2.0",
     "name": "Browser Tools",
     "author": "JoeHe",
     "description": "Browser automation tools for Finch — navigate, click, fill forms, take screenshots, debug, and more. Powered by Chrome DevTools MCP (Google).",
@@ -26,6 +28,7 @@
   },
   {
     "id": "frontend-design",
+    "version": "0.1.1",
     "name": "Frontend Design",
     "author": "Finch Team",
     "description": "Create distinctive, production-grade frontend interfaces with a bundled design skill.",
@@ -82,6 +85,7 @@
   },
   {
     "id": "office-tools",
+    "version": "0.3.1",
     "name": "Office Tools",
     "author": "JoeHe",
     "description": "Office tools for Finch — read, create, edit Word, Excel, and PowerPoint files using OfficeCLI.",
@@ -108,6 +112,7 @@
   },
   {
     "id": "pp-ocrv6",
+    "version": "0.2.0",
     "name": "PP-OCRv6",
     "author": "JoeHe",
     "description": "OCR extension powered by PP-OCRv6 — extract Chinese and English text from images using Python PaddleOCR.",

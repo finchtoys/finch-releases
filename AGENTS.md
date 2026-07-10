@@ -98,6 +98,7 @@ cd ../../..
 # 新增扩展（中英文同时）
 python3 .finch/skills/community-manager/scripts/manage_registry.py add mini-tool '{
   "id": "my-ext",
+  "version": "0.1.0",
   "name": "My Extension",
   "author": "Me",
   "description": "Does something.",
@@ -124,6 +125,7 @@ python3 .finch/skills/community-manager/scripts/validate.py
 
 - 2 空格缩进，条目按 `id` 字母序排列
 - 英文文件保留完整字段，中文覆盖只含 `id`/`name`/`description`
+- 小工具条目**必须提供 `version` 字段**（最新版本号），优先从 `extensions/<id>/package.json#version` 读取，社区扩展查 npm registry 获取
 - 新增条目时**必须同时提供中英文 name 和 description**
 - `extensionType` 默认 `"community"`，官方扩展设为 `"official"`
 - `featured: true` 标记为精选推荐，客户端会以此过滤；所有官方推荐默认为 `true`
@@ -131,4 +133,4 @@ python3 .finch/skills/community-manager/scripts/validate.py
 
 ### 校验
 
-每次修改后运行 `validate.py` 自我校验，检查项包括：JSON 合法性、必填字段、id 格式/唯一性、分类合规、字母序、中英文覆盖完整性。`
+每次修改后运行 `validate.py` 自我校验，检查项包括：JSON 合法性、必填字段（mini-tools 含 version）、id 格式/唯一性、分类合规、字母序、中英文覆盖完整性。`

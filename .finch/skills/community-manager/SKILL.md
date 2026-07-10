@@ -31,6 +31,7 @@ description: >
 ```json
 {
   "id": "mcp",                              // 唯一 ID
+  "version": "1.0.0",                      // 最新版本号（必填）
   "name": "MCP Bridge",                     // 展示名
   "author": "Finch Team",                   // 作者
   "description": "一句话描述",               // 英文描述
@@ -136,17 +137,19 @@ Read community/skills.zh-CN.json
 **交互流程：**
 1. Read 当前文件，确认现有条目
 2. 逐项收集用户输入，**必须同时询问中英文**
-3. 必填：`id`, `name`(英), `author`, `description`(英), `repo`
-4. 中文必填：`name_zh`, `description_zh`
-5. 选填：`npm`(仅扩展), `extensionType`(默认community), `installScope`, `categories`
-6. 校验 id 格式（小写字母、数字、连字符）和唯一性
-7. 执行脚本
+3. 必填：`id`, `version`, `name`(英), `author`, `description`(英), `repo`
+4. `version` 优先从 `extensions/<id>/package.json#version` 读取，社区扩展查 npm registry 获取
+5. 中文必填：`name_zh`, `description_zh`
+6. 选填：`npm`(仅扩展), `extensionType`(默认community), `installScope`, `categories`, `featured`
+7. 校验 id 格式（小写字母、数字、连字符）和唯一性
+8. 执行脚本
 
 ```bash
 cd ../../..
 
 python3 .finch/skills/community-manager/scripts/manage_registry.py add mini-tool '{
   "id": "my-ext",
+  "version": "0.1.0",
   "name": "My Extension",
   "author": "Me",
   "description": "Does something useful.",
@@ -189,7 +192,7 @@ python3 .finch/skills/community-manager/scripts/manage_registry.py update mini-t
 ```
 
 支持的更新字段：
-- 英文：`name`, `author`, `description`, `repo`, `npm`, `extensionType`, `installScope`, `categories`, `featured`
+- 英文：`version`, `name`, `author`, `description`, `repo`, `npm`, `extensionType`, `installScope`, `categories`, `featured`
 - 中文：`name_zh`, `description_zh`（传入这两个字段会自动更新或创建 zh-CN 条目）
 
 ### 操作 4：删除（使用脚本）
@@ -211,10 +214,10 @@ python3 .finch/skills/community-manager/scripts/validate.py
 
 校验内容：
 1. **JSON 合法性** — 每个文件是否能被解析
-2. **必填字段** — id/name/author/description/repo 是否齐全
+2. **必填字段** — mini-tools: id/version/name/author/description/repo；skills: id/name/author/description/repo
 3. **id 格式** — 小写字母、数字、连字符
 4. **id 唯一性** — 无重复 id
-5. **分类合规** — categories 只使用固定 6 个分类 ID
+5. **分类合规** — categories 只使用固定 7 个分类 ID
 6. **字母序** — 条目按 id 排序
 7. **中文覆盖完整** — 每个英文条目有对应 zh-CN 条目
 8. **中文覆盖无多余** — zh-CN 中无已移除的条目

@@ -128,7 +128,7 @@ if ext_data:
     check_id_format(ext_data, "mini-tools.json")
     check_id_uniqueness(ext_data, "mini-tools.json")
     check_required_fields(ext_data, "mini-tools.json",
-        ["id", "name", "author", "description", "repo"])
+        ["id", "version", "name", "author", "description", "repo"])
     check_categories(ext_data, "mini-tools.json")
     check_alphabetical_order(ext_data, "mini-tools.json")
     check_extension_id_consistency(ext_data, "mini-tools.json")
