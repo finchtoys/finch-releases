@@ -53,6 +53,8 @@ Core rules:
 - Push every `Disposable` into `ctx.subscriptions`.
 - Keep runtime logic in `src/` and compile to `dist/`.
 - Use `npx @finchtoys/minitools` for install/update/remove.
+- For ComposerAction menus, every actionable item must include `iconName`: reuse a built-in Finch icon first; otherwise register a Lucide (or compatible library) SVG and use its `ext:` reference. See `reference/icons.md`.
+- Register Agent tools as lowercase English `snake_case` names in the form `<mini_tool_name>_<function_name>`; never use short generic names such as `init`, `build`, or `status`. See `reference/tools.md`.
 
 If you only need the exact API signatures, skip ahead to **References**.
 

@@ -81,6 +81,14 @@ PascalCase variants (`'ClipboardCheck'`) are automatically normalised, so both w
 
 ## 3. Custom icons (runtime SVG packs)
 
+### Icon selection order
+
+For every ComposerAction menu item, choose icons in this order:
+
+1. **Reuse a built-in Finch icon** from §2 whenever it communicates the action accurately. These are already available in the app and need no registration.
+2. If Finch has no suitable icon, take the SVG from **Lucide** (preferred for visual consistency) or another compatible icon library, register it as a runtime pack, then use its `ext:` reference.
+3. Do not use a bare icon-library name that Finch has not listed as built-in: it will render as text rather than an icon.
+
 When no built-in icon fits, register your own SVG icons at runtime.
 
 ### Step 1 — declare the pack in the manifest
@@ -102,13 +110,16 @@ ctx.icons.register('my-icons', {
   'send-message': {
     svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 2 11 13M22 2 15 22 11 13 2 9l20-7z"/></svg>',
   },
+  // SVG copied from Lucide when Finch has no matching built-in icon.
   'translate': {
-    svg: '<svg viewBox="0 0 24 24" ...>...</svg>',
+    svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>',
   },
 });
 ```
 
 ### Step 3 — reference the icon
+
+Use the registered icon for toolbar icons or ComposerAction menu item `iconName`:
 
 ```ts
 // Shorthand (same pack only)
@@ -116,6 +127,12 @@ async getIcon() { return 'ext:send-message'; }
 
 // Fully qualified (cross-pack or safer)
 async getIcon() { return 'ext:my-icons/send-message'; }
+
+async getMenu() {
+  return [
+    { id: 'translate', label: 'Translate', iconName: 'ext:my-icons/translate' },
+  ];
+}
 ```
 
 ### SVG requirements

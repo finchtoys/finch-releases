@@ -18,7 +18,7 @@ A good tool has:
 
 ```ts
 ctx.tools.register({
-  name: 'search_docs',
+  name: 'docs_helper_search_docs',
   title: 'Search Docs',
   description: 'Search the project docs when the user asks about docs or asks to find a section.',
   inputSchema: {
@@ -38,8 +38,18 @@ ctx.tools.register({
 
 ## 3. Naming and description rules
 
-- Keep tool names snake_case.
-- Make the tool name readable on its own.
+Tool names are model-facing global identifiers. **Always use this exact format:**
+
+```text
+<mini_tool_name>_<function_name>
+```
+
+- Use only lowercase English letters, digits, and underscores (`snake_case`).
+- Convert the mini tool id/name to lowercase `snake_case` for `<mini_tool_name>` before composing the name. For example, `docs-helper` becomes `docs_helper`.
+- Use a specific lowercase `snake_case` capability for `<function_name>`.
+- Keep the mini tool prefix even when the function looks obvious: use `pjblog_init`, `pjblog_new_post`, and `docs_helper_search_docs`, **not** `init`, `new_post`, or `search_docs`.
+- Do not use short generic names such as `init`, `build`, `status`, `search`, or `preview`; they are ambiguous in the model tool list and can collide with other mini tools.
+- Make the complete name readable on its own.
 - Use the description to tell the model exactly when to call it.
 - Put trigger conditions, side effects, and output expectations in the description.
 
@@ -138,6 +148,8 @@ Use the lowest risk level that matches the tool.
 
 ## 9. Common mistakes
 
+- Registering a short or generic name such as `init`, `build`, or `status` instead of `<mini_tool_name>_<function_name>`
+- Using uppercase letters, hyphens, localized text, or any format other than lowercase `snake_case`
 - Description too vague
 - Input schema too loose
 - Returning raw blobs instead of useful text

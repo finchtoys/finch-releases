@@ -38,7 +38,7 @@ ctx.subscriptions.push(
       return cwd ? 'main' : undefined;
     },
     async getMenu({ cwd }) {
-      return [{ id: 'main', label: 'main' }];
+      return [{ id: 'main', label: 'main', iconName: 'git-branch' }];
     },
     async execute({ cwd }, itemId, actions) {
       await actions.composer.fill(`Selected ${itemId}`);
@@ -225,6 +225,10 @@ Useful fields:
 
 Rules:
 
+- **Every actionable menu item must provide `iconName`**. Only structural entries such as `separator` may omit it. This keeps menus scannable and prevents icon-less rows from slipping into mini tools.
+- Prefer an icon already available in Finch; see [`icons.md`](./icons.md) for the supported built-in ids.
+- If no built-in icon fits, register an SVG from Lucide (or another compatible icon library) through `ctx.icons.register()` and reference it as `ext:<packId>/<iconId>`; do not pass an unverified Lucide name as plain text.
+- Apply the same rule recursively to every item in `children`.
 - Keep same-group items contiguous.
 - Use `children` for hover submenus.
 - Use `current` for selected state.
@@ -272,6 +276,8 @@ Use it for quick drafts, templates, and file-linked prompts.
 
 - Badge throws on ordinary non-matching state
 - Menu items not grouped contiguously
+- Omitting `iconName` from an actionable menu item (including nested `children`)
+- Using an unverified Lucide name as `iconName` instead of a built-in id or registered `ext:` SVG
 - Using custom DOM instead of Composer actions
 - Forgetting that the selected child id is what reaches `execute()`
 - Calling `notifyUpdate()` on a tight loop (< 1 s) — it triggers a full re-fetch each time
