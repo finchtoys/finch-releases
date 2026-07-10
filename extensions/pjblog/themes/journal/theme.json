@@ -1,0 +1,9 @@
+{
+  "id": "journal",
+  "name": "胶片 Journal",
+  "description": "米色纸质底、杂志感排版，适合生活日志。",
+  "variables": {
+    "accent": "#b3542e",
+    "maxWidth": "760px"
+  }
+}

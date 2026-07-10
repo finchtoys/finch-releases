@@ -97,6 +97,20 @@
     ]
   },
   {
+    "id": "pjblog",
+    "version": "0.1.0",
+    "name": "PJBlog For Finch",
+    "author": "Finch Team",
+    "description": "Write blog posts together with AI: markdown writing, static site generation, live preview while writing, My Blogs management, and one-click publish to GitHub Pages.",
+    "repo": "finchtoys/finch-releases",
+    "extensionType": "official",
+    "categories": [
+      "creative"
+    ],
+    "featured": true,
+    "npm": "finch-pjblog"
+  },
+  {
     "id": "plan-mode",
     "name": "Plan Mode",
     "author": "Finch Team",

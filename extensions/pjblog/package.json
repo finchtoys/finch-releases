@@ -1,0 +1,91 @@
+{
+  "name": "finch-pjblog",
+  "version": "0.1.0",
+  "description": "PJBlog For Finch — write markdown posts with AI, generate a static blog, live preview, and publish to Git Pages.",
+  "author": {
+    "name": "PuterJam",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/pjblog"
+  },
+  "license": "MIT",
+  "files": [
+    "dist/",
+    "i18n/",
+    "themes/",
+    "icon.png",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "pjblog",
+    "name": "PJBlog For Finch",
+    "description": "Write markdown posts together with AI, generate a static blog (home / post / archive pages), live-preview while writing, and publish to GitHub Pages with one click.",
+    "systemPrompt": "When the user wants to create a blog, write a blog post / diary in markdown, preview the blog, or publish the blog, use the pjblog_* tools. Blog workspace is a directory containing blog.config.json.",
+    "promptGuides": [
+      {
+        "id": "init",
+        "title": "Create my blog",
+        "prompt": "帮我初始化一个 PJBlog 博客工作区"
+      },
+      {
+        "id": "write",
+        "title": "Write a post",
+        "prompt": "帮我写一篇新的博客日志，主题是："
+      },
+      {
+        "id": "publish",
+        "title": "Publish",
+        "prompt": "帮我构建并发布博客"
+      }
+    ],
+    "main": "dist/index.js",
+    "activationEvents": [
+      "onStartup"
+    ],
+    "extensionType": "official",
+    "categories": [
+      "creative"
+    ],
+    "privacyPolicyUrl": "https://finchwork.app/privacy",
+    "termsOfServiceUrl": "https://finchwork.app/terms",
+    "contributes": {
+      "tools": true,
+      "composerActions": [
+        {
+          "id": "pjblog",
+          "icon": "ext:pjblog-icons/notebook-pen",
+          "tooltip": "PJBlog"
+        }
+      ],
+      "iconPacks": [
+        {
+          "id": "pjblog-icons",
+          "label": "PJBlog Icons"
+        }
+      ]
+    },
+    "permissions": {
+      "filesystem": "write",
+      "network": false,
+      "shell": true
+    }
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "^0.1.16",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

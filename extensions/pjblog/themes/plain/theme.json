@@ -1,0 +1,9 @@
+{
+  "id": "plain",
+  "name": "素笺 Plain",
+  "description": "极简白，大留白、衬线标题、正文优先。",
+  "variables": {
+    "accent": "#1a5cff",
+    "maxWidth": "680px"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "nocturne",
+  "name": "夜航 Nocturne",
+  "description": "极简黑，纯黑白暗色，等宽字体点缀。",
+  "variables": {
+    "accent": "#ffffff",
+    "maxWidth": "680px"
+  }
+}

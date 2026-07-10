@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="{{site.language}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{#pageTitle}}{{pageTitle}} · {{/pageTitle}}日志归档 · {{site.title}}</title>
+<meta name="generator" content="{{generator}}">
+<link rel="stylesheet" href="{{base}}style.css">
+</head>
+<body>
+<div class="wrap">
+<header class="banner">
+  <h1 class="site-title"><a href="{{base}}index.html">{{site.title}}</a></h1>
+  <p class="site-desc">{{site.description}}</p>
+</header>
+<nav class="topnav">
+  <a href="{{base}}index.html">网站首页</a>
+  <a href="{{base}}archive.html">日志归档</a>
+  <a href="{{base}}about.html">关于本站</a>
+  <a href="{{base}}rss.xml">订阅 RSS</a>
+</nav>
+<div class="columns">
+  <main class="main-col">
+    <article class="entry">
+      <h2 class="entry-title">{{#pageTitle}}{{pageTitle}}{{/pageTitle}}{{^pageTitle}}日志归档{{/pageTitle}}<span class="count">（{{totalCount}} 篇）</span></h2>
+      {{#groups}}
+      <h3 class="archive-year">{{year}}</h3>
+      <ul class="archive-list">
+        {{#posts}}
+        <li><time>{{dateDisplay}}</time><a href="{{url}}">{{title}}</a>{{#draft}}<span class="draft-badge">草稿</span>{{/draft}}</li>
+        {{/posts}}
+      </ul>
+      {{/groups}}
+    </article>
+  </main>
+  <aside class="side-col">
+    <section class="box">
+      <h3>站点信息</h3>
+      <ul><li>日志总数：{{totalCount}} 篇</li></ul>
+    </section>
+  </aside>
+</div>
+<footer class="site-footer">
+  <p>© {{site.year}} {{site.author}} · Powered by {{generator}}</p>
+</footer>
+</div>
+</body>
+</html>

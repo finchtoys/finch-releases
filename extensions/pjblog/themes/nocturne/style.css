@@ -1,0 +1,77 @@
+:root {
+  --bg: #0a0a0a;
+  --fg: #e8e8e8;
+  --muted: #7a7a7a;
+  --accent: #ffffff;
+  --border: #222222;
+  --code-bg: #161616;
+  --max-width: 680px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  max-width: var(--max-width);
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.85 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+a { color: var(--fg); text-decoration: underline; text-decoration-color: #444; text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--accent); }
+
+.site-header { margin-bottom: 48px; }
+.site-title { font-size: 24px; margin: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 1px; }
+.site-title a { text-decoration: none; }
+.site-title a::before { content: "~/"; color: var(--muted); }
+.site-desc { color: var(--muted); margin: 8px 0 0; font-size: 14px; font-family: ui-monospace, Menlo, monospace; }
+.site-nav { margin-top: 16px; display: flex; gap: 18px; font-size: 13px; font-family: ui-monospace, Menlo, monospace; }
+.site-nav a { color: var(--muted); text-decoration: none; }
+.site-nav a:hover { color: var(--accent); }
+
+.post-card { padding: 26px 0; border-bottom: 1px solid var(--border); }
+.post-card .post-title { font-size: 19px; margin: 0 0 6px; }
+.post-card .post-title a { text-decoration: none; }
+.post-card .post-title a:hover { color: var(--accent); text-decoration: underline; }
+.post-meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; font-family: ui-monospace, Menlo, monospace; }
+.post-summary { margin: 10px 0 0; color: #9a9a9a; font-size: 14.5px; }
+.tag { color: var(--muted); margin-right: 8px; text-decoration: none; }
+.tag:hover { color: var(--accent); }
+.draft-badge {
+  display: inline-block; margin-left: 8px; padding: 1px 8px;
+  font-size: 11px; color: #ffb454; border: 1px solid #574023; border-radius: 3px; vertical-align: middle;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.more { margin-top: 28px; font-size: 14px; font-family: ui-monospace, Menlo, monospace; }
+.empty { color: var(--muted); }
+
+.post .post-title { font-size: 27px; line-height: 1.45; margin: 0 0 10px; }
+.post-content { margin-top: 32px; }
+.post-content h2 { font-size: 20px; margin-top: 40px; }
+.post-content h2::before { content: "## "; color: var(--muted); }
+.post-content h3 { font-size: 17px; }
+.post-content h3::before { content: "### "; color: var(--muted); }
+.post-content img { max-width: 100%; border-radius: 4px; opacity: .92; }
+.post-content blockquote { margin: 20px 0; padding: 2px 20px; color: var(--muted); border-left: 2px solid #333; }
+.post-content code { background: var(--code-bg); padding: 2px 6px; border-radius: 3px; font-size: .88em; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.post-content pre { background: var(--code-bg); border: 1px solid var(--border); padding: 16px 18px; border-radius: 6px; overflow-x: auto; line-height: 1.6; }
+.post-content pre code { background: none; padding: 0; }
+.post-content table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.post-content th, .post-content td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+.post-content hr { border: none; border-top: 1px dashed #333; margin: 36px 0; }
+
+.post-nav { display: flex; justify-content: space-between; gap: 16px; margin-top: 56px; font-size: 13px; font-family: ui-monospace, Menlo, monospace; }
+.post-nav a { text-decoration: none; color: var(--muted); }
+.post-nav a:hover { color: var(--accent); }
+.post-nav .next { margin-left: auto; text-align: right; }
+
+.page-title { font-size: 23px; font-family: ui-monospace, Menlo, monospace; }
+.page-title .count { font-size: 13px; color: var(--muted); font-weight: normal; }
+.archive-year { font-size: 15px; color: var(--muted); margin: 32px 0 8px; font-family: ui-monospace, Menlo, monospace; }
+.archive-list { list-style: none; padding: 0; margin: 0; }
+.archive-list li { display: flex; gap: 16px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 15px; align-items: baseline; }
+.archive-list time { color: var(--muted); font-size: 12.5px; flex: 0 0 88px; font-family: ui-monospace, Menlo, monospace; }
+.archive-list a { text-decoration: none; }
+.archive-list a:hover { text-decoration: underline; }
+
+.site-footer { margin-top: 72px; font-size: 12.5px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+@media (max-width: 480px) { body { padding: 28px 18px 48px; } }

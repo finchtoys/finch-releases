@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="{{site.language}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{post.title}} · {{site.title}}</title>
+<meta name="description" content="{{post.summary}}">
+<meta name="generator" content="{{generator}}">
+<link rel="stylesheet" href="{{base}}style.css">
+</head>
+<body>
+<div class="wrap">
+<header class="banner">
+  <h1 class="site-title"><a href="{{base}}index.html">{{site.title}}</a></h1>
+  <p class="site-desc">{{site.description}}</p>
+</header>
+<nav class="topnav">
+  <a href="{{base}}index.html">网站首页</a>
+  <a href="{{base}}archive.html">日志归档</a>
+  <a href="{{base}}about.html">关于本站</a>
+  <a href="{{base}}rss.xml">订阅 RSS</a>
+</nav>
+<div class="columns">
+  <main class="main-col">
+    <article class="entry">
+      <h2 class="entry-title">{{post.title}}{{#post.draft}}<span class="draft-badge">草稿</span>{{/post.draft}}</h2>
+      <div class="entry-info">发表于 {{post.dateDisplay}}{{#post.hasTags}} · 分类：{{#post.tags}}<a class="tag" href="{{url}}">{{name}}</a> {{/post.tags}}{{/post.hasTags}}</div>
+      <div class="entry-body post-content">{{{post.contentHtml}}}</div>
+    </article>
+    <nav class="post-nav">
+      {{#prev}}<a class="prev" href="{{url}}">« 上一篇：{{title}}</a>{{/prev}}
+      {{#next}}<a class="next" href="{{url}}">下一篇：{{title}} »</a>{{/next}}
+    </nav>
+  </main>
+  <aside class="side-col">
+    <section class="box">
+      <h3>站点信息</h3>
+      <ul>
+        <li>站长：{{site.author}}</li>
+        <li>程序：{{generator}}</li>
+      </ul>
+    </section>
+  </aside>
+</div>
+<footer class="site-footer">
+  <p>© {{site.year}} {{site.author}} · Powered by {{generator}}</p>
+</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="{{site.language}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{site.title}}</title>
+<meta name="description" content="{{site.description}}">
+<meta name="generator" content="{{generator}}">
+<link rel="stylesheet" href="{{base}}style.css">
+<link rel="alternate" type="application/rss+xml" title="{{site.title}}" href="{{base}}rss.xml">
+</head>
+<body>
+<div class="wrap">
+<header class="banner">
+  <h1 class="site-title"><a href="{{base}}index.html">{{site.title}}</a></h1>
+  <p class="site-desc">{{site.description}}</p>
+</header>
+<nav class="topnav">
+  <a href="{{base}}index.html">网站首页</a>
+  <a href="{{base}}archive.html">日志归档</a>
+  <a href="{{base}}about.html">关于本站</a>
+  <a href="{{base}}rss.xml">订阅 RSS</a>
+</nav>
+<div class="columns">
+  <main class="main-col">
+    {{#posts}}
+    <article class="entry">
+      <h2 class="entry-title"><a href="{{url}}">{{title}}</a>{{#draft}}<span class="draft-badge">草稿</span>{{/draft}}</h2>
+      <div class="entry-info">发表于 {{dateDisplay}}{{#hasTags}} · 分类：{{#tags}}<a class="tag" href="{{url}}">{{name}}</a> {{/tags}}{{/hasTags}}</div>
+      <div class="entry-body"><p>{{summary}}</p></div>
+      <div class="entry-foot"><a href="{{url}}">阅读全文 »</a></div>
+    </article>
+    {{/posts}}
+    {{^posts}}<p class="empty">还没有文章，和 Finch 一起写第一篇吧。</p>{{/posts}}
+    {{#hasMore}}<p class="more"><a href="{{archiveUrl}}">查看全部 {{totalCount}} 篇日志 »</a></p>{{/hasMore}}
+  </main>
+  <aside class="side-col">
+    <section class="box">
+      <h3>站点信息</h3>
+      <ul>
+        <li>站长：{{site.author}}</li>
+        <li>日志总数：{{totalCount}} 篇</li>
+        <li>程序：{{generator}}</li>
+      </ul>
+    </section>
+    <section class="box">
+      <h3>最新日志</h3>
+      <ul>
+        {{#posts}}<li><a href="{{url}}">{{title}}</a></li>{{/posts}}
+      </ul>
+    </section>
+    <section class="box">
+      <h3>友情提示</h3>
+      <ul><li>本主题致敬经典 PJBlog 2.x 蓝色双栏布局。</li></ul>
+    </section>
+  </aside>
+</div>
+<footer class="site-footer">
+  <p>© {{site.year}} {{site.author}} · Powered by {{generator}} · <a href="{{base}}rss.xml">RSS</a></p>
+</footer>
+</div>
+</body>
+</html>

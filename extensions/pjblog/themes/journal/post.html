@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="{{site.language}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{post.title}} · {{site.title}}</title>
+<meta name="description" content="{{post.summary}}">
+<meta name="generator" content="{{generator}}">
+<link rel="stylesheet" href="{{base}}style.css">
+<link rel="alternate" type="application/rss+xml" title="{{site.title}}" href="{{base}}rss.xml">
+</head>
+<body>
+<header class="site-header">
+  <h1 class="site-title"><a href="{{base}}index.html">{{site.title}}</a></h1>
+  <nav class="site-nav">
+    <a href="{{base}}index.html">首页</a>
+    <a href="{{base}}archive.html">归档</a>
+    <a href="{{base}}about.html">关于</a>
+    <a href="{{base}}rss.xml">RSS</a>
+  </nav>
+</header>
+<main>
+  <article class="post">
+    <h1 class="post-title">{{post.title}}{{#post.draft}}<span class="draft-badge">草稿</span>{{/post.draft}}</h1>
+    <div class="post-meta">
+      <time>{{post.dateDisplay}}</time>
+      {{#post.hasTags}}<span class="tags">{{#post.tags}}<a class="tag" href="{{url}}">#{{name}}</a>{{/post.tags}}</span>{{/post.hasTags}}
+    </div>
+    <div class="post-content">{{{post.contentHtml}}}</div>
+  </article>
+  <nav class="post-nav">
+    {{#prev}}<a class="prev" href="{{url}}">← {{title}}</a>{{/prev}}
+    {{#next}}<a class="next" href="{{url}}">{{title}} →</a>{{/next}}
+  </nav>
+</main>
+<footer class="site-footer">
+  <p>© {{site.year}} {{site.author}} · Powered by {{generator}}</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="{{site.language}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{site.title}}</title>
+<meta name="description" content="{{site.description}}">
+<meta name="generator" content="{{generator}}">
+<link rel="stylesheet" href="{{base}}style.css">
+<link rel="alternate" type="application/rss+xml" title="{{site.title}}" href="{{base}}rss.xml">
+</head>
+<body>
+<header class="site-header">
+  <h1 class="site-title"><a href="{{base}}index.html">{{site.title}}</a></h1>
+  <p class="site-desc">{{site.description}}</p>
+  <nav class="site-nav">
+    <a href="{{base}}index.html">首页</a>
+    <a href="{{base}}archive.html">归档</a>
+    <a href="{{base}}about.html">关于</a>
+    <a href="{{base}}rss.xml">RSS</a>
+  </nav>
+</header>
+<main>
+  {{#posts}}
+  <article class="post-card">
+    <h2 class="post-title"><a href="{{url}}">{{title}}</a>{{#draft}}<span class="draft-badge">草稿</span>{{/draft}}</h2>
+    <div class="post-meta">
+      <time>{{dateDisplay}}</time>
+      {{#hasTags}}<span class="tags">{{#tags}}<a class="tag" href="{{url}}">#{{name}}</a>{{/tags}}</span>{{/hasTags}}
+    </div>
+    <p class="post-summary">{{summary}}</p>
+  </article>
+  {{/posts}}
+  {{^posts}}<p class="empty">还没有文章，和 Finch 一起写第一篇吧。</p>{{/posts}}
+  {{#hasMore}}<p class="more"><a href="{{archiveUrl}}">查看全部 {{totalCount}} 篇 →</a></p>{{/hasMore}}
+</main>
+<footer class="site-footer">
+  <p>© {{site.year}} {{site.author}} · Powered by {{generator}}</p>
+</footer>
+</body>
+</html>

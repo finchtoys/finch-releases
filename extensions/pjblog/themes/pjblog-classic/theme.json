@@ -1,0 +1,9 @@
+{
+  "id": "pjblog-classic",
+  "name": "经典 PJBlog",
+  "description": "复刻 PJBlog 2.x 经典蓝色双栏布局，致敬老站长时代。",
+  "variables": {
+    "accent": "#1f5aa8",
+    "maxWidth": "960px"
+  }
+}

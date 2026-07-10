@@ -35,6 +35,11 @@
     "description": "通过 OfficeCLI 读取、创建和编辑 Word、Excel、PowerPoint 文件。"
   },
   {
+    "id": "pjblog",
+    "name": "PJBlog For Finch",
+    "description": "和 AI 一起写日志：Markdown 写作、静态博客生成、边写边实时预览、我的博客管理、一键发布到 GitHub Pages。"
+  },
+  {
     "id": "plan-mode",
     "name": "计划模式",
     "description": "为 Finch 对话开启计划模式，先拆解任务再执行。"
