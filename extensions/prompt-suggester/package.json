@@ -38,7 +38,7 @@
     }
   },
   "devDependencies": {
-    "@finch.app/extension-api": "^0.1.2",
+    "@finchtoys/minitool-api": "^0.1.2",
     "typescript": "^5.6.0"
   }
 }

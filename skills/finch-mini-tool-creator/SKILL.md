@@ -5,7 +5,7 @@ description: >
   Invoke this skill whenever the user wants to create a new Finch mini tool,
   extend Finch with custom Agent tools or Composer toolbar buttons, understand
   the finch.d.ts API, debug an existing mini tool, install/deploy/update/remove
-  a mini tool with the official `npx @finch.app/minitools` CLI, publish a
+  a mini tool with the official `npx @finchtoys/minitools` CLI, publish a
   mini tool to npm/the community catalog, package a mini tool for distribution,
   list a mini tool on the official community, or submit a mini tool to
   finch-releases. Trigger on phrases like "write a finch mini tool", "create a
@@ -21,7 +21,7 @@ This skill is the entry point for creating Finch mini tools.
 
 - **Product name:** mini tool
 - **Install directory:** `extensions` (unchanged)
-- **Tech/API surface:** use the published `@finch.app/minitool-api` package for Finch APIs
+- **Tech/API surface:** use the published `@finchtoys/minitool-api` package for Finch APIs
 
 Use this skill as an index first:
 
@@ -49,10 +49,10 @@ my-mini-tool/
 Core rules:
 
 - Export `activate(ctx)` as a named export.
-- Use `import type * as finch from '@finch.app/minitool-api'` for types only.
+- Use `import type * as finch from '@finchtoys/minitool-api'` for types only.
 - Push every `Disposable` into `ctx.subscriptions`.
 - Keep runtime logic in `src/` and compile to `dist/`.
-- Use `npx @finch.app/minitools` for install/update/remove.
+- Use `npx @finchtoys/minitools` for install/update/remove.
 
 If you only need the exact API signatures, skip ahead to **References**.
 
@@ -109,8 +109,8 @@ All runtime capabilities go through `ctx`:
 Recommended flow:
 
 1. Build the mini tool.
-2. Run `npx @finch.app/minitools doctor .`.
-3. Install with `npx @finch.app/minitools add .`.
+2. Run `npx @finchtoys/minitools doctor .`.
+3. Install with `npx @finchtoys/minitools add .`.
 4. Enable it in Finch.
 5. Check logs if activation fails.
 
@@ -120,6 +120,6 @@ Recommended flow:
 
 - `reference/finch.d.ts` — full API reference and type definitions.
 - `reference/README.md` — detailed authoring guide and patterns.
-- Use `@finch.app/minitool-api` in new mini tools; do not point `paths` at a local Finch repo checkout or the user's environment directory.
+- Use `@finchtoys/minitool-api` in new mini tools; do not point `paths` at a local Finch repo checkout or the user's environment directory.
 
 When you need exact fields, method signatures, examples, or edge cases, read the reference files directly.

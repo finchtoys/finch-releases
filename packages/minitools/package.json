@@ -1,5 +1,5 @@
 {
-  "name": "@finch.app/minitools",
+  "name": "@finchtoys/minitools",
   "version": "0.1.9",
   "description": "CLI shim for installing Finch mini tools to the correct location.",
   "type": "module",

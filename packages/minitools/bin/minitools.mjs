@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @finch.app/minitools — install Finch extensions to the correct location.
+ * @finchtoys/minitools — install Finch extensions to the correct location.
  *
  * Zero npm dependencies. npm sources are installed by downloading the registry
  * dist.tarball (.tgz) directly, so third-party install scripts never run.
@@ -19,7 +19,7 @@ const SUPPORTED_MANIFEST_VERSION = 1;
 const EXTENSION_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const KNOWN_EXTENSION_TYPES = new Set(['official', 'community', 'local']);
 const LEGACY_NPM_PACKAGE_RENAMES = new Map([
-  ['@finch.app/mcp-bridge', '@finch.app/mcp-client'],
+  ['@finchtoys/mcp-bridge', '@finchtoys/mcp-client'],
 ]);
 
 function normalizeInstallSource(source) {
@@ -52,7 +52,7 @@ function personalPluginsDir() {
 }
 // Extensions only ever install to the personal (default) or global tier —
 // there is intentionally no project/--cwd scope. (Skills still support a
-// project tier via the separate @finch.app/skills CLI; that's unrelated.)
+// project tier via the separate @finchtoys/skills CLI; that's unrelated.)
 function targetDir(opts) {
   return opts.global ? globalPluginsDir() : personalPluginsDir();
 }
@@ -913,7 +913,7 @@ function parseArgs(argv) {
 }
 
 function help() {
-  console.log(`npx @finch.app/minitools\n\nUsage:\n  add <npm-package|local-path|url.zip|url.tgz> [--global] [--registry <url>]\n  update <id> [--global] [--registry <url>]\n  list [--global]\n  remove <id> [--global]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/  (personal — default)\n  --global   ~/.finch/extensions/                              (global)\n\nRegistry:\n  --registry <url> overrides npm registry for npm package metadata/tarball downloads.\n  If omitted, npm_config_registry is used, then https://registry.npmjs.org.\n\nThere is no project/--cwd scope — extensions only install to personal or global.\n`);
+  console.log(`npx @finchtoys/minitools\n\nUsage:\n  add <npm-package|local-path|url.zip|url.tgz> [--global] [--registry <url>]\n  update <id> [--global] [--registry <url>]\n  list [--global]\n  remove <id> [--global]\n  enable <id>\n  disable <id>\n  where\n  doctor [path]\n\nInstall locations:\n  default     workspace.json#finchHomeDir/.finch/extensions/  (personal — default)\n  --global   ~/.finch/extensions/                              (global)\n\nRegistry:\n  --registry <url> overrides npm registry for npm package metadata/tarball downloads.\n  If omitted, npm_config_registry is used, then https://registry.npmjs.org.\n\nThere is no project/--cwd scope — extensions only install to personal or global.\n`);
 }
 
 (async () => {

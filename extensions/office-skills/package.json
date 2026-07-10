@@ -1,5 +1,5 @@
 {
-  "name": "@finch.app/office-suite",
+  "name": "@finchtoys/office-suite",
   "version": "0.1.0",
   "description": "Office document skills and Composer shortcuts for Finch.",
   "author": {
@@ -43,7 +43,7 @@
     }
   },
   "devDependencies": {
-    "@finch.app/minitool-api": "^0.1.13",
+    "@finchtoys/minitool-api": "^0.1.16",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },

@@ -10,7 +10,7 @@ Run a full pre-publish check:
 
 ```bash
 npm run typecheck          # no TypeScript errors
-npx @finch.app/minitools doctor .   # manifest is valid
+npx @finchtoys/minitools doctor .   # manifest is valid
 npm run build              # dist/ is up to date
 ```
 
@@ -83,13 +83,13 @@ npm publish --access public
 After publishing, users can install your mini tool with:
 
 ```bash
-npx @finch.app/minitools add <your-package-name>
+npx @finchtoys/minitools add <your-package-name>
 ```
 
 For example:
 
 ```bash
-npx @finch.app/minitools add @yourscope/finch-my-tool
+npx @finchtoys/minitools add @yourscope/finch-my-tool
 ```
 
 ### Version updates
@@ -102,7 +102,7 @@ npm publish --access public
 Users update with:
 
 ```bash
-npx @finch.app/minitools update <id>
+npx @finchtoys/minitools update <id>
 ```
 
 ---
@@ -128,7 +128,7 @@ npx @finch.app/minitools update <id>
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "@finch.app/minitool-api": "latest",
+    "@finchtoys/minitool-api": "latest",
     "typescript": "^5.0.0"
   },
   "finch": {
@@ -147,7 +147,7 @@ npx @finch.app/minitools update <id>
 Key points:
 
 - `prepublishOnly` runs the build automatically before every `npm publish`.
-- `devDependencies` only — `@finch.app/minitool-api` is types-only and is injected by the Finch runtime; it must **not** be in `dependencies`.
+- `devDependencies` only — `@finchtoys/minitool-api` is types-only and is injected by the Finch runtime; it must **not** be in `dependencies`.
 - `name` and `finch.id` serve different purposes: `name` is the npm package identifier, `finch.id` is the stable in-app identifier. Keep `finch.id` stable after the first release.
 
 ---
@@ -156,7 +156,7 @@ Key points:
 
 To have your mini tool appear in the Finch community catalog:
 
-1. Make sure it is already published to npm and installable via `npx @finch.app/minitools add <package>`.
+1. Make sure it is already published to npm and installable via `npx @finchtoys/minitools add <package>`.
 2. Include an `icon.png` at the package root. It is required for community listing, must be a PNG between **128×128** and **300×300** pixels (inclusive), and must be included in the published npm tarball.
 3. Open an issue on the Finch releases repository:
 
@@ -197,6 +197,6 @@ The Finch team will review and merge the entry into the community index. Once li
 [ ] `icon.png` is at the package root and included in the npm tarball
 [ ] `icon.png` is PNG and between 128×128 and 300×300 pixels (inclusive) for community listing
 [ ] npm publish --access public succeeded
-[ ] test install: npx @finch.app/minitools add <package>
+[ ] test install: npx @finchtoys/minitools add <package>
 [ ] (optional) open issue on finch-releases for community listing
 ```

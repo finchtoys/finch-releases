@@ -1,4 +1,4 @@
-# @finch.app/minitool-api
+# @finchtoys/minitool-api
 
 Type definitions for [Finch](https://finchwork.app) mini tool authors.
 
@@ -9,7 +9,7 @@ All runtime APIs are accessed through the `ctx` object injected at activation; t
 ## Installation
 
 ```bash
-npm install --save-dev @finch.app/minitool-api
+npm install --save-dev @finchtoys/minitool-api
 ```
 
 ## Quick Start
@@ -50,7 +50,7 @@ Add a path alias so TypeScript resolves `'finch'` to this package's declarations
   "compilerOptions": {
     "moduleResolution": "Bundler",
     "paths": {
-      "finch": ["./node_modules/@finch.app/minitool-api/finch.d.ts"]
+      "finch": ["./node_modules/@finchtoys/minitool-api/finch.d.ts"]
     }
   }
 }

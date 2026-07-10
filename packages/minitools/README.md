@@ -1,4 +1,4 @@
-# @finch.app/minitools
+# @finchtoys/minitools
 
 CLI shim for installing Finch mini tools to the correct location.
 
@@ -6,31 +6,31 @@ CLI shim for installing Finch mini tools to the correct location.
 
 ```bash
 # Install from npm
-npx @finch.app/minitools add @scope/finch-mini-tool-example
+npx @finchtoys/minitools add @scope/finch-mini-tool-example
 
 # Install a local mini tool directory
-npx @finch.app/minitools add ./my-tool
+npx @finchtoys/minitools add ./my-tool
 
 # Install from a zip file (local or URL)
-npx @finch.app/minitools add ./my-tool.zip
-npx @finch.app/minitools add https://github.com/user/repo/archive/refs/heads/main.zip
+npx @finchtoys/minitools add ./my-tool.zip
+npx @finchtoys/minitools add https://github.com/user/repo/archive/refs/heads/main.zip
 
 # Install globally (~/.finch/extensions/)
 # Default installs go to the personal Finch workspace extension directory.
-npx @finch.app/minitools add @finch.app/mcp-client --global
+npx @finchtoys/minitools add @finchtoys/mcp-client --global
 
 # List installed mini tools (id, version, enabled/disabled, name, path)
-npx @finch.app/minitools list
-npx @finch.app/minitools list --global
+npx @finchtoys/minitools list
+npx @finchtoys/minitools list --global
 
 # Remove a mini tool
-npx @finch.app/minitools remove mcp-client
+npx @finchtoys/minitools remove mcp-client
 
 # Show install paths
-npx @finch.app/minitools where
+npx @finchtoys/minitools where
 
 # Validate a mini tool package
-npx @finch.app/minitools doctor ./my-tool
+npx @finchtoys/minitools doctor ./my-tool
 ```
 
 ## Install locations

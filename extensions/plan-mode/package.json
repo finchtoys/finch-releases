@@ -1,5 +1,5 @@
 {
-  "name": "@finch.app/plan-mode",
+  "name": "finch-plan-mode",
   "version": "0.1.8",
   "description": "Planning mode for Finch conversations.",
   "author": {
@@ -59,7 +59,7 @@
     }
   },
   "devDependencies": {
-    "@finch.app/minitool-api": "^0.1.16",
+    "@finchtoys/minitool-api": "^0.1.16",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   }

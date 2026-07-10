@@ -1,5 +1,5 @@
 {
-  "name": "@finch.app/agently-mail",
+  "name": "finch-agently-mail",
   "version": "0.1.0",
   "description": "Connect QQ Agently Mail through its official CLI and MCP tools.",
   "author": { "name": "Finch Team", "url": "https://finchwork.app" },
@@ -58,7 +58,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
-    "@finch.app/minitool-api": "^0.1.13",
+    "@finchtoys/minitool-api": "^0.1.16",
     "lucide-static": "^1.23.0",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"

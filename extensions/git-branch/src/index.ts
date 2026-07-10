@@ -1,5 +1,5 @@
 /**
- * @finch.app/ext-git-branch v0.2.1
+ * @finchtoys/ext-git-branch v0.2.1
  *
  * Composer toolbar button for Git branch management:
  * - Branch switch with uncommitted-changes guard (ModalDialog)

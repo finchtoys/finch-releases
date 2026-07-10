@@ -7,7 +7,7 @@ const extensionRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = resolve(extensionRoot, '../..');
 const adapterRoot = resolve(repoRoot, 'packages/agently-mail-mcp');
 
-const buildAdapter = spawnSync('npm', ['run', 'build', '--workspace=@finch.app/agently-mail-mcp'], {
+const buildAdapter = spawnSync('npm', ['run', 'build', '--workspace=@finchtoys/agently-mail-mcp'], {
   cwd: repoRoot,
   stdio: 'inherit',
   shell: process.platform === 'win32',

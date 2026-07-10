@@ -19,4 +19,4 @@ Mail content is treated as untrusted external input. Sending, replying, and forw
 
 ## Development
 
-Run `npm run build`, then install this extension with `npx @finch.app/minitools add .`. The build copies the MCP Adapter into `dist/mcp-server.js`, so local installation works without publishing first.
+Run `npm run build`, then install this extension with `npx @finchtoys/minitools add .`. The build copies the MCP Adapter into `dist/mcp-server.js`, so local installation works without publishing first.

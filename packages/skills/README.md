@@ -1,4 +1,4 @@
-# @finch.app/skills
+# @finchtoys/skills
 
 CLI shim for installing [Finch](https://github.com/puterjam/finch) skills to the correct location — no matter which tool you used to get them.
 
@@ -10,49 +10,49 @@ Many skill packages are distributed as directories with a `SKILL.md` file. Tools
 
 ```bash
 # GitHub shorthand
-npx @finch.app/skills add owner/repo
+npx @finchtoys/skills add owner/repo
 
 # Full GitHub URL
-npx @finch.app/skills add https://github.com/owner/repo
+npx @finchtoys/skills add https://github.com/owner/repo
 
 # Direct path to a skill inside a repo
-npx @finch.app/skills add https://github.com/owner/repo/tree/main/skills/my-skill
+npx @finchtoys/skills add https://github.com/owner/repo/tree/main/skills/my-skill
 
 # GitLab URL
-npx @finch.app/skills add https://gitlab.com/org/repo
+npx @finchtoys/skills add https://gitlab.com/org/repo
 
 # SSH git URL
-npx @finch.app/skills add git@github.com:owner/repo.git
+npx @finchtoys/skills add git@github.com:owner/repo.git
 
 # Local path
-npx @finch.app/skills add ./my-local-skill
+npx @finchtoys/skills add ./my-local-skill
 
 # Install to the current project
-npx @finch.app/skills add owner/repo --cwd
+npx @finchtoys/skills add owner/repo --cwd
 
 # Install to a specific project path
-npx @finch.app/skills add owner/repo --cwd /path/to/project
+npx @finchtoys/skills add owner/repo --cwd /path/to/project
 
 # Install globally (~/.finch/skills/)
-npx @finch.app/skills add owner/repo --global
+npx @finchtoys/skills add owner/repo --global
 
 # Pick one skill by name when a repo has several
-npx @finch.app/skills add owner/repo --skill my-skill
+npx @finchtoys/skills add owner/repo --skill my-skill
 
 # List
-npx @finch.app/skills list [--global]
+npx @finchtoys/skills list [--global]
 
 # Remove one skill
-npx @finch.app/skills remove my-skill [--global]
+npx @finchtoys/skills remove my-skill [--global]
 
 # Remove multiple skills at once
-npx @finch.app/skills remove frontend-design web-design-guidelines
+npx @finchtoys/skills remove frontend-design web-design-guidelines
 
 # 'rm' is an alias for remove
-npx @finch.app/skills rm my-skill
+npx @finchtoys/skills rm my-skill
 
 # Show install paths
-npx @finch.app/skills where
+npx @finchtoys/skills where
 ```
 
 ## Install locations

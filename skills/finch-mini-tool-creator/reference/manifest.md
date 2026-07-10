@@ -96,7 +96,7 @@ Start with the least privileged setting.
 
 - Personal install path: `<finchHome>/.finch/extensions/<id>/`
 - Global install path: `~/.finch/extensions/<id>/`
-- Use `npx @finch.app/extensions add|update|remove|list|doctor`
+- Use `npx @finchtoys/minitools add|update|remove|list|doctor`
 - Do not use a project-level install path
 - Publish as a normal npm package if you want `add <package-name>` support
 
@@ -124,6 +124,6 @@ Before shipping:
 
 1. Confirm the manifest id and install path.
 2. Verify the compiled entry exists.
-3. Run `npx @finch.app/extensions doctor .`.
+3. Run `npx @finchtoys/minitools doctor .`.
 4. Install with the official CLI.
 5. Enable the mini tool in Finch.

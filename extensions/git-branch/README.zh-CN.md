@@ -39,5 +39,5 @@ npm run build
 本地安装或更新：
 
 ```bash
-npx @finch.app/minitools update git-branch
+npx @finchtoys/minitools update git-branch
 ```

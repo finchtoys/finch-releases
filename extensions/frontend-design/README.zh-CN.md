@@ -19,5 +19,5 @@
 ```bash
 npm install
 npm run build
-npx @finch.app/minitools doctor .
+npx @finchtoys/minitools doctor .
 ```

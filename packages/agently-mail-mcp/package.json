@@ -1,5 +1,5 @@
 {
-  "name": "@finch.app/agently-mail-mcp",
+  "name": "@finchtoys/agently-mail-mcp",
   "version": "0.1.0",
   "description": "MCP adapter for Tencent QQ Agently Mail CLI.",
   "license": "MIT",

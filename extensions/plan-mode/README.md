@@ -18,7 +18,7 @@ A Finch mini tool that adds a **Plan Mode** button to the Composer toolbar. When
 ## Install
 
 ```bash
-npx @finch.app/minitools add @finch.app/plan-mode
+npx @finchtoys/minitools add @finchtoys/plan-mode
 ```
 
 ---
@@ -39,5 +39,5 @@ npx @finch.app/minitools add @finch.app/plan-mode
 ## 安装
 
 ```bash
-npx @finch.app/minitools add @finch.app/plan-mode
+npx @finchtoys/minitools add @finchtoys/plan-mode
 ```

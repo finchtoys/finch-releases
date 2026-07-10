@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @finch.app/skills — CLI shim that installs Finch skills to the correct location.
+ * @finchtoys/skills — CLI shim that installs Finch skills to the correct location.
  *
  * Zero npm dependencies — only Node built-ins.
  */
@@ -522,7 +522,7 @@ async function cmdUpdate(names, opts) {
 
   if (entries.length === 0) {
     console.log("Nothing to update — no tracked skills found.");
-    console.log("(Skills installed without @finch.app/skills can't be auto-updated.)");
+    console.log("(Skills installed without @finchtoys/skills can't be auto-updated.)");
     return;
   }
 
@@ -612,7 +612,7 @@ function cmdWhere() {
 
 function printUsage() {
   console.log(`
-npx @finch.app/skills — Install Finch skills from anywhere
+npx @finchtoys/skills — Install Finch skills from anywhere
 
 Usage:
   add owner/repo                                  GitHub shorthand (downloads archive)

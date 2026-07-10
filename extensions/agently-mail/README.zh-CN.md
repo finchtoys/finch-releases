@@ -19,4 +19,4 @@
 
 ## 开发
 
-执行 `npm run build`，再使用 `npx @finch.app/minitools add .` 安装扩展。构建会将 MCP Adapter 复制至 `dist/mcp-server.js`，无需先发布即可本地验证。
+执行 `npm run build`，再使用 `npx @finchtoys/minitools add .` 安装扩展。构建会将 MCP Adapter 复制至 `dist/mcp-server.js`，无需先发布即可本地验证。

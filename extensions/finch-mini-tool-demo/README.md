@@ -37,9 +37,9 @@ npm run build
 Install or update locally:
 
 ```bash
-npx @finch.app/extensions add .
+npx @finchtoys/extensions add .
 # or update an existing install
-npx @finch.app/extensions update mini-tool-demo
+npx @finchtoys/extensions update mini-tool-demo
 ```
 
 ---
@@ -83,7 +83,7 @@ npm run build
 本地安装或更新：
 
 ```bash
-npx @finch.app/minitools add @finch.app/mini-tool-demo
+npx @finchtoys/minitools add @finchtoys/mini-tool-demo
 # 或更新已有安装
-npx @finch.app/minitools update @finch.app/mini-tool-demo
+npx @finchtoys/minitools update @finchtoys/mini-tool-demo
 ```

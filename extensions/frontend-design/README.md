@@ -19,5 +19,5 @@ The bundled `skills/frontend-design/` content is included unmodified and is lice
 ```bash
 npm install
 npm run build
-npx @finch.app/minitools doctor .
+npx @finchtoys/minitools doctor .
 ```

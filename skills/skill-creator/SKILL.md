@@ -44,6 +44,26 @@ It's OK to briefly explain terms if you're in doubt, and feel free to clarify te
 
 ## Creating a skill
 
+### Choose the Finch installation scope
+
+Before creating a new Skill, decide where it belongs. Finch discovers a Skill only when its directory follows one of these layouts:
+
+| Scope | Path | Use when |
+| --- | --- | --- |
+| Project / Space | `<cwd>/.finch/skills/<skill-name>/SKILL.md` | The Skill belongs to the current project or Space. This is the default for new Skills. |
+| Personal Finch home | `<finchHomeDir>/.finch/skills/<skill-name>/SKILL.md` | The Skill is a reusable personal workflow across the user's Finch home sessions. |
+| Global | `~/.finch/skills/<skill-name>/SKILL.md` | The Skill should be available to every Finch session on this machine. |
+
+Keep `SKILL.md` directly inside the named Skill folder; do not place it directly in `.finch/skills/`. If the same name exists in more than one location, Finch uses the highest-priority copy: current Space or authorized directory, current project, Finch home, then global. Create project-specific Skills in `<cwd>/.finch/skills/` unless the user explicitly needs a broader scope.
+
+When installing an existing package instead of authoring files directly, use the official CLI:
+
+```bash
+npx @finchtoys/skills add <source>          # Finch home (default)
+npx @finchtoys/skills add <source> --cwd    # current project / Space
+npx @finchtoys/skills add <source> --global # machine-wide
+```
+
 ### Capture Intent
 
 Start by understanding the user's intent. The current conversation might already contain a workflow the user wants to capture (e.g., they say "turn this into a skill"). If so, extract answers from the conversation history first — the tools used, the sequence of steps, corrections the user made, input/output formats observed. The user may need to fill the gaps, and should confirm before proceeding to the next step.

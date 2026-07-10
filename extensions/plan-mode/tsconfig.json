@@ -11,7 +11,7 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "finch": ["./node_modules/@finch.app/minitool-api/finch.d.ts"]
+      "finch": ["./node_modules/@finchtoys/minitool-api/finch.d.ts"]
     }
   },
   "include": ["src"]

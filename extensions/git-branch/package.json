@@ -1,5 +1,5 @@
 {
-  "name": "@finch.app/git-branch",
+  "name": "finch-git-branch",
   "version": "0.2.8",
   "description": "Git Branch Manager for Finch Composer toolbar.",
   "author": {
@@ -58,7 +58,7 @@
     }
   },
   "devDependencies": {
-    "@finch.app/minitool-api": "^0.1.13",
+    "@finchtoys/minitool-api": "^0.1.16",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },

@@ -24,5 +24,5 @@ Enable the mini tool, then either ask Finch about an Office file directly or cho
 ```bash
 npm install
 npm run build
-npx @finch.app/minitools doctor .
+npx @finchtoys/minitools doctor .
 ```

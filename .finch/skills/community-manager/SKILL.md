@@ -36,7 +36,7 @@ description: >
   "author": "Finch Team",                   // 作者
   "description": "一句话描述",               // 英文描述
   "repo": "finchtoys/finch-releases",       // GitHub owner/repo
-  "npm": "@finch.app/mcp-bridge",           // (可选) npm 包名，支持一键安装
+  "npm": "@finchtoys/mcp-bridge",           // (可选) npm 包名，支持一键安装
   "extensionType": "official",              // (可选) "official" | "community"，默认 "community"
   "installScope": "global",                 // (可选) "global" | "local"
   "categories": ["developer"],               // 分类标签

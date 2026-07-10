@@ -1,6 +1,6 @@
 {
   "name": "finch-tavily-search",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Tavily Search MCP extension for Finch.",
   "author": {
     "name": "Finch Team",
@@ -158,7 +158,7 @@
     }
   },
   "devDependencies": {
-    "@finch.app/minitool-api": "^0.1.6",
+    "@finchtoys/minitool-api": "^0.1.16",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },

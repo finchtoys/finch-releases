@@ -5,7 +5,7 @@ This is the detailed reference area for Finch mini tools. The main guide should 
 ## Current reference files
 
 - [`finch.d.ts`](./finch.d.ts) — full type definitions and JSDoc annotations; the source of truth for the API
-- New mini tools should import types from `@finch.app/minitool-api`, not from a local Finch repo checkout or an environment-specific path.
+- New mini tools should import types from `@finchtoys/minitool-api`, not from a local Finch repo checkout or an environment-specific path.
 - [`manifest.md`](./manifest.md) — manifest authoring, permissions, install, publish, version gating
 - [`tools.md`](./tools.md) — Agent tools, schema, execution context, forms, risk levels
 - [`composer-actions.md`](./composer-actions.md) — Composer buttons, menu behavior, grouping, submenus
