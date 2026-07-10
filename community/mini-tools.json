@@ -56,6 +56,20 @@
     "featured": true
   },
   {
+    "id": "pp-ocrv6",
+    "name": "PP-OCRv6",
+    "author": "JoeHe",
+    "description": "Extract text from images and scanned PDFs using PP-OCRv6 via Python PaddleOCR — optimized for Chinese and English text.",
+    "repo": "joehe71/pp-ocrv6",
+    "npm": "@joehe71/pp-ocrv6",
+    "version": "0.1.0",
+    "extensionType": "community",
+    "categories": [
+      "productivity",
+      "research"
+    ]
+  },
+  {
     "id": "tavily-search",
     "name": "Tavily Search",
     "author": "Finch Team",
