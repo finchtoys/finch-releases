@@ -1,5 +1,17 @@
 [
   {
+    "id": "browser-tools",
+    "name": "Browser Tools",
+    "author": "JoeHe",
+    "description": "Browser automation tools for Finch — navigate, click, fill forms, take screenshots, debug, and more. Powered by Chrome DevTools MCP (Google).",
+    "repo": "joehe71/browser-tools",
+    "npm": "@joehe71/browser-tools",
+    "extensionType": "community",
+    "categories": [
+      "developer"
+    ]
+  },
+  {
     "id": "frontend-design",
     "name": "Frontend Design",
     "author": "Finch Team",
