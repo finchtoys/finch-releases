@@ -1,0 +1,51 @@
+{
+  "name": "@finch.app/office-suite",
+  "version": "0.1.0",
+  "description": "Office document skills and Composer shortcuts for Finch.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/office-suite"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "office-suite",
+    "name": "Office Suite",
+    "description": "Create, edit, analyze, and convert Word, PDF, PowerPoint, and Excel files with bundled document skills.",
+    "systemPrompt": "When the user asks to create, read, edit, analyze, convert, or otherwise process .docx, .pdf, .pptx, .xlsx, .xlsm, .csv, or .tsv files, use the matching bundled Office Suite skill. Use the Office Suite Composer action to help the user start a file task.",
+    "main": "dist/index.js",
+    "activationEvents": ["onStartup"],
+    "extensionType": "official",
+    "categories": ["productivity"],
+    "contributes": {
+      "skills": true,
+      "composerActions": [{
+        "id": "office-suite",
+        "icon": "Files",
+        "tooltip": "Office Suite"
+      }]
+    },
+    "permissions": {
+      "filesystem": "write",
+      "network": false,
+      "shell": true
+    }
+  },
+  "devDependencies": {
+    "@finch.app/minitool-api": "^0.1.13",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  },
+  "files": ["dist/", "i18n/", "skills/", "README.md", "README.zh-CN.md"]
+}

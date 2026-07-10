@@ -224,11 +224,12 @@ def cmd_remove(reg_type, eid):
     en_data, zh_data = load_both(reg_type)
 
     en_before = len(en_data)
+    zh_before = len(zh_data)
     en_data = [e for e in en_data if e["id"] != eid]
     zh_data = [e for e in zh_data if e["id"] != eid]
 
-    if len(en_data) == en_before:
-        print(f"ERROR: Entry '{eid}' not found in {EN_FILE[reg_type]}")
+    if len(en_data) == en_before and len(zh_data) == zh_before:
+        print(f"ERROR: Entry '{eid}' not found in {EN_FILE[reg_type]} or {ZH_FILE[reg_type]}")
         sys.exit(1)
 
     save_both(reg_type, en_data, zh_data)
@@ -247,7 +248,7 @@ def main():
         print(f"ERROR: Type must be 'extension', 'mini-tool', or 'skill', got '{reg_type}'")
         sys.exit(1)
 
-    if cmd in ("add", "update"):
+    if cmd == "add":
         if len(sys.argv) < 4:
             print(f"ERROR: '{cmd}' requires JSON args")
             sys.exit(1)
@@ -256,16 +257,18 @@ def main():
         except json.JSONDecodeError as e:
             print(f"ERROR: Invalid JSON: {e}")
             sys.exit(1)
-
-        if cmd == "add":
-            cmd_add(reg_type, args)
-        else:
-            eid = sys.argv[3] if len(sys.argv) >= 4 else ""
-            if cmd == "update":
-                if len(sys.argv) < 5:
-                    print(f"ERROR: 'update' requires id and JSON args")
-                    sys.exit(1)
-                cmd_update(reg_type, sys.argv[3], json.loads(sys.argv[4]))
+        cmd_add(reg_type, args)
+    elif cmd == "update":
+        if len(sys.argv) < 5:
+            print(f"ERROR: 'update' requires id and JSON args")
+            sys.exit(1)
+        eid = sys.argv[3]
+        try:
+            args = json.loads(sys.argv[4])
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Invalid JSON: {e}")
+            sys.exit(1)
+        cmd_update(reg_type, eid, args)
 
     elif cmd in ("deprecate", "undeprecate"):
         if len(sys.argv) < 4:

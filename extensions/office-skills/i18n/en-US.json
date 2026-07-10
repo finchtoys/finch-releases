@@ -1,0 +1,17 @@
+{
+  "name": "Office Suite",
+  "description": "Create, edit, analyze, and convert Word, PDF, PowerPoint, and Excel files with bundled document skills.",
+  "systemPrompt": "When the user asks to create, read, edit, analyze, convert, or otherwise process .docx, .pdf, .pptx, .xlsx, .xlsm, .csv, or .tsv files, use the matching bundled Office Suite skill. Use the Office Suite Composer action to help the user start a file task.",
+  "action.word.label": "Word document",
+  "action.word.description": "Create, read, or edit a .docx file",
+  "action.word.prompt": "Help me create, read, or edit a Word (.docx) document.",
+  "action.pdf.label": "PDF document",
+  "action.pdf.description": "Read, convert, merge, split, or edit a PDF",
+  "action.pdf.prompt": "Help me process a PDF: read, extract, convert, merge, split, or edit it.",
+  "action.slides.label": "Presentation",
+  "action.slides.description": "Create, read, or edit a .pptx presentation",
+  "action.slides.prompt": "Help me create, read, or edit a PowerPoint (.pptx) presentation.",
+  "action.spreadsheet.label": "Spreadsheet",
+  "action.spreadsheet.description": "Create, analyze, or edit Excel and CSV files",
+  "action.spreadsheet.prompt": "Help me create, analyze, or edit an Excel spreadsheet (.xlsx, .xlsm, .csv, or .tsv)."
+}

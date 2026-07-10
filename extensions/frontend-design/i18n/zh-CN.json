@@ -1,0 +1,11 @@
+{
+  "name": "网页设计",
+  "description": "通过内嵌设计技能创建具有鲜明风格、可用于生产的前端界面。",
+  "systemPrompt": "当用户需要创建或美化网页、网站、前端组件、仪表盘、React 界面、HTML/CSS 布局或视觉 UI 时，使用内嵌的 frontend-design 技能，产出具有鲜明风格、可用于生产的结果。",
+  "composerActions": {
+    "frontend-design": { "tooltip": "网页设计" }
+  },
+  "action.design.label": "设计界面",
+  "action.design.description": "发起具有鲜明风格的前端设计任务",
+  "action.design.prompt": "帮我设计并实现一个具有鲜明风格、可用于生产的前端界面。请先确定清晰的美学方向，再以精致的字体、色彩、布局、动效和无障碍设计实现可运行代码。"
+}

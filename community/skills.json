@@ -1,10 +1,46 @@
 [
   {
+    "id": "algorithmic-art",
+    "name": "Algorithmic Art",
+    "author": "Anthropic",
+    "description": "Creating algorithmic art using p5.js with seeded randomness and interactive parameter exploration. Use when users request creating art using code, generative art, flow fields, or particle systems.",
+    "repo": "anthropics/skills",
+    "installScope": "global",
+    "categories": [
+      "creative"
+    ],
+    "featured": false
+  },
+  {
+    "id": "brand-guidelines",
+    "name": "Brand Guidelines",
+    "author": "Anthropic",
+    "description": "Apply Anthropic official brand colors and typography to artifacts that benefit from a consistent look-and-feel. Use when brand colors, style guidelines, or visual formatting apply.",
+    "repo": "anthropics/skills",
+    "installScope": "global",
+    "categories": [
+      "creative"
+    ],
+    "featured": false
+  },
+  {
+    "id": "canvas-design",
+    "name": "Canvas Design",
+    "author": "Anthropic",
+    "description": "Create beautiful visual art in .png and .pdf documents using design philosophy. Use when users ask to create a poster, piece of art, design, or other static piece.",
+    "repo": "anthropics/skills",
+    "installScope": "global",
+    "categories": [
+      "creative"
+    ],
+    "featured": false
+  },
+  {
     "id": "docx",
     "name": "Document",
     "author": "Finch Team",
     "description": "Create, read, edit, and manipulate Word documents. Use for any .docx task: reports, memos, letters, templates, tracked changes, or converting content into a polished Word document.",
-    "repo": "finchtoys/finch-releases",
+    "repo": "anthropics/skills",
     "categories": [
       "productivity",
       "creative",
@@ -37,23 +73,23 @@
     "featured": true
   },
   {
-    "id": "frontend-design",
-    "name": "Frontend Design",
-    "author": "Finch Team",
-    "description": "Create distinctive, production-grade frontend interfaces with high design quality — websites, landing pages, dashboards, React components, HTML/CSS layouts.",
-    "repo": "finchtoys/finch-releases",
+    "id": "internal-comms",
+    "name": "Internal Comms",
+    "author": "Anthropic",
+    "description": "A set of resources for writing internal communications, including 3P updates, company newsletters, FAQ responses, status reports, leadership updates, project updates, and incident reports.",
+    "repo": "anthropics/skills",
+    "installScope": "global",
     "categories": [
-      "developer",
-      "creative"
+      "productivity"
     ],
-    "featured": true
+    "featured": false
   },
   {
     "id": "pdf",
     "name": "PDF",
     "author": "Finch Team",
     "description": "Work with PDF files: read, extract text/tables, merge, split, rotate pages, add watermarks, fill forms, encrypt/decrypt, extract images, and OCR scanned PDFs.",
-    "repo": "finchtoys/finch-releases",
+    "repo": "anthropics/skills",
     "categories": [
       "productivity",
       "research"
@@ -65,7 +101,7 @@
     "name": "Presentation",
     "author": "Finch Team",
     "description": "Work with PowerPoint files: create slide decks, pitch decks, and presentations; read, edit, combine, or split .pptx files; work with templates, layouts, and speaker notes.",
-    "repo": "finchtoys/finch-releases",
+    "repo": "anthropics/skills",
     "categories": [
       "creative",
       "education"
@@ -77,7 +113,7 @@
     "name": "Skill Creator",
     "author": "Finch Team",
     "description": "Create, edit, evaluate, and optimize Finch skills. Includes built-in evals, variance analysis, and tools to benchmark and improve skill trigger accuracy.",
-    "repo": "finchtoys/finch-releases",
+    "repo": "anthropics/skills",
     "installScope": "global",
     "categories": [
       "developer"
@@ -89,7 +125,7 @@
     "name": "Spreadsheet",
     "author": "Finch Team",
     "description": "Work with spreadsheet files (.xlsx, .xlsm, .csv, .tsv): read, edit, add columns, compute formulas, format, chart, clean messy data, or create new spreadsheets from scratch.",
-    "repo": "finchtoys/finch-releases",
+    "repo": "anthropics/skills",
     "categories": [
       "productivity",
       "research",

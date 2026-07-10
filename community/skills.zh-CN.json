@@ -1,5 +1,20 @@
 [
   {
+    "id": "algorithmic-art",
+    "name": "算法艺术",
+    "description": "使用 p5.js 创建算法艺术，支持种子随机数和交互参数探索。适用于代码艺术、生成艺术、流场或粒子系统等创作。"
+  },
+  {
+    "id": "brand-guidelines",
+    "name": "品牌规范",
+    "description": "将 Anthropic 官方品牌颜色和字体应用于需要统一视觉风格的文档或工件。适用于品牌颜色、样式指南或视觉格式化场景。"
+  },
+  {
+    "id": "canvas-design",
+    "name": "画布设计",
+    "description": "基于设计哲学创建 .png 和 .pdf 静态视觉艺术作品。适用于海报、艺术品、设计稿等静态视觉创作。"
+  },
+  {
     "id": "docx",
     "name": "Word 文档",
     "description": "创建、读取、编辑和处理 Word 文档。适用于 .docx 报告、备忘录、信件、模板、修订记录和文档润色转换。"
@@ -15,9 +30,9 @@
     "description": "帮助你从开放的 Agent skills 生态中发现和安装 skills。"
   },
   {
-    "id": "frontend-design",
-    "name": "前端设计",
-    "description": "创建有辨识度、接近生产级的高质量前端界面，包括网站、落地页、仪表盘、React 组件和 HTML/CSS 布局。"
+    "id": "internal-comms",
+    "name": "内部沟通",
+    "description": "帮助撰写各类内部沟通文档，包括 3P 更新、公司简报、FAQ、状态报告、领导层更新、项目更新和事故报告。"
   },
   {
     "id": "pdf",

@@ -1,0 +1,11 @@
+{
+  "name": "Frontend Design",
+  "description": "Create distinctive, production-grade frontend interfaces with a bundled design skill.",
+  "systemPrompt": "When the user asks to create or improve a web page, website, frontend component, dashboard, React interface, HTML/CSS layout, or visual UI, use the bundled frontend-design skill to produce distinctive, production-grade results.",
+  "composerActions": {
+    "frontend-design": { "tooltip": "Frontend Design" }
+  },
+  "action.design.label": "Design an interface",
+  "action.design.description": "Start a distinctive frontend design task",
+  "action.design.prompt": "Help me design and implement a distinctive, production-grade frontend interface. First establish a clear aesthetic direction, then create working code with refined typography, color, layout, motion, and accessibility."
+}

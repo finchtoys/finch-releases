@@ -1,5 +1,10 @@
 [
   {
+    "id": "frontend-design",
+    "name": "网页设计",
+    "description": "通过内嵌设计技能创建具有鲜明风格、可用于生产的前端界面。"
+  },
+  {
     "id": "git-branch",
     "name": "Git 分支",
     "description": "在对话框里管理 Git 分支的小工具。"

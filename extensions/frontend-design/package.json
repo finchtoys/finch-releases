@@ -1,0 +1,51 @@
+{
+  "name": "@finch.app/frontend-design",
+  "version": "0.1.0",
+  "description": "Frontend design skill and Composer shortcut for Finch.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/frontend-design"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "frontend-design",
+    "name": "Frontend Design",
+    "description": "Create distinctive, production-grade frontend interfaces with a bundled design skill.",
+    "systemPrompt": "When the user asks to create or improve a web page, website, frontend component, dashboard, React interface, HTML/CSS layout, or visual UI, use the bundled frontend-design skill to produce distinctive, production-grade results.",
+    "main": "dist/index.js",
+    "activationEvents": ["onStartup"],
+    "extensionType": "official",
+    "categories": ["creative", "developer"],
+    "contributes": {
+      "skills": true,
+      "composerActions": [{
+        "id": "frontend-design",
+        "icon": "Palette",
+        "tooltip": "Frontend Design"
+      }]
+    },
+    "permissions": {
+      "filesystem": "none",
+      "network": false,
+      "shell": false
+    }
+  },
+  "devDependencies": {
+    "@finch.app/minitool-api": "^0.1.13",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  },
+  "files": ["dist/", "i18n/", "skills/", "README.md", "README.zh-CN.md"]
+}

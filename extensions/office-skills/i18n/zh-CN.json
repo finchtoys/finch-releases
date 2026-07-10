@@ -1,0 +1,17 @@
+{
+  "name": "Office 办公套件",
+  "description": "通过内嵌文档技能创建、编辑、分析和转换 Word、PDF、PowerPoint 与 Excel 文件。",
+  "systemPrompt": "当用户需要创建、读取、编辑、分析、转换或处理 .docx、.pdf、.pptx、.xlsx、.xlsm、.csv、.tsv 文件时，使用 Office 办公套件中相应的内嵌技能；可通过 Office 办公套件的 Composer 操作快速发起文件任务。",
+  "action.word.label": "Word 文档",
+  "action.word.description": "创建、读取或编辑 .docx 文件",
+  "action.word.prompt": "帮我创建、读取或编辑一个 Word（.docx）文档。",
+  "action.pdf.label": "PDF 文档",
+  "action.pdf.description": "读取、转换、合并、拆分或编辑 PDF",
+  "action.pdf.prompt": "帮我处理一个 PDF：读取、提取、转换、合并、拆分或编辑。",
+  "action.slides.label": "演示文稿",
+  "action.slides.description": "创建、读取或编辑 .pptx 演示文稿",
+  "action.slides.prompt": "帮我创建、读取或编辑一个 PowerPoint（.pptx）演示文稿。",
+  "action.spreadsheet.label": "电子表格",
+  "action.spreadsheet.description": "创建、分析或编辑 Excel 和 CSV 文件",
+  "action.spreadsheet.prompt": "帮我创建、分析或编辑一个 Excel 电子表格（.xlsx、.xlsm、.csv 或 .tsv）。"
+}
