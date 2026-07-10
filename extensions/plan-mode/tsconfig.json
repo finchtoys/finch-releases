@@ -8,9 +8,10 @@
     "outDir": "dist",
     "rootDir": "src",
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "finch": ["../../packages/minitool-api/finch.d.ts"]
+      "finch": ["./node_modules/@finch.app/minitool-api/finch.d.ts"]
     }
   },
   "include": ["src"]

@@ -15,6 +15,11 @@
     "description": "全功能演示扩展，覆盖 Finch 小工具的所有核心能力：表单、弹框、自定义图标、工具栏按钮、国际化。"
   },
   {
+    "id": "plan-mode",
+    "name": "计划模式",
+    "description": "为 Finch 对话开启计划模式，先拆解任务再执行。"
+  },
+  {
     "id": "pp-ocrv6",
     "name": "PP-OCRv6",
     "description": "使用 PP-OCRv6 从图片中提取文字——针对中文与英文文本优化。"

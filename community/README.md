@@ -118,22 +118,3 @@ Override entries are matched by `id` and should only include translated user-fac
 ```
 
 If an override file or field is missing, Finch falls back to the English `name` and `description` in the main registry.
-
-## Cloudflare Worker setup
-
-To deploy `worker.js` to Cloudflare:
-
-1. Go to **Cloudflare Dashboard → Workers & Pages → Create**.
-2. Choose **"Deploy a Worker"** → paste the contents of `worker.js`.
-3. Under **Settings → Variables → Secret variables**, add:
-   - Name: `GITHUB_TOKEN`
-   - Value: a GitHub fine-grained PAT with **read-only access to public repositories**
-     (GitHub → Settings → Developer settings → Fine-grained tokens → New token →
-     Repository access: `finchtoys/finch-releases` → Contents: Read-only)
-4. Under **Settings → Triggers → Custom Domains**, add `community.finchwork.app`.
-
-> **Why a token?** Cloudflare Workers share a small pool of outbound IPs. Without auth,
-> GitHub Raw allows only 60 requests/hour per IP — easy to hit. With a token, the limit
-> is 5,000 requests/hour, and the 1-hour edge cache means real traffic never comes close.
-
-The Worker pulls from the `main` branch. After a PR is merged, the new data is live within 1 hour (next cache expiry).

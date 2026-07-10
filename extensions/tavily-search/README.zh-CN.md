@@ -1,4 +1,4 @@
-# Tavily 搜索
+## Tavily 搜索
 
 Tavily 搜索小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是一款桌面 AI Agent，可在 [finchwork.app](https://finchwork.app/) 下载。启用后，Finch 就能用 Tavily 做网页搜索、内容提取、站点抓取和站点地图，给出带来源的答案。
 

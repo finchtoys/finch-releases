@@ -1,6 +1,6 @@
 {
   "name": "@finch.app/mcp-client",
-  "version": "1.1.19",
+  "version": "1.1.20",
   "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
@@ -16,10 +16,11 @@
   "type": "module",
   "main": "dist/index.js",
   "files": [
-    "dist/**/*",
+    "dist/",
+    "i18n/",
+    "icon.png",
     "README.md",
-    "README.zh-CN.md",
-    "i18n/**/*"
+    "README.zh-CN.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -71,5 +72,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1"
   }
 }

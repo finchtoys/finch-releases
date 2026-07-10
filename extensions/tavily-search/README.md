@@ -1,4 +1,4 @@
-# Tavily Search
+## Tavily Search
 
 Tavily Search is a mini tool for [Finch](https://finchwork.app/) — a desktop AI agent you can download at [finchwork.app](https://finchwork.app/). Once enabled, Finch can use Tavily to run web search, extract page content, crawl sites, and map sites, giving you source-backed answers.
 

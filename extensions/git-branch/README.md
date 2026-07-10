@@ -1,6 +1,8 @@
-# Git Branch
+## Git Branch for Finch
 
 Git Branch is a mini tool for [Finch](https://finchwork.app/) — a desktop AI agent you can download at [finchwork.app](https://finchwork.app/). 
+
+![Git Branch](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/extensions/git-branch/shot.png)
 
 It puts a handy Git branch widget right inside your chat dialog.
 
