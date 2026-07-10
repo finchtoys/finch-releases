@@ -56,6 +56,20 @@
     "featured": true
   },
   {
+    "id": "pp-ocrv6",
+    "name": "PP-OCRv6",
+    "author": "JoeHe",
+    "description": "OCR extension powered by PP-OCRv6 — extract Chinese and English text from images using Python PaddleOCR.",
+    "repo": "joehe71/pp-ocrv6",
+    "npm": "@joehe71/pp-ocrv6",
+    "version": "0.1.0",
+    "extensionType": "community",
+    "categories": [
+      "productivity",
+      "research"
+    ]
+  },
+  {
     "id": "tavily-search",
     "name": "Tavily Search",
     "author": "Finch Team",
