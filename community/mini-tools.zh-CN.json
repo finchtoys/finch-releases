@@ -20,6 +20,11 @@
     "description": "为 Finch 对话开启计划模式，先拆解任务再执行。"
   },
   {
+    "id": "office-tools",
+    "name": "Office 工具",
+    "description": "Office 工具扩展 — 使用 OfficeCLI 读取、创建、编辑 Word、Excel 和 PowerPoint 文件。"
+  },
+  {
     "id": "tavily-search",
     "name": "Tavily 搜索",
     "description": "通过 MCP 连接 Tavily Search，让 Finch 使用网页搜索、内容提取、站点抓取和站点地图工具。"

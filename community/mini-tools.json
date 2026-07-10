@@ -56,6 +56,19 @@
     "featured": true
   },
   {
+    "id": "office-tools",
+    "name": "Office Tools",
+    "author": "JoeHe",
+    "description": "Office tools for Finch — read, create, edit Word, Excel, and PowerPoint files using OfficeCLI.",
+    "repo": "joehe71/office-tools",
+    "npm": "@joehe71/office-tools",
+    "version": "0.1.0",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ]
+  },
+  {
     "id": "tavily-search",
     "name": "Tavily Search",
     "author": "Finch Team",
