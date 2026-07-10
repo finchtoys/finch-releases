@@ -56,6 +56,18 @@
     ]
   },
   {
+    "id": "office-tools",
+    "name": "Office Tools",
+    "author": "JoeHe",
+    "description": "Office tools for Finch — read, create, edit Word, Excel, and PowerPoint files using OfficeCLI.",
+    "repo": "joehe71/office-tools",
+    "npm": "@joehe71/office-tools",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ]
+  },
+  {
     "id": "plan-mode",
     "name": "Plan Mode",
     "author": "Finch Team",
@@ -68,6 +80,19 @@
       "productivity"
     ],
     "featured": true
+  },
+  {
+    "id": "pp-ocrv6",
+    "name": "PP-OCRv6",
+    "author": "JoeHe",
+    "description": "OCR extension powered by PP-OCRv6 — extract Chinese and English text from images using Python PaddleOCR.",
+    "repo": "joehe71/pp-ocrv6",
+    "npm": "@joehe71/pp-ocrv6",
+    "extensionType": "community",
+    "categories": [
+      "productivity",
+      "research"
+    ]
   },
   {
     "id": "tavily-search",
