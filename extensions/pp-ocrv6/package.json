@@ -27,7 +27,7 @@
     "toolMeta": {
       "name": "PP-OCRv6"
     },
-    "systemPrompt": "OCR tasks: DO NOT write Python scripts or use other tools. Always use the dedicated OCR tools: call ocr_image for images (PNG, JPG, WebP, BMP, screenshots) and ocr_pdf for PDF files (especially scanned PDFs). For scanned PDFs, call ocr_pdf directly — do NOT use the Read tool first. Both tools handle setup automatically. IMPORTANT: ocr_image and ocr_pdf are ASYNC — they start a background task and return a task ID immediately. AFTER the estimated time, call check_ocr_task with that task ID to retrieve the result. Do NOT ask the user to check manually — call check_ocr_task yourself.",
+    "systemPrompt": "Use dedicated OCR tools for text extraction: ocr_image for images (PNG, JPG, WebP, BMP, screenshots) and ocr_pdf for scanned PDFs. Both tools handle setup automatically. These tools are ASYNC — they return a task ID immediately. After the estimated time, call check_ocr_task with that task ID to retrieve the result. Always call check_ocr_task yourself — do not ask the user to check manually.",
     "promptGuides": [
       {
         "id": "setup-ocr",
@@ -59,7 +59,13 @@
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",
     "contributes": {
-      "tools": true
+      "tools": true,
+      "iconPacks": [
+        {
+          "id": "pp-ocrv6-icons",
+          "label": "PP-OCRv6 Icons"
+        }
+      ]
     },
     "permissions": {
       "filesystem": "write",
