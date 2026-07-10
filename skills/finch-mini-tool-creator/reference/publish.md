@@ -157,15 +157,17 @@ Key points:
 To have your mini tool appear in the Finch community catalog:
 
 1. Make sure it is already published to npm and installable via `npx @finch.app/minitools add <package>`.
-2. Open an issue on the Finch releases repository:
+2. Include an `icon.png` at the package root. It is required for community listing, must be a PNG between **128×128** and **300×300** pixels (inclusive), and must be included in the published npm tarball.
+3. Open an issue on the Finch releases repository:
 
    **https://github.com/finchtoys/finch-releases/issues**
 
-3. Create a new issue with the label **小工具发布申请**.
-4. Include in the issue body:
+4. Create a new issue with the label **小工具发布申请**.
+5. Include in the issue body:
    - npm package name
    - `finch.id`
    - Short description (one sentence, shown in the catalog)
+   - Confirmation that the package includes a compliant `icon.png` (PNG, 128×128–300×300 px)
    - Screenshot or demo GIF (optional but recommended)
    - Whether the mini tool requires any API keys or permissions
 
@@ -192,6 +194,8 @@ The Finch team will review and merge the entry into the community index. Once li
 [ ] finch.id is stable and matches the install directory name
 [ ] prepublishOnly script runs the build
 [ ] README explains what the tool does and any required setup
+[ ] `icon.png` is at the package root and included in the npm tarball
+[ ] `icon.png` is PNG and between 128×128 and 300×300 pixels (inclusive) for community listing
 [ ] npm publish --access public succeeded
 [ ] test install: npx @finch.app/minitools add <package>
 [ ] (optional) open issue on finch-releases for community listing
