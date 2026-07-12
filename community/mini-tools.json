@@ -85,7 +85,7 @@
   },
   {
     "id": "office-tools",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "name": "Office Tools",
     "author": "JoeHe",
     "description": "Office tools for Finch — read, create, edit Word, Excel, and PowerPoint files using OfficeCLI.",
