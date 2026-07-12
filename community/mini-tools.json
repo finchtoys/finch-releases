@@ -15,7 +15,7 @@
   },
   {
     "id": "browser-tools",
-    "version": "0.2.1",
+    "version": "1.0.0",
     "name": "Browser Tools",
     "author": "JoeHe",
     "description": "Browser automation tools for Finch — navigate, click, fill forms, take screenshots, debug, and more. Powered by Chrome DevTools MCP (Google).",
