@@ -126,7 +126,7 @@
   },
   {
     "id": "pp-ocrv6",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "name": "PP-OCRv6",
     "author": "JoeHe",
     "description": "OCR extension powered by PP-OCRv6 — extract Chinese and English text from images using Python PaddleOCR.",
