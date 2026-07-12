@@ -27,6 +27,20 @@
     ]
   },
   {
+    "id": "chrome-devtools",
+    "version": "1.5.0",
+    "name": "Chrome DevTools",
+    "author": "Finch Team",
+    "description": "Connect Chrome DevTools through MCP and let Finch inspect, debug, and operate Chrome pages.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "finch-chrome-devtools",
+    "extensionType": "official",
+    "categories": [
+      "developer"
+    ],
+    "featured": true
+  },
+  {
     "id": "frontend-design",
     "version": "0.1.1",
     "name": "Frontend Design",

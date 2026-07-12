@@ -1,0 +1,18 @@
+{
+  "name": "Chrome DevTools",
+  "description": "Connect Chrome DevTools through MCP and let Finch inspect, debug, and operate Chrome pages.",
+  "systemPrompt": "When the user needs webpage debugging, DOM inspection, console error analysis, network request analysis, browser screenshots, page performance analysis, or Chrome tab operation, use Chrome DevTools MCP tools through the MCP Client. Call ToolSearch with source:\"mcp\" before using mcp__chrome_devtools__* tools.",
+  "toolMeta": { "name": "Chrome DevTools" },
+  "promptGuides": {
+    "debug-page": {
+      "title": "Debug current page",
+      "description": "Inspect console and network issues in Chrome.",
+      "prompt": "/chrome-devtools Use Chrome DevTools to inspect the current page, summarize console errors and failed network requests, then suggest fixes."
+    },
+    "analyze-performance": {
+      "title": "Analyze performance",
+      "description": "Look for page performance bottlenecks.",
+      "prompt": "/chrome-devtools Use Chrome DevTools to analyze this page's performance and tell me the biggest bottlenecks."
+    }
+  }
+}

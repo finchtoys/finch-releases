@@ -1,0 +1,18 @@
+{
+  "name": "Chrome DevTools",
+  "description": "通过 MCP 连接 Chrome DevTools，让 Finch 检查、调试和操作 Chrome 页面。",
+  "systemPrompt": "当用户需要调试网页、检查 DOM、分析控制台错误或网络请求、浏览器截图、页面性能分析、操作 Chrome 标签页时，通过 MCP Client 使用 Chrome DevTools MCP 工具。使用 mcp__chrome_devtools__* 工具前，先调用 ToolSearch 并传入 source:\"mcp\"。",
+  "toolMeta": { "name": "Chrome DevTools" },
+  "promptGuides": {
+    "debug-page": {
+      "title": "调试当前页面",
+      "description": "检查 Chrome 里的控制台和网络问题。",
+      "prompt": "/chrome-devtools 请使用 Chrome DevTools 检查当前页面，总结控制台错误和失败的网络请求，然后给出修复建议。"
+    },
+    "analyze-performance": {
+      "title": "分析页面性能",
+      "description": "找出页面性能瓶颈。",
+      "prompt": "/chrome-devtools 请使用 Chrome DevTools 分析这个页面的性能，告诉我最大的瓶颈在哪里。"
+    }
+  }
+}
