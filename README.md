@@ -1,4 +1,4 @@
-# Finch Releases
+# Finch Mini Tools Releases
 
 This repository is the public release hub for [Finch](https://finchwork.app/). It hosts Finch release assets, official extension source code, and the community registries used by the Finch app and community website.
 
