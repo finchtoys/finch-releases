@@ -1106,6 +1106,12 @@ declare module 'finch' {
     resizable?: boolean;
     /** 是否鼠标穿透（点击透传到下层窗口），默认 false。 */
     clickThrough?: boolean;
+    /** 允许窗口越出屏幕工作区，默认 false。 */
+    allowOffscreen?: boolean;
+    /** 不在 Mission Control（调度中心）中显示，默认 false。仅 macOS，其他平台忽略。 */
+    hiddenInMissionControl?: boolean;
+    /** 在所有桌面 Space（含全屏空间）显示，切换桌面时窗口跟随，默认 false。仅 macOS，其他平台忽略。 */
+    visibleOnAllWorkspaces?: boolean;
     /** 传给脚本 `init({ initialData })` 的初始数据（会 JSON 序列化）。 */
     initialData?: unknown;
   }
@@ -1129,7 +1135,8 @@ declare module 'finch' {
    *
    * 外壳注入的 `finch` 桥（Canvas 段可调用）：
    * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v)` /
-   * `finch.window.setPosition(x,y)` / `finch.window.setClickThrough(v)` / `finch.window.close()`。
+   * `finch.window.setPosition(x,y)` / `finch.window.getDisplays()` / `finch.window.setClickThrough(v)` /
+   * `finch.window.close()`。
    */
   export interface CanvasWindow {
     /** 窗口唯一 id。 */

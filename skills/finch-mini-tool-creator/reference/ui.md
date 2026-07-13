@@ -65,6 +65,9 @@ Important points:
 - Finch owns the window shell
 - the canvas script registers with `finch.canvas.define(...)`
 - the host can send messages to the canvas and receive messages back
+- use `allowOffscreen: true` only when a window must extend beyond the work-area edge
+- use the read-only `finch.window.getDisplays()` for multi-display geometry; it stays current when displays are added/removed or rearranged, so re-read it instead of caching long-term
+- overlay-style windows (desktop pets etc.) can opt in to `hiddenInMissionControl` (stay out of Mission Control) and `visibleOnAllWorkspaces` (follow every Space, including fullscreen ones); both default to false and are macOS-only
 
 Good uses:
 

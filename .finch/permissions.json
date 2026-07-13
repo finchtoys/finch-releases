@@ -11,6 +11,10 @@
     {
       "toolName": "MiniTool",
       "key": "*"
+    },
+    {
+      "toolName": "mcp__github__*",
+      "key": "*"
     }
   ],
   "ask": [],
