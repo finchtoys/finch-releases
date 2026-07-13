@@ -10,10 +10,29 @@ The repository contains:
 - **`extensions/`** — source code for official Finch extensions.
 - **`community/`** — recommended community extension and skill registries.
 - **`skills/`** — Finch skill configuration and documentation.
-- **`packages/`** — official npm packages and CLI tools.
 - **`docs/`** — Finch user and developer documentation.
 
 > Finch extensions are also called mini tools. In Finch documentation, use **extension** as the unified term.
+
+## Mini tool publishing checklist
+
+Before publishing an extension to npm, run:
+
+```bash
+npm run typecheck
+npx @finchtoys/minitools doctor .
+npm run build
+```
+
+Then verify that:
+
+- `package.json#version` is bumped using SemVer and `finch.id` is stable.
+- The npm package includes `dist/`, required assets, `README.md`, and `package.json` only; exclude `src/`, tests, build configuration, and every `.env` file.
+- `prepublishOnly` runs the build, and `@finchtoys/minitool-api` is a types-only `devDependency`.
+- The package is published successfully and can be installed with `npx @finchtoys/minitools add <package>`.
+- Community submissions include a published `icon.png` at the package root (PNG, 128–300 px).
+
+See the [complete mini tool publishing guide](skills/finch-mini-tool-creator/reference/publish.md) for package layout, npm release, community listing, and maintenance requirements.
 
 ## Submit your mini tool
 
@@ -64,9 +83,7 @@ finchtoys/finch-releases
   └── community/mini-tools.json
   └── community/mini-tools.zh-CN.json
             ↓
-community.finchwork.app (Cloudflare Worker, cached for about 1 hour)
-            ↓
-Finch app and community website
+Finch Toolbox
 ```
 
 - `mini-tools.json` is the English source registry and contains complete extension metadata.
@@ -74,17 +91,3 @@ Finch app and community website
 - When an override is unavailable, Finch falls back to the English metadata.
 - Registry updates are published through `community.finchwork.app`; they can take up to about one hour to appear because of edge caching.
 - Selecting an extension in Finch directs installation through its published npm package or public source.
-
-## Release sync
-
-Use [`.github/workflows/sync-releases.yml`](.github/workflows/sync-releases.yml) to manually mirror GitHub Releases from another repository into this one.
-
-Recommended one-off inputs:
-
-- `source_repo`: `puterjam/finch`
-- `target_repo`: `finchtoys/finch-releases`
-- `include_drafts`: `false`
-- `overwrite_assets`: `false`
-- `overwrite_body`: `false`
-- `skip_existing_releases`: `true`
-- `max_releases`: `0`
