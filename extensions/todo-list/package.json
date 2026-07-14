@@ -1,0 +1,85 @@
+{
+  "name": "finch-todolist",
+  "version": "0.2.3",
+  "type": "module",
+  "description": "A locally stored three-state Todo List extension for Finch.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/todo-list"
+  },
+  "license": "MIT",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "id": "todo-list",
+    "name": "Todo List",
+    "description": "Manage todo, in-progress, and completed tasks from Finch conversations and the Composer toolbar.",
+    "systemPrompt": "When the user wants to add, view, start, complete, or delete personal tasks, use the Todo List tools. Tasks are shared globally across conversations and Spaces, and completed items remain archived.",
+    "toolMeta": {
+      "name": "Todo List"
+    },
+    "promptGuides": [
+      {
+        "id": "add-todo",
+        "title": "Add a todo",
+        "description": "Save a new task to your personal list",
+        "prompt": "Add a todo: "
+      },
+      {
+        "id": "show-todos",
+        "title": "Show todos",
+        "description": "View todo, in-progress, and completed tasks",
+        "prompt": "Show all my tasks, including completed archives"
+      }
+    ],
+    "main": "dist/index.js",
+    "activationEvents": [
+      "onStartup"
+    ],
+    "contributes": {
+      "tools": true,
+      "composerActions": [
+        {
+          "id": "todo-list",
+          "icon": "clipboard-list",
+          "tooltip": "Todo List"
+        }
+      ],
+      "iconPacks": [
+        {
+          "id": "todo-list",
+          "label": "Todo List Icons"
+        }
+      ]
+    },
+    "extensionType": "official",
+    "categories": [
+      "productivity"
+    ],
+    "permissions": {
+      "filesystem": "none",
+      "network": false,
+      "shell": false
+    }
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "^0.1.16",
+    "typescript": "^5.6.0"
+  },
+  "files": [
+    "dist/",
+    "i18n/",
+    "icon.png",
+    "README.md"
+  ]
+}
