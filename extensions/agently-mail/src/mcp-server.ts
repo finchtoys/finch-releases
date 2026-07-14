@@ -211,11 +211,6 @@ const tools = [
     inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Message ID such as msg_xxx.' } }, required: ['id'] },
   },
   {
-    name: 'send_message',
-    description: 'Prepare or send a new email. First call returns a confirmation token: present the summary and stop. Only after an explicit later user confirmation, call again with the same confirmation_token.',
-    inputSchema: { type: 'object', properties: { to: { type: 'array', items: { type: 'string' } }, cc: { type: 'array', items: { type: 'string' } }, bcc: { type: 'array', items: { type: 'string' } }, subject: { type: 'string' }, body: { type: 'string' }, html: { type: 'string' }, attachments: { type: 'array', items: { type: 'string' } }, confirmation_token: { type: 'string' } }, required: ['to', 'subject', 'body'] },
-  },
-  {
     name: 'reply_message',
     description: 'Prepare or send an email reply. First call returns a confirmation token: present the summary and stop. Only after an explicit later user confirmation, call again with the same confirmation_token.',
     inputSchema: { type: 'object', properties: { id: { type: 'string' }, body: { type: 'string' }, html: { type: 'string' }, reply_all: { type: 'boolean' }, cc: { type: 'array', items: { type: 'string' } }, bcc: { type: 'array', items: { type: 'string' } }, attachments: { type: 'array', items: { type: 'string' } }, confirmation_token: { type: 'string' } }, required: ['id', 'body'] },

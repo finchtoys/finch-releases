@@ -1,7 +1,7 @@
 [
   {
     "id": "agently-mail",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "name": "QQ Agent Mail",
     "author": "Finch Team",
     "description": "Connect QQ Agent Mail through the official CLI and MCP tools.",
