@@ -1,8 +1,8 @@
 {
   "name": "finch-todolist",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
-  "description": "A locally stored three-state Todo List extension for Finch.",
+  "description": "A simple personal task list for Finch.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
@@ -23,7 +23,7 @@
     "manifestVersion": 1,
     "id": "todo-list",
     "name": "Todo List",
-    "description": "Manage todo, in-progress, and completed tasks from Finch conversations and the Composer toolbar.",
+    "description": "Keep track of todos, current tasks, and completed items in one place.",
     "systemPrompt": "When the user wants to add, view, start, complete, or delete personal tasks, use the Todo List tools. Tasks are shared globally across conversations and Spaces, and completed items remain archived.",
     "toolMeta": {
       "name": "Todo List"

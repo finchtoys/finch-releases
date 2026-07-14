@@ -1,6 +1,6 @@
 {
   "name": "Todo List",
-  "description": "Manage todo, in-progress, and completed tasks from Finch conversations and the Composer toolbar.",
+  "description": "Keep track of todos, current tasks, and completed items in one place.",
   "systemPrompt": "When the user wants to add, view, start, complete, or delete personal tasks, use the Todo List tools. Tasks are shared globally across conversations and Spaces, and completed items remain archived.",
   "composerActions": {
     "todo-list": { "tooltip": "Todo List" }

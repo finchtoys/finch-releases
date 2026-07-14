@@ -42,7 +42,7 @@
   },
   {
     "id": "finch-pet",
-    "version": "1.0.0",
+    "version": "1.0.4",
     "name": "Finch Pet",
     "author": "Kassell",
     "description": "A desktop pet companion for Finch.",
@@ -181,10 +181,10 @@
   },
   {
     "id": "todo-list",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "name": "Todo List",
     "author": "Finch Team",
-    "description": "Manage todo, in-progress, and completed tasks from Finch conversations and the Composer toolbar.",
+    "description": "Keep track of todos, current tasks, and completed items in one place.",
     "repo": "finchtoys/finch-releases",
     "npm": "finch-todolist",
     "extensionType": "official",

@@ -1,6 +1,6 @@
 {
   "name": "待办清单",
-  "description": "通过 Finch 对话和 Composer 工具栏管理待办、进行中与已完成事项。",
+  "description": "轻松记录待办，跟进进行中的事项，并归档已完成内容。",
   "systemPrompt": "当用户想新增、查看、开始、完成或删除个人待办时，使用 Todo List 工具。待办在所有对话和 Space 之间全局共享，已完成事项保留为归档。",
   "composerActions": {
     "todo-list": { "tooltip": "待办清单" }
