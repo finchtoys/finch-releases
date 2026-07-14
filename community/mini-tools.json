@@ -28,7 +28,7 @@
   },
   {
     "id": "chrome-devtools",
-    "version": "1.5.1",
+    "version": "1.5.2",
     "name": "Chrome DevTools",
     "author": "Kassell",
     "description": "Connect Chrome DevTools through MCP for browser automation, debugging, Lighthouse audits, performance traces, and more.",
