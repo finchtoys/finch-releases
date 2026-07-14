@@ -15,6 +15,11 @@
     "description": "通过 MCP 连接 Chrome DevTools，让 Finch 检查、调试和操作 Chrome 页面。"
   },
   {
+    "id": "finch-pet",
+    "name": "Finch 桌宠",
+    "description": "住在桌面上的 Finch 宠物，可响应 Agent 状态，并支持导入兼容 Petdex 的宠物包。"
+  },
+  {
     "id": "frontend-design",
     "name": "网页设计",
     "description": "通过内嵌设计技能创建具有鲜明风格、可用于生产的前端界面。"

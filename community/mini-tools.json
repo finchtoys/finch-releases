@@ -41,6 +41,20 @@
     "featured": true
   },
   {
+    "id": "finch-pet",
+    "version": "1.0.0",
+    "name": "Finch Pet",
+    "author": "Kassell",
+    "description": "A desktop pet for Finch that reacts to agent status and supports Petdex-compatible pet imports.",
+    "repo": "Kassell/finch-pet",
+    "npm": "finch-pet",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ],
+    "featured": false
+  },
+  {
     "id": "frontend-design",
     "version": "0.1.1",
     "name": "Frontend Design",
