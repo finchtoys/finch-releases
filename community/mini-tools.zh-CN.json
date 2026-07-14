@@ -15,6 +15,11 @@
     "description": "通过 MCP 连接 Chrome DevTools，支持浏览器自动化、页面调试、Lighthouse 审计、性能追踪等操作。"
   },
   {
+    "id": "finch-pet",
+    "name": "Finch 宠物",
+    "description": "为 Finch 添加桌面宠物伙伴。"
+  },
+  {
     "id": "frontend-design",
     "name": "网页设计",
     "description": "通过内嵌设计技能创建具有鲜明风格、可用于生产的前端界面。"

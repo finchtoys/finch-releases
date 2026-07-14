@@ -41,6 +41,19 @@
     "featured": false
   },
   {
+    "id": "finch-pet",
+    "version": "1.0.0",
+    "name": "Finch Pet",
+    "author": "Kassell",
+    "description": "A desktop pet companion for Finch.",
+    "repo": "Kassell/finch-pet",
+    "npm": "finch-pet",
+    "extensionType": "community",
+    "categories": [
+      "creative"
+    ]
+  },
+  {
     "id": "frontend-design",
     "version": "0.1.1",
     "name": "Frontend Design",
