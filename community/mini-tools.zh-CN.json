@@ -10,11 +10,6 @@
     "description": "浏览器自动化工具，支持导航、点击、填表、截图、调试等操作，基于 Chrome DevTools MCP。"
   },
   {
-    "id": "chrome-devtools",
-    "name": "Chrome DevTools",
-    "description": "通过 MCP 连接 Chrome DevTools，让 Finch 检查、调试和操作 Chrome 页面。"
-  },
-  {
     "id": "frontend-design",
     "name": "网页设计",
     "description": "通过内嵌设计技能创建具有鲜明风格、可用于生产的前端界面。"
