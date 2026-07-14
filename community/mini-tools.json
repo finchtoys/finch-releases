@@ -42,7 +42,7 @@
   },
   {
     "id": "finch-pet",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "name": "Finch Pet",
     "author": "Kassell",
     "description": "A desktop pet for Finch that reacts to agent status and supports Petdex-compatible pet imports.",
