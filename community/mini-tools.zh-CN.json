@@ -12,7 +12,7 @@
   {
     "id": "chrome-devtools",
     "name": "Chrome DevTools",
-    "description": "通过 MCP 连接 Chrome DevTools，让 Finch 检查、调试和操作 Chrome 页面。"
+    "description": "通过 MCP 连接 Chrome DevTools，支持浏览器自动化、页面调试、Lighthouse 审计、性能追踪等操作。"
   },
   {
     "id": "frontend-design",
