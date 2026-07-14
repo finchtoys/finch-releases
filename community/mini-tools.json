@@ -28,17 +28,17 @@
   },
   {
     "id": "chrome-devtools",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "name": "Chrome DevTools",
-    "author": "Finch Team",
-    "description": "Connect Chrome DevTools through MCP and let Finch inspect, debug, and operate Chrome pages.",
-    "repo": "finchtoys/finch-releases",
+    "author": "Kassell",
+    "description": "Connect Chrome DevTools through MCP for browser automation, debugging, Lighthouse audits, performance traces, and more.",
+    "repo": "Kassell/finch-chrome-devtools",
     "npm": "finch-chrome-devtools",
-    "extensionType": "official",
+    "extensionType": "community",
     "categories": [
       "developer"
     ],
-    "featured": true
+    "featured": false
   },
   {
     "id": "frontend-design",
