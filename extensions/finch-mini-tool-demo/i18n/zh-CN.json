@@ -19,6 +19,11 @@
       "description": "演示 showToast / showMessage",
       "prompt": "用小工具示例演示弹框和提示功能"
     },
+    "try-confirm": {
+      "title": "确认交互",
+      "description": "演示模态确认框和内联确认条",
+      "prompt": "用小工具示例展示确认交互"
+    },
     "try-icons": {
       "title": "自定义图标",
       "description": "查看所有注册的小工具图标",
@@ -54,6 +59,10 @@
   "action.config.prompt": "用小工具示例测试项目配置表单",
   "action.toast": "弹框与提示",
   "action.toast.prompt": "用小工具示例演示弹框和提示功能",
+  "action.confirm-dialog": "模态确认框",
+  "action.confirm-dialog.prompt": "用小工具示例演示模态确认框",
+  "action.inline-confirm": "内联确认条",
+  "action.inline-confirm.prompt": "用小工具示例演示 Composer 内联确认条",
   "action.preview": "自定义图标",
   "action.preview.prompt": "用小工具示例展示所有注册的自定义图标",
 
@@ -149,5 +158,23 @@
   "toast.demo.undo": "撤销",
   "toast.demo.undone": "已撤销操作",
   "result.toast.message": "✅ 已调用 ctx.ui.showMessage('{variant}')",
-  "result.toast.done": "✅ 已完成 {variant} toast 演示"
+  "result.toast.done": "✅ 已完成 {variant} toast 演示",
+
+  "confirm.cancel": "取消",
+  "confirm.dialog.primary.title": "保存更改？",
+  "confirm.dialog.primary.description": "这是普通模态确认框示例。",
+  "confirm.dialog.primary.message": "确认后将保存当前演示设置。",
+  "confirm.dialog.primary.confirm": "保存",
+  "confirm.dialog.danger.title": "删除演示数据？",
+  "confirm.dialog.danger.description": "这是带危险操作样式的模态确认框示例。",
+  "confirm.dialog.danger.message": "! 此操作仅用于演示，不会删除任何实际数据。",
+  "confirm.dialog.danger.confirm": "删除",
+  "confirm.inline.text": "演示配置已准备好，要应用吗？",
+  "confirm.inline.confirm": "应用",
+  "confirm.inline.cancel": "暂不应用",
+  "result.confirm.confirmed": "已确认操作",
+  "result.confirm.cancelled": "已取消操作",
+  "result.inline.confirm": "已确认内联操作",
+  "result.inline.cancel": "已取消内联操作",
+  "result.inline.dismissed": "内联确认条已收起"
 }

@@ -50,6 +50,12 @@
         "prompt": "用小工具演示演示弹框和提示功能"
       },
       {
+        "id": "try-confirm",
+        "title": "确认交互",
+        "description": "演示模态确认框和内联确认条",
+        "prompt": "用小工具演示展示确认交互"
+      },
+      {
         "id": "try-icons",
         "title": "自定义图标",
         "description": "查看所有注册的扩展图标",

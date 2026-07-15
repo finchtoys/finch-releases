@@ -44,6 +44,8 @@ const ALL_ACTIONS: ActionDef[] = [
   { id: 'timeout',    labelKey: 'action.timeout',     icon: ICON('timeout'),    promptKey: 'action.timeout.prompt',    group: '表单' },
   { id: 'config',     labelKey: 'action.config',      icon: ICON('config'),    promptKey: 'action.config.prompt',     group: '表单' },
   { id: 'toast',      labelKey: 'action.toast',       icon: ICON('toast'),     promptKey: 'action.toast.prompt',      group: 'UI 演示' },
+  { id: 'confirm-dialog', labelKey: 'action.confirm-dialog', icon: ICON('toast'), promptKey: 'action.confirm-dialog.prompt', group: 'UI 演示' },
+  { id: 'inline-confirm', labelKey: 'action.inline-confirm', icon: ICON('toast'), promptKey: 'action.inline-confirm.prompt', group: 'UI 演示' },
   { id: 'preview',    labelKey: 'action.preview',     icon: ICON('preview'),   promptKey: 'action.preview.prompt',    group: 'UI 演示' },
 ];
 const actionMap = new Map(ALL_ACTIONS.map(a => [a.id, a]));
@@ -291,6 +293,42 @@ function registerToastDemoTool(ctx: finch.ExtensionContext) {
   );
 }
 
+// ── Tool: 模态确认框演示 ─────────────────────────────────────────────────────
+function registerConfirmDialogDemoTool(ctx: finch.ExtensionContext) {
+  ctx.subscriptions.push(
+    ctx.tools.register({
+      name: 'form_confirm_dialog',
+      title: t(ctx.i18n, 'action.confirm-dialog'),
+      description: '演示 ctx.ui.showConfirmDialog 的普通确认和危险确认样式。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          variant: {
+            type: 'string',
+            enum: ['primary', 'danger'],
+            description: '确认按钮样式：primary（普通）或 danger（危险操作）',
+          },
+        },
+      },
+      risk: 'low',
+      async execute(input) {
+        const i = ctx.i18n;
+        const { variant = 'primary' } = input as { variant?: 'primary' | 'danger' };
+        const dangerous = variant === 'danger';
+        const result = await ctx.ui.showConfirmDialog({
+          title: i.t(dangerous ? 'confirm.dialog.danger.title' : 'confirm.dialog.primary.title'),
+          description: i.t(dangerous ? 'confirm.dialog.danger.description' : 'confirm.dialog.primary.description'),
+          message: i.t(dangerous ? 'confirm.dialog.danger.message' : 'confirm.dialog.primary.message'),
+          confirmLabel: i.t(dangerous ? 'confirm.dialog.danger.confirm' : 'confirm.dialog.primary.confirm'),
+          cancelLabel: i.t('confirm.cancel'),
+          variant,
+        });
+        return { content: [{ type: 'text', text: i.t(result.confirmed ? 'result.confirm.confirmed' : 'result.confirm.cancelled') }] };
+      },
+    }),
+  );
+}
+
 // ── Tool: 自定义图标展示 ─────────────────────────────────────────────────────
 function registerIconPreviewTool(ctx: finch.ExtensionContext) {
   ctx.subscriptions.push(
@@ -435,6 +473,37 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
         // 记录上次操作
         await ctx.storage.set(LAST_ACTION_KEY, itemId);
 
+        if (itemId === 'confirm-dialog') {
+          const result = await ctx.ui.showConfirmDialog({
+            title: ctx.i18n.t('confirm.dialog.danger.title'),
+            description: ctx.i18n.t('confirm.dialog.danger.description'),
+            message: ctx.i18n.t('confirm.dialog.danger.message'),
+            confirmLabel: ctx.i18n.t('confirm.dialog.danger.confirm'),
+            cancelLabel: ctx.i18n.t('confirm.cancel'),
+            variant: 'danger',
+          });
+          ctx.ui.showToast({
+            title: ctx.i18n.t(result.confirmed ? 'result.confirm.confirmed' : 'result.confirm.cancelled'),
+            variant: result.confirmed ? 'success' : 'info',
+            position: 'TC',
+          });
+          return;
+        }
+
+        if (itemId === 'inline-confirm') {
+          const result = await actions.composer.confirm({
+            text: ctx.i18n.t('confirm.inline.text'),
+            confirmLabel: ctx.i18n.t('confirm.inline.confirm'),
+            cancelLabel: ctx.i18n.t('confirm.inline.cancel'),
+          });
+          ctx.ui.showToast({
+            title: ctx.i18n.t(`result.inline.${result}`),
+            variant: result === 'confirm' ? 'success' : 'info',
+            position: 'TC',
+          });
+          return;
+        }
+
         // 填入 Composer
         await actions.fillComposer(ctx.i18n.t(def.promptKey));
 
@@ -499,12 +568,13 @@ export function activate(ctx: finch.ExtensionContext): void {
   registerTimeoutTool(ctx);
   registerConfigTool(ctx);
   registerToastDemoTool(ctx);
+  registerConfirmDialogDemoTool(ctx);
   registerIconPreviewTool(ctx);
 
   // Register composer action
   registerComposerAction(ctx);
 
-  ctx.logger.info('mini-tool-demo activated — 6 tools + 1 composer action + 7 custom icons');
+  ctx.logger.info('mini-tool-demo activated — 7 tools + 1 composer action + 7 custom icons');
 }
 
 export function deactivate(): void {

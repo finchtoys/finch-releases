@@ -19,6 +19,11 @@
       "description": "Demonstrate showToast / showMessage",
       "prompt": "Use the mini tool demo to demonstrate toast and message capabilities"
     },
+    "try-confirm": {
+      "title": "Confirm Interactions",
+      "description": "Demonstrate modal and inline confirmation UI",
+      "prompt": "Use the mini tool demo to show confirmation interactions"
+    },
     "try-icons": {
       "title": "Custom Icons",
       "description": "View all registered mini tool icons",
@@ -54,6 +59,10 @@
   "action.config.prompt": "Use the extension example to test the project config form",
   "action.toast": "Toast & Messages",
   "action.toast.prompt": "Use the extension example to demonstrate toast and message capabilities",
+  "action.confirm-dialog": "Modal Confirm",
+  "action.confirm-dialog.prompt": "Use the extension example to demonstrate a modal confirmation dialog",
+  "action.inline-confirm": "Inline Confirm",
+  "action.inline-confirm.prompt": "Use the extension example to demonstrate a Composer inline confirmation bar",
   "action.preview": "Custom Icons",
   "action.preview.prompt": "Use the extension example to show all registered custom icons",
 
@@ -149,5 +158,23 @@
   "toast.demo.undo": "Undo",
   "toast.demo.undone": "Action undone",
   "result.toast.message": "✅ Called ctx.ui.showMessage('{variant}')",
-  "result.toast.done": "✅ Completed {variant} toast demo"
+  "result.toast.done": "✅ Completed {variant} toast demo",
+
+  "confirm.cancel": "Cancel",
+  "confirm.dialog.primary.title": "Save changes?",
+  "confirm.dialog.primary.description": "This is a standard modal confirmation dialog.",
+  "confirm.dialog.primary.message": "Confirming will save the current demo settings.",
+  "confirm.dialog.primary.confirm": "Save",
+  "confirm.dialog.danger.title": "Delete demo data?",
+  "confirm.dialog.danger.description": "This is a modal confirmation dialog with a danger action.",
+  "confirm.dialog.danger.message": "! This is a demo only; no actual data will be deleted.",
+  "confirm.dialog.danger.confirm": "Delete",
+  "confirm.inline.text": "The demo configuration is ready. Apply it?",
+  "confirm.inline.confirm": "Apply",
+  "confirm.inline.cancel": "Not now",
+  "result.confirm.confirmed": "Action confirmed",
+  "result.confirm.cancelled": "Action cancelled",
+  "result.inline.confirm": "Inline action confirmed",
+  "result.inline.cancel": "Inline action cancelled",
+  "result.inline.dismissed": "Inline confirmation dismissed"
 }
