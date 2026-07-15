@@ -1,8 +1,9 @@
-![home](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/home.jpg)
-
 # Finch Mini Tools Releases
 
 This repository is the public release hub for [Finch](https://finchwork.app/). It hosts Finch release assets, official extension source code, and the community registries used by the Finch app and community website.
+
+![home](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/home.jpg)
+
 
 ## About this repository
 
@@ -77,6 +78,8 @@ Before opening a Pull Request, ensure that the `id` matches your extension ident
 Available categories: `productivity`, `developer`, `creative`, `research`, `finance`, `commerce`, and `education`.
 
 ## How community mini tools are pulled
+
+![welcome](https://github.com/puterjam/finch/blob/master/welcome.jpg)
 
 Finch does not bundle every community extension into the app. Instead, it pulls the recommended registry at runtime:
 
