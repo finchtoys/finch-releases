@@ -140,15 +140,51 @@ Use the lowest risk level that matches the tool.
 
 ## 8. Good tool patterns
 
-- One tool = one job.
-- Prefer small, composable tools over a giant catch-all tool.
+- **Register as few tools as possible.** Every tool is injected into the model context on every turn. Excess tools waste tokens and reduce selection accuracy.
+- **Use an `action` parameter** to unify related operations (create / update / delete / list …) into a single tool instead of separate registrations. Always enumerate every action value in the `description` so the model knows what is available.
+- **One tool = one job** when the operations are genuinely unrelated.
+- **Prefer small, composable tools** over a giant catch-all tool.
+- **Consider a local MCP server** when the total tool count would exceed roughly 10. MCP tools are loaded on demand and do not count against the upfront context budget. See `mcp.md`.
 - Validate input inside `execute()`.
 - Keep outputs predictable.
 - Put reusable logic in helpers, not in manifest text.
 
+### action parameter pattern
+
+```ts
+ctx.tools.register({
+  name: 'my_tool_post',
+  title: 'Post',
+  description: `Manage posts.
+action:
+  list    — list all posts
+  create  — create a new post (requires title)
+  delete  — delete a post (requires slug)`,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      action: { type: 'string', enum: ['list', 'create', 'delete'] },
+      title:  { type: 'string' },
+      slug:   { type: 'string' },
+    },
+    required: ['action'],
+  },
+  risk: 'medium',
+  async execute(input, exec) {
+    switch (input.action) {
+      case 'list':   /* ... */
+      case 'create': /* ... */
+      case 'delete': /* ... */
+    }
+  },
+});
+```
+
 ## 9. Common mistakes
 
 - Registering a short or generic name such as `init`, `build`, or `status` instead of `<mini_tool_name>_<function_name>`
+- Registering too many tools — group related operations under one tool with `action` instead
+- Not listing available `action` values in the tool description — the model cannot discover them
 - Using uppercase letters, hyphens, localized text, or any format other than lowercase `snake_case`
 - Description too vague
 - Input schema too loose

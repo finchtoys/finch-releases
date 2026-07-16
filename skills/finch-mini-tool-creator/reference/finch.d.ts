@@ -173,7 +173,7 @@ declare module 'finch' {
 
     /**
      * Composer 工具栏按钮注册表。
-     * manifest 的 `contributes.composerActions` 声明按钮槽位（icon / tooltip），
+     * manifest 的 `contributes.composerActions` 声明按钮槽位（icon / tooltip / hoverText），
      * `register()` 提供动态数据（badge / menu / execute）。
      * `actionId` 必须与 manifest 中的 `id` 匹配。
      *
@@ -839,12 +839,12 @@ declare module 'finch' {
   /**
    * Composer Action 数据提供器。
    *
-   * manifest 中的 `contributes.composerActions` 声明按钮槽位（id / icon / tooltip），
+   * manifest 中的 `contributes.composerActions` 声明按钮槽位（id / icon / tooltip / hoverText），
    * activate() 里通过 `finch.composerActions.register(id, provider)` 绑定动态数据。
    *
    * @example
    * // package.json → finch.contributes.composerActions
-   * // [{ "id": "git-branch", "icon": "GitBranch", "tooltip": "切换分支" }]
+   * // [{ "id": "git-branch", "icon": "GitBranch", "tooltip": "切换分支", "hoverText": "查看并切换当前仓库的 Git 分支。" }]
    *
    * finch.composerActions.register('git-branch', {
    *   async getBadge({ cwd }) {
@@ -1516,7 +1516,7 @@ declare module 'finch' {
    *     "contributes": {
    *       "tools": true,
    *       "composerActions": [
-   *         { "id": "my-btn", "icon": "Star", "tooltip": "My Button" }
+   *         { "id": "my-btn", "icon": "Star", "tooltip": "My Button", "hoverText": "A longer description shown on hover." }
    *       ]
    *     },
    *     "permissions": {
@@ -1532,7 +1532,10 @@ declare module 'finch' {
    * {
    *   "name": "我的扩展",
    *   "description": "做一些有用的事。",
-   *   "systemPrompt": "当用户询问 X 时，优先使用这个扩展的工具。"
+   *   "systemPrompt": "当用户询问 X 时，优先使用这个扩展的工具。",
+   *   "composerActions": {
+   *     "my-btn": { "tooltip": "我的按钮", "hoverText": "悬浮时展示的详细说明。" }
+   *   }
    * }
    *
    * @deprecated Use {@link MiniToolManifest} for new mini tools.
@@ -1650,7 +1653,10 @@ declare module 'finch' {
      * `'settings'`）或本扩展运行时图标包里的 icon id / `ext:<packId>/<iconId>`。
      */
     readonly icon?: IconRef;
+    /** 短标签，用作无障碍名称；未配置 hoverText 时也作为默认 Tooltip。 */
     readonly tooltip?: string;
+    /** 悬浮时通过 HoverCard 展示的较长纯文本说明，支持换行。 */
+    readonly hoverText?: string;
   }
 
   /**

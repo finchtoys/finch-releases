@@ -17,7 +17,12 @@ The manifest declares the slot. The provider fills in live badge text, menu item
 {
   "contributes": {
     "composerActions": [
-      { "id": "git-branch", "icon": "GitBranch", "tooltip": "Switch branch" }
+      {
+        "id": "git-branch",
+        "icon": "GitBranch",
+        "tooltip": "Switch branch",
+        "hoverText": "View and switch branches in the current Git repository."
+      }
     ]
   }
 }
@@ -27,7 +32,28 @@ Keep the declaration minimal:
 
 - `id` must match the runtime registration id
 - `icon` is the default icon
-- `tooltip` is the user-facing label
+- `tooltip` is the short user-facing label and accessibility name
+- `hoverText` is an optional longer plain-text description shown in a HoverCard; line breaks are preserved
+- when `hoverText` is omitted, Finch keeps showing the normal Tooltip from `tooltip`
+
+中文说明：
+
+- `tooltip` 是简短标签和无障碍名称
+- `hoverText` 是可选的较长纯文本说明，悬浮时通过 HoverCard 展示，并保留换行
+- 未配置 `hoverText` 时，Finch 继续使用 `tooltip` 展示普通 Tooltip
+
+Both fields can be localized through `i18n/<locale>.json`:
+
+```json
+{
+  "composerActions": {
+    "git-branch": {
+      "tooltip": "切换分支",
+      "hoverText": "查看并切换当前 Git 仓库中的分支。"
+    }
+  }
+}
+```
 
 ## 3. Runtime provider
 
@@ -279,6 +305,8 @@ Use it for quick drafts, templates, and file-linked prompts.
 - Omitting `iconName` from an actionable menu item (including nested `children`)
 - Using an unverified Lucide name as `iconName` instead of a built-in id or registered `ext:` SVG
 - Using custom DOM instead of Composer actions
+- Putting long usage instructions in `tooltip` instead of `hoverText`
+- Treating `hoverText` as HTML or Markdown; Finch renders it as plain text
 - Forgetting that the selected child id is what reaches `execute()`
 - Calling `notifyUpdate()` on a tight loop (< 1 s) — it triggers a full re-fetch each time
 - Discarding the `register()` return value and losing access to `notifyUpdate()`

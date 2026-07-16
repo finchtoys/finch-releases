@@ -4,8 +4,15 @@ const STORAGE_KEY = 'tasks.v1';
 const MAX_TITLE_LENGTH = 200;
 const ICON_PACK_ID = 'todo-list';
 const SQUARE_ICON = `ext:${ICON_PACK_ID}/square` as const;
+const MENU_TITLE_MAX_WIDTH = 28;
 
 type TodoStatus = 'todo' | 'in_progress' | 'completed';
+
+// hoverText is supported by current Finch runtimes and will be included in the next API package.
+type MenuItem = Omit<finch.ComposerActionMenuItem, 'children'> & {
+  readonly hoverText?: string;
+  readonly children?: MenuItem[];
+};
 
 interface TodoTask {
   id: string;
@@ -75,6 +82,36 @@ function createId(): string {
 
 function cleanTitle(value: unknown): string {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_TITLE_LENGTH);
+}
+
+function isVersionAtLeast(current: string, minimum: string): boolean {
+  const parse = (version: string) => version.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const currentParts = parse(current);
+  const minimumParts = parse(minimum);
+  for (let index = 0; index < Math.max(currentParts.length, minimumParts.length); index += 1) {
+    const currentPart = currentParts[index] ?? 0;
+    const minimumPart = minimumParts[index] ?? 0;
+    if (currentPart !== minimumPart) return currentPart > minimumPart;
+  }
+  return true;
+}
+
+function menuTitle(title: string, supportsHoverText: boolean): Pick<MenuItem, 'label' | 'hoverText'> {
+  const characters = Array.from(title);
+  const widthOf = (character: string) => /[^\u0000-\u00ff]/u.test(character) ? 2 : 1;
+  const totalWidth = characters.reduce((sum, character) => sum + widthOf(character), 0);
+  if (totalWidth <= MENU_TITLE_MAX_WIDTH) return { label: title };
+
+  const visible: string[] = [];
+  let width = 0;
+  for (const character of characters) {
+    const nextWidth = width + widthOf(character);
+    if (nextWidth > MENU_TITLE_MAX_WIDTH - 3) break;
+    visible.push(character);
+    width = nextWidth;
+  }
+  const label = `${visible.join('').trimEnd()}...`;
+  return supportsHoverText ? { label, hoverText: title } : { label };
 }
 
 function findTask(tasks: TodoTask[], queryValue: unknown): MatchResult {
@@ -284,7 +321,7 @@ function registerTools(ctx: finch.ExtensionContext, notifyUpdate: () => void): v
   );
 }
 
-function quickActions(ctx: finch.ExtensionContext): finch.ComposerActionMenuItem[] {
+function quickActions(ctx: finch.ExtensionContext): MenuItem[] {
   return [
     {
       id: 'add',
@@ -311,7 +348,11 @@ function quickActions(ctx: finch.ExtensionContext): finch.ComposerActionMenuItem
   ];
 }
 
-function inProgressItems(ctx: finch.ExtensionContext, tasks: TodoTask[]): finch.ComposerActionMenuItem[] {
+function inProgressItems(
+  ctx: finch.ExtensionContext,
+  tasks: TodoTask[],
+  supportsHoverText: boolean,
+): MenuItem[] {
   const inProgress = tasks
     .filter((task) => task.status === 'in_progress')
     .sort((a, b) => (a.startedAt ?? a.createdAt).localeCompare(b.startedAt ?? b.createdAt));
@@ -323,22 +364,25 @@ function inProgressItems(ctx: finch.ExtensionContext, tasks: TodoTask[]): finch.
       iconName: SQUARE_ICON,
       disabled: true,
       group: 'in-progress',
-      groupLabel: ctx.i18n.t('menu.inProgress'),
+      groupLabel: ctx.i18n.t('menu.inProgress.group'),
     }];
   }
 
   return inProgress.map((task, index) => ({
     id: `complete:${task.id}`,
-    label: task.title,
-    description: ctx.i18n.t('menu.complete.desc'),
+    ...menuTitle(task.title, supportsHoverText),
     iconName: SQUARE_ICON,
     group: 'in-progress',
-    groupLabel: index === 0 ? ctx.i18n.t('menu.inProgress') : undefined,
+    groupLabel: index === 0 ? ctx.i18n.t('menu.inProgress.group') : undefined,
     groupMaxVisible: index === 0 ? 6 : undefined,
   }));
 }
 
-function todoMenu(ctx: finch.ExtensionContext, tasks: TodoTask[]): finch.ComposerActionMenuItem {
+function todoMenu(
+  ctx: finch.ExtensionContext,
+  tasks: TodoTask[],
+  supportsHoverText: boolean,
+): MenuItem {
   const todo = tasks
     .filter((task) => task.status === 'todo')
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -357,17 +401,15 @@ function todoMenu(ctx: finch.ExtensionContext, tasks: TodoTask[]): finch.Compose
   return {
     id: 'todo-menu',
     label: ctx.i18n.t('menu.todo.count', { count: todo.length }),
-    description: ctx.i18n.t('menu.todo.desc'),
     iconName: 'clipboard-list',
     group: 'todo-root',
     groupLabel: ctx.i18n.t('menu.todo'),
     children: todo.map((task, index) => ({
       id: `start:${task.id}`,
-      label: task.title,
-      description: ctx.i18n.t('menu.start.desc'),
+      ...menuTitle(task.title, supportsHoverText),
       iconName: SQUARE_ICON,
       group: 'todo',
-      groupLabel: index === 0 ? ctx.i18n.t('menu.todo') : undefined,
+      groupLabel: index === 0 ? ctx.i18n.t('menu.todo.group') : undefined,
       groupMaxVisible: index === 0 ? 6 : undefined,
     })),
   };
@@ -388,15 +430,19 @@ export function activate(ctx: finch.ExtensionContext): void {
     async getBadge() {
       const inProgress = (await loadTasks(ctx))
         .filter((task) => task.status === 'in_progress').length;
-      return inProgress > 0 ? { text: String(inProgress), active: true } : undefined;
+      return inProgress > 0
+        ? ctx.i18n.t('badge.inProgress', { count: inProgress })
+        : ctx.i18n.t('badge.empty');
     },
 
     async getMenu() {
       const tasks = await loadTasks(ctx);
+      const appInfo = await ctx.app.getInfo();
+      const supportsHoverText = isVersionAtLeast(appInfo.version, '1.5.1');
       return [
         ...quickActions(ctx),
-        ...inProgressItems(ctx, tasks),
-        todoMenu(ctx, tasks),
+        ...inProgressItems(ctx, tasks, supportsHoverText),
+        todoMenu(ctx, tasks, supportsHoverText),
       ];
     },
 

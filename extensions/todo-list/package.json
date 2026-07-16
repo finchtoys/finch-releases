@@ -1,6 +1,6 @@
 {
   "name": "finch-todolist",
-  "version": "0.2.4",
+  "version": "0.2.6",
   "type": "module",
   "description": "A simple personal task list for Finch.",
   "author": {
