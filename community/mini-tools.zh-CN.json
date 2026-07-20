@@ -5,6 +5,11 @@
     "description": "通过官方 CLI 和 MCP 工具连接 QQ Agent 邮箱。"
   },
   {
+    "id": "brave-search",
+    "name": "Brave 搜索",
+    "description": "通过 Brave Search API 搜索互联网，获取最新网页结果。"
+  },
+  {
     "id": "browser-tools",
     "name": "Browser Tools",
     "description": "浏览器自动化工具，支持导航、点击、填表、截图、调试等操作，基于 Chrome DevTools MCP。"

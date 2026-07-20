@@ -14,6 +14,19 @@
     "featured": true
   },
   {
+    "id": "brave-search",
+    "version": "1.0.0",
+    "name": "Brave Search",
+    "author": "henryye",
+    "description": "Search the web with the Brave Search API and retrieve up-to-date results for Finch.",
+    "repo": "yexuan910812/finch-brave-search",
+    "npm": "@yexuan910812/finch-brave-search",
+    "extensionType": "community",
+    "categories": [
+      "research"
+    ]
+  },
+  {
     "id": "browser-tools",
     "version": "1.0.0",
     "name": "Browser Tools",
