@@ -1,6 +1,6 @@
 {
   "name": "finch-agently-mail",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Connect QQ Agently Mail through its official CLI and MCP tools.",
   "author": { "name": "Finch Team", "url": "https://finchwork.app" },
   "homepage": "https://agent.qq.com/",
