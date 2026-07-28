@@ -5,7 +5,7 @@ This document covers icon references, the built-in icon list, and how to use cus
 ## 1. IconRef
 
 An `IconRef` is a plain string used wherever Finch accepts an icon —
-composer action buttons, menu items, manifest declarations, etc.
+composer action buttons, menu items, session-container entries, manifest declarations, etc.
 
 Supported forms:
 
@@ -34,6 +34,7 @@ PascalCase variants (`'ClipboardCheck'`) are automatically normalised, so both w
 |---|---|
 | `folder` | Folder |
 | `hash` | Hash `#` |
+| `bot` | Bot / agent container |
 
 ### Composer actions & menus
 
@@ -48,6 +49,7 @@ PascalCase variants (`'ClipboardCheck'`) are automatically normalised, so both w
 | `filter` | funnel | filter / search mode |
 | `git-branch` | branch fork | git branch name |
 | `git-commit-horizontal` | commit dot | commit / history |
+| `github` | GitHub mark | GitHub service / account |
 | `list` | bullet list | listing / outline |
 | `log-in` | door + arrow | sign in / connect |
 | `message-circle` | speech bubble | chat / comment |
@@ -119,9 +121,12 @@ ctx.icons.register('my-icons', {
 
 ### Step 3 — reference the icon
 
-Use the registered icon for toolbar icons or ComposerAction menu item `iconName`:
+Use the registered icon for toolbar icons, SessionContainer `icon`, or ComposerAction menu item `iconName`:
 
 ```ts
+// package.json → finch.contributes.sessionContainers
+// [{ "id": "inbox", "icon": "ext:my-icons/send-message", "title": "Inbox" }]
+
 // Shorthand (same pack only)
 async getIcon() { return 'ext:send-message'; }
 

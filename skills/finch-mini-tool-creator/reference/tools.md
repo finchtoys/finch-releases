@@ -36,6 +36,14 @@ ctx.tools.register({
 });
 ```
 
+Optional `ToolDefinition` fields:
+
+- `defaultEnabled` — whether the tool is enabled by default when the mini tool is first activated. Defaults to `false`; users can still toggle it in the Toolcase.
+- `risk` — `low` / `medium` / `high`. Affects how Finch presents permission checks.
+- `exposure` — `startup` (default, included in every new session's tool list) or `dynamic` (injected only after runtime registration, useful for large on-demand sets such as MCP tools).
+- `owner` — override provenance when one mini tool registers a tool on behalf of another.
+- `callDisplay` — configure the inline summary shown next to the tool name in the timeline.
+
 ## 3. Naming and description rules
 
 Tool names are model-facing global identifiers. **Always use this exact format:**
@@ -57,17 +65,34 @@ Tool names are model-facing global identifiers. **Always use this exact format:*
 
 Use `exec` inside `execute()` for call-specific data:
 
-- `toolCallId`
-- `sessionId`
-- `spaceId`
-- `cwd`
-- `token`
-- `logger`
-- `storage`
-- `secrets`
-- `ui`
+- `toolCallId` — stable id for this tool call in the timeline.
+- `sessionId` — current Finch session id, if any.
+- `spaceId` — current Space id, if any.
+- `cwd` — effective working directory for the current context.
+- `signal` — an `AbortSignal` when the user cancels or the request times out; check `signal.aborted` before heavy work.
+- `logger` — per-call logger; also available on `ctx.logger`.
+- `storage` — mini-tool private KV storage; also available on `ctx.storage`.
+- `secrets` — read-only secrets; also available on `ctx.secrets`.
+- `progress` — live progress reporter for long-running work.
+- `ui` — request forms from the user during the call.
 
 Treat `exec` as per-call state, not a long-lived cache.
+
+Use `exec.progress.report()` for long-running work such as image generation, exports, uploads, or remote jobs:
+
+```ts
+exec.progress.report({
+  stage: 'generating',
+  message: 'Generating image',
+  percent: 35,
+});
+```
+
+- `message` is required and should be short and user-facing.
+- `stage` is optional, stable machine-readable metadata.
+- `percent` is optional and must represent `0–100`.
+- Omit `percent` when the provider cannot quantify progress; Finch shows an indeterminate animated strip.
+- Progress is live UI only. It is not added to the model context and does not replace the final `ToolResult`.
 
 ## 5. Result shape
 

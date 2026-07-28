@@ -9,11 +9,11 @@ MCP integration separates **presentation metadata** from **transport config**:
 | Layer | Where | What it carries |
 |---|---|---|
 | Static contribution | `package.json → contributes.mcpServers` | `name`, `toolMeta`, `toolDisplay` — presentation only |
-| Runtime registration | `activate()` → `mcp.client#registerServer()` | `command`/`url`, `args`, `env` — transport with real secrets |
+| Runtime registration | `activate()` → `mcp.client#registerServer()` | `command`/`url`, `args`, `env`, `oauth` — resolved transport and authentication |
 
 The MCP bridge merges both layers: transport from the runtime call, presentation from the contribution. Tool titles and ToolCallCard inline summaries are written to `~/.finch/tools.json` when the tools connect.
 
-**Key rule**: Never put secrets (API keys, tokens) in the static manifest. Use `ctx.storage` + `registerServer()` instead.
+**Key rule**: Never put API keys or tokens in the static manifest. For API-key servers, collect the value in a secure form and register the transport at runtime. For OAuth-enabled remote MCP servers, declare `oauth` and let MCP Client perform discovery, DCR, PKCE, refresh, and authenticated transport; never collect an OAuth token yourself.
 
 ---
 
@@ -160,13 +160,84 @@ ctx.subscriptions.push(ctx.tools.register({
 
 ---
 
-## 5. Tool naming
+## 5. Remote MCP OAuth (discovery + DCR + PKCE)
+
+Use MCP OAuth for a remote Streamable HTTP server that advertises OAuth metadata, such as `https://mcp.notion.com/mcp`. This is different from a mini tool calling a normal REST API through `ctx.oauth`:
+
+| Need | API |
+|---|---|
+| Authorize a normal REST API with a publisher-supplied Client ID | `ctx.oauth` |
+| Connect an OAuth-protected MCP endpoint using protected-resource discovery and Dynamic Client Registration | `mcp.client` with `oauth` |
+
+Register the OAuth-enabled server at runtime:
+
+```ts
+interface McpClientCapability {
+  registerServer(config: unknown): Promise<{ ok: boolean; error?: string }>;
+  connectServer(name: string): Promise<{ ok: boolean }>;
+  disconnectServerOAuth(name: string): Promise<{ ok: boolean }>;
+  listTools(name: string): Promise<Array<{ name: string; description?: string }>>;
+  callTool(name: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
+  unregisterServer(name: string): Promise<{ ok: boolean }>;
+}
+
+const mcp = ctx.capabilities.get<McpClientCapability>('mcp.client');
+
+await mcp.registerServer({
+  name: 'notion',
+  url: 'https://mcp.notion.com/mcp',
+  oauth: {
+    id: 'notion-mcp',       // stable local credential/storage id
+    providerName: 'Notion MCP',
+    clientName: 'My Tool',
+    clientUri: 'https://example.com',
+    // scopes: ['...'],      // optional; discovery metadata is used when omitted
+  },
+  ownerExtensionId: ctx.extension.id,
+  ownerExtensionName: ctx.extension.displayName,
+});
+```
+
+Do **not** open the browser during `activate()`. Registering the server is passive; begin authorization only from an explicit user action:
+
+```ts
+await mcp.connectServer('notion');
+const tools = await mcp.listTools('notion');
+```
+
+`connectServer()` performs:
+
+1. RFC 9728 protected-resource metadata discovery
+2. RFC 8414 authorization-server metadata discovery
+3. RFC 7591 Dynamic Client Registration when required
+4. Authorization Code + PKCE (`S256` when advertised)
+5. Finch native OAuth confirmation UI, browser opening, HTTPS callback relay, state validation, cancellation, and timeout
+6. Token exchange and refresh through the official MCP SDK
+7. Authenticated Streamable HTTP connection
+
+To sign out locally:
+
+```ts
+await mcp.disconnectServerOAuth('notion');
+```
+
+Then call `unregisterServer()` during deactivation as usual. Never place `access_token`, `refresh_token`, `client_secret`, or an `Authorization` header in `registerServer()` when `oauth` is enabled.
+
+Do not call `shell.openExternal`, start a loopback callback server, or render a callback page in the mini tool. MCP Client delegates those interaction concerns to Finch OAuth core through `ctx.oauth.authorize()`, so MCP and normal OAuth share the same native confirmation card, `BrowserOAuthFlowDriver`, HTTPS relay page, `finch://oauth/callback` routing, cancellation, and timeout behavior.
+
+Finch follows the authorization server's RFC 7591 Dynamic Client Registration flow and registers `client_name: Finch`, `client_uri: https://finchwork.app`, the Finch logo, and the HTTPS callback. Do not use `finch://` directly as a production redirect URI—keep the externally verifiable HTTPS callback and let it hand off locally to the custom protocol. A published Client ID Metadata Document may still be used for servers that explicitly require URL-based clients, but Finch does not prefer it over the server's documented DCR flow.
+
+For a user-managed MCP server added through Finch's MCP management tool, the equivalent setup is `action=add` with `name`, `url`, and `oauth=true`, followed by `action=connect` with the exact server name.
+
+---
+
+## 6. Tool naming
 
 The bridge exposes tools as `mcp__<serverName>__<toolName>`. Keep `name` stable — it becomes part of the model-facing tool name.
 
 ---
 
-## 6. Why not write to servers.json?
+## 7. Why not write to servers.json?
 
 `servers.json` is the user's own MCP config file. Mini tools should not write to it:
 - Uninstalling the tool would leave orphaned entries
@@ -174,7 +245,7 @@ The bridge exposes tools as `mcp__<serverName>__<toolName>`. Keep `name` stable 
 
 ---
 
-## 7. Debugging
+## 8. Debugging
 
 When a contributed MCP server does not connect:
 
@@ -182,4 +253,6 @@ When a contributed MCP server does not connect:
 2. Check that MCP Client is enabled
 3. Verify `name` in `contributes.mcpServers` matches the `name` passed to `registerServer()`
 4. Check that `setup_*` was called and the API key is stored in `ctx.storage`
-5. Check the extension logs for connection or handshake errors
+5. For OAuth MCP, confirm the endpoint exposes RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata
+6. Confirm the authorization server exposes a `registration_endpoint` unless a static/URL-based client id is used
+7. Check the extension logs for discovery, registration, callback, token, or MCP handshake errors

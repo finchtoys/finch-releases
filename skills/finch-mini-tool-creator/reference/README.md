@@ -12,6 +12,8 @@ This is the detailed reference area for Finch mini tools. The main guide should 
 - [`ui.md`](./ui.md) — Toasts, dialogs, Canvas Window, and other UI interactions
 - [`icons.md`](./icons.md) — built-in icons, runtime packs, `IconRef`, SVG rules
 - [`capabilities.md`](./capabilities.md) — `ctx.capabilities` provide/get, versioning, collaboration
+- [`session.md`](./session.md) — owner-scoped Sessions: containers, Space placement, sending messages, events, and limits
+- [`oauth.md`](./oauth.md) — `ctx.oauth`, PKCE providers, brokered requests, and token isolation
 - [`mcp.md`](./mcp.md) — MCP contributions, bridge behavior, tool naming, and debugging notes
 - [`publish.md`](./publish.md) — packaging for npm, `.npmignore` / `files` best practices, versioning, and community listing via finch-releases
 

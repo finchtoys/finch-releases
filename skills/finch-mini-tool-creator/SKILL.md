@@ -46,6 +46,10 @@ Identify what your mini tool needs, then read the matching files:
 | Composer toolbar buttons | `reference/composer-actions.md` **and** `reference/icons.md` |
 | Custom icons | `reference/icons.md` — §2 built-in list first, then §3 SVG rules |
 | Storage / secrets | `reference/finch.d.ts` → `Storage` / `Secrets` interfaces |
+| OAuth account linking | `reference/oauth.md` and `reference/finch.d.ts` → `OAuth` interfaces |
+| Dialogs / images / Canvas | `reference/ui.md` and `reference/finch.d.ts` → UI and `CanvasWindow` interfaces |
+| Status snapshots | `reference/finch.d.ts` → `Status` interface |
+| Bot / remote / Agent Session messaging / container settings menu | `reference/session.md` and `reference/finch.d.ts` → `SessionContainerSettingsMenuProvider` |
 | MCP integration | `reference/mcp.md` |
 | Publishing | `reference/publish.md` |
 
@@ -185,24 +189,30 @@ A minimal mini tool needs:
 - `contributes`
 - `permissions` when needed
 
-For Composer toolbar buttons, declare `id`, `icon`, and short `tooltip` text in `contributes.composerActions`. Use optional `hoverText` for a longer plain-text HoverCard description; localize both fields under `i18n/<locale>.json → composerActions.<id>`.
+For Composer toolbar buttons, declare `id`, `icon`, and short `tooltip` text in `contributes.composerActions`. Longer hover descriptions belong to `hoverText` on items returned by `getMenu()`, not to the manifest button declaration. Session containers may also declare `icon` with the same built-in or `ext:` SVG IconRef strategy; omitted icons fall back to `bot`.
 
-Composer 工具栏按钮在 `contributes.composerActions` 中声明 `id`、`icon` 和简短 `tooltip`；较长的悬浮说明使用可选 `hoverText`，并在 `i18n/<locale>.json → composerActions.<id>` 中本地化这两个字段。
+A SessionContainer can expose **one optional settings menu** beside its inbox model picker. Declare `settingsMenu` on that exact `contributes.sessionContainers` item, then register it at runtime with `ctx.sessionContainers.registerSettingsMenu(containerId, provider)`. The same container cannot register a second menu; only its owning mini tool can register it. Use `getMenu()` for rows and `execute()` for the selected row; `execute()` may call `ctx.ui.showModalDialog()` for account login or connection settings.
 
 **Icon rule (mandatory):** Before setting the `icon` field, read `reference/icons.md` §2 and confirm the id appears in the built-in table. If it does not, register a runtime SVG pack (§3) and use an `ext:` reference. An unrecognised id silently renders as plain text — there is no warning.
+
+**Manifest i18n rule (mandatory):** AI-generated and hand-authored manifests must use plain English strings as defaults for every user-visible field. Never embed `LocalizedString` language maps in a manifest. Put all localized copy in `i18n/<locale>.json`, using stable IDs, keys, option values, or documented array indexes to override the default. Every new user-visible manifest field must ship with a corresponding i18n override design; inline localization is not an acceptable fallback.
 
 ### API access
 
 All runtime capabilities go through `ctx`:
 
-- `ctx.tools`
+- `ctx.tools` — Agent tools; each `execute(input, exec)` call can use `exec.progress.report(...)` for live long-task progress
 - `ctx.composerActions`
-- `ctx.ui`
+- `ctx.ui` — native Finch dialogs and Canvas windows. `showModalDialog().message` supports standalone `![alt](src)` images for UI-only previews such as QR codes; use HTTPS or supported base64 image data URLs, never `ToolContent.image`, when the image is only for the user. The returned Modal handle remains awaitable and adds `close(action?)`, so background success can close the visible dialog and resolve the same action path.
 - `ctx.storage`
 - `ctx.secrets`
+- `ctx.oauth` — isolated Authorization Code + PKCE or Device Flow login and brokered authorized requests; the mini-tool developer ships the public Provider configuration, users only complete login, and raw tokens are never exposed
 - `ctx.logger`
 - `ctx.app` — read Finch app info such as version/build/platform/assistantName (user-customized assistant name, e.g. "帕亚"; use it to personalize tool output)
-- `ctx.i18n`
+- `ctx.status` — aggregated runtime status, including latest current unread session metadata
+- `ctx.sessions` — owner-scoped Session creation, reliable FIFO text/file `send()`, live response events, cursor recovery, and race-safe `waitForTurn()` for one exact terminal result without sleep/polling. Use `onDidReceiveEvent()` for long-lived observation, `waitForTurn()` for request/response orchestration, and `listEvents()` for history/recovery. Background Sessions default to `acceptCalls`, interactive Sessions to `ask`, and `create()` may explicitly choose either; requires `permissions.sessions` and declared `contributes.sessionContainers`. Container titles/descriptions and `starterPrompts` cards support `LocalizedString`; the container home shows at most four cards and sends the selected card's `prompt` in a new container Session. Background container Sessions use a quiet red-dot reminder instead of system notifications. Users may choose a default model per container; Finch applies it automatically to future `create({ containerId })` calls and falls back to the global default when unset or unavailable.
+- `ctx.sessionContainers` — register the owning container's one optional settings menu. The manifest container must declare `settingsMenu`; call `registerSettingsMenu(containerId, { getMenu, execute })` once and push its handle to `ctx.subscriptions`. The static declaration reserves the button; Finch calls `getMenu()` every time it opens. Return status rows and clickable actions as separate items (for example disabled “Status · Signed out” plus actionable “Sign in”), use `ctx.ui.showModalDialog()` from `execute()`, and call the handle's `notifyUpdate()` when background login state changes.
+- `ctx.i18n` — put localized runtime copy in `i18n/<locale>.json` and read it with `ctx.i18n.t()`. Keep the manifest in one default language; locale files override `name`, `description`, `systemPrompt`, `promptGuides`, Composer action tooltips, `sessionContainers` (including `starterPrompts` by index), `agentProfiles`, and `settings.fields` by stable `key`. Settings overrides also support select option labels and list `itemFields`.
 - `ctx.capabilities`
 - `ctx.extensions`
 
@@ -216,6 +226,13 @@ Recommended flow:
 4. Enable it in Finch.
 5. Check logs if activation fails.
 
+For long-running tools, verify progress behavior before publishing:
+
+- Set `progressMode: 'indeterminate'` on a tool only when it should show an initial indeterminate bar before it can report progress. Do not set it on ordinary tools.
+- `exec.progress.report({ message: 'Working…' })` renders indeterminate progress.
+- `exec.progress.report({ message: 'Working…', percent: 35 })` renders determinate progress.
+- The tool still returns one final `ToolResult`; progress updates are not results.
+
 ---
 
 ## References
@@ -223,9 +240,12 @@ Recommended flow:
 - `reference/finch.d.ts` — full API reference and type definitions.
 - `reference/README.md` — detailed authoring guide and patterns.
 - `reference/tools.md` — Agent tool naming, inputSchema, risk levels, forms, and common mistakes. **Read this before registering any tool.**
-- `reference/composer-actions.md` — Composer button manifest fields, including `hoverText`, runtime providers, menus, and debugging rules.
+- `reference/composer-actions.md` — Composer button manifest fields, runtime providers, menu-item `hoverText`, menus, and debugging rules.
 - `reference/icons.md` — built-in icon list, runtime SVG packs, `IconRef` format, and SVG rules. **Read this before setting any `icon` field.**
+- `reference/session.md` — owner-scoped Sessions, containers, Space placement, events, and limits. **Read this before using `ctx.sessions`.**
 - `reference/mcp.md` — local MCP server setup for on-demand tool loading.
+- `reference/oauth.md` — OAuth permissions, provider config, Authorization Code + PKCE, Device Flow, brokered requests, and security boundaries.
+- `reference/ui.md` — Toast, dialog, Canvas window, and native window-level guidance.
 - `reference/capabilities.md` — `ctx.capabilities` provide/get for cross-extension collaboration.
 - `reference/publish.md` — packaging, npm publishing, and community listing.
 - Use `@finchtoys/minitool-api` in new mini tools; do not point `paths` at a local Finch repo checkout or the user's environment directory.

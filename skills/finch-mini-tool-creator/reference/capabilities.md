@@ -50,8 +50,24 @@ if (!ctx.capabilities.has('mcp.client')) return;
 
 ## 5. Versioning
 
-Use capability versioning when the API may evolve.
-Consumers can read the version and adapt behavior accordingly.
+Use capability versioning when the API may evolve. Pass a `version` option when you `provide()`:
+
+```ts
+ctx.capabilities.provide('my.feature', {
+  async listItems() { return []; },
+}, { version: '1.2.0' });
+```
+
+Consumers can read the version and adapt behavior accordingly:
+
+```ts
+if (ctx.capabilities.has('my.feature')) {
+  const version = await ctx.capabilities.getVersion('my.feature');
+  // branch on version if needed
+}
+```
+
+Keep method names stable and bump the version only when the interface changes.
 
 ## 6. Design rules
 

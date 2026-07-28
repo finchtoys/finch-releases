@@ -30,6 +30,7 @@ Recommended approach — use `.npmignore` (or `files` in `package.json`) to keep
 {
   "files": [
     "dist/",
+    "finch.json",
     "i18n/",
     "skills/",
     "icons/",
@@ -58,6 +59,7 @@ tests/
 | Path | Include? | Reason |
 |---|---|---|
 | `dist/` | ✅ required | compiled runtime entry |
+| `finch.json` | ✅ required if used | standalone manifest (recommended for new mini tools) |
 | `i18n/` | ✅ if used | locale override files |
 | `skills/` | ✅ if bundled | SKILL.md assets |
 | `icons/` | ✅ if bundled | SVG icon packs |
@@ -162,7 +164,7 @@ To have your mini tool appear in the Finch community catalog:
 
    **https://github.com/finchtoys/finch-releases/issues**
 
-4. Create a new issue with the label **小工具发布申请**.
+4. Create a new issue with the label **mini-tool-listing-request**.
 5. Include in the issue body:
    - npm package name
    - `finch.id`

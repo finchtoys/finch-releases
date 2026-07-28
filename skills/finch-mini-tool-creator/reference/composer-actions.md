@@ -17,12 +17,7 @@ The manifest declares the slot. The provider fills in live badge text, menu item
 {
   "contributes": {
     "composerActions": [
-      {
-        "id": "git-branch",
-        "icon": "GitBranch",
-        "tooltip": "Switch branch",
-        "hoverText": "View and switch branches in the current Git repository."
-      }
+      { "id": "git-branch", "icon": "GitBranch", "tooltip": "Switch branch" }
     ]
   }
 }
@@ -33,27 +28,8 @@ Keep the declaration minimal:
 - `id` must match the runtime registration id
 - `icon` is the default icon
 - `tooltip` is the short user-facing label and accessibility name
-- `hoverText` is an optional longer plain-text description shown in a HoverCard; line breaks are preserved
-- when `hoverText` is omitted, Finch keeps showing the normal Tooltip from `tooltip`
 
-中文说明：
-
-- `tooltip` 是简短标签和无障碍名称
-- `hoverText` 是可选的较长纯文本说明，悬浮时通过 HoverCard 展示，并保留换行
-- 未配置 `hoverText` 时，Finch 继续使用 `tooltip` 展示普通 Tooltip
-
-Both fields can be localized through `i18n/<locale>.json`:
-
-```json
-{
-  "composerActions": {
-    "git-branch": {
-      "tooltip": "切换分支",
-      "hoverText": "查看并切换当前 Git 仓库中的分支。"
-    }
-  }
-}
-```
+`tooltip` is only the short hint on the ComposerAction toolbar button; longer per-item descriptions belong to `hoverText` on items returned by `getMenu()`.
 
 ## 3. Runtime provider
 
@@ -64,7 +40,12 @@ ctx.subscriptions.push(
       return cwd ? 'main' : undefined;
     },
     async getMenu({ cwd }) {
-      return [{ id: 'main', label: 'main', iconName: 'git-branch' }];
+      return [{
+        id: 'main',
+        label: 'main',
+        iconName: 'git-branch',
+        hoverText: 'Switch to the main branch.',
+      }];
     },
     async execute({ cwd }, itemId, actions) {
       await actions.composer.fill(`Selected ${itemId}`);
@@ -112,7 +93,7 @@ async getBadge({ cwd }) { return getCurrentBranch(cwd); }
 
 // Active state — planning mode toggle, filter, global switch
 async getBadge() {
-  if (planningMode) return { text: '计划中', active: true };
+  if (planningMode) return { text: 'Planning', active: true };
   // Return undefined to hide the badge while mode is off.
   // Throw here instead to hide the *button* entirely when inactive.
   return undefined;
@@ -154,6 +135,39 @@ Return an `IconRef` or `undefined`.
 
 Return the menu items shown on click.
 If the array is empty, Finch shows an empty menu state.
+
+Set `hoverText` on a menu item when it needs a longer plain-text explanation. Finch shows it in a HoverCard while that row is hovered, preserves line breaks, and does not parse HTML or Markdown. Nested `children` items support the same field.
+
+#### Trailing hover button (`trailingButton`)
+
+A menu item may carry a standalone **trailing button** for a secondary action distinct from selecting the row itself (open in browser, copy, delete, jump, etc.).
+
+```ts
+async getMenu() {
+  return [
+    {
+      id: 'main',
+      label: 'main',
+      iconName: 'git-branch',
+      description: 'default',                       // shown when NOT hovering
+      trailingButton: { id: 'open', iconName: 'external-link', tooltip: 'Open on GitHub' },
+    },
+  ];
+}
+
+async execute(ctx, itemId, actions) {
+  if (itemId === '__trailing__:open') { openBranchOnGitHub(); return; }  // trailing button
+  if (itemId === 'main') { await checkout('main'); }                    // normal row select
+}
+```
+
+Behavior and constraints:
+
+- **Visible only on hover** — the button appears when the mouse is over that menu row; it stays hidden otherwise.
+- **Replaces the description** — while the button is shown, it takes the place of the row's `description` text (they never show at once).
+- **Separate click routing** — clicking the button fires `execute(ctx, '__trailing__:<button.id>', actions)`, NOT the row's own `execute(itemId)`. The click does not bubble to the row and does **not** close the menu; if you want to close it, drive the Composer via `actions.composer.*` from your handler.
+- **Not on submenu rows** — items with `children` cannot have a trailing button; the field is ignored there (those rows already show the submenu chevron).
+- `iconName` is required and follows the usual `IconRef` rules (built-in name or `ext:<packId>/<iconId>`); `tooltip` renders as a native title; `disabled` greys it out.
 
 ### `getReminder(ctx)`
 
@@ -217,12 +231,12 @@ Called once after each assistant turn finishes in a session. Use it for post-res
 async onTurnEnd(ctx, actions) {
   if (!ctx.sessionId || ctx.surface === 'home') return;
   const result = await actions.composer.confirm({
-    text: '方案已就绪，开始执行？',
-    confirmLabel: '开始执行',
-    cancelLabel: '继续规划',
+    text: 'Plan is ready. Start implementation?',
+    confirmLabel: 'Start',
+    cancelLabel: 'Keep planning',
   });
   if (result === 'confirm') {
-    await actions.composer.fill('按上面的方案开始执行。');
+    await actions.composer.fill('Start implementing the plan above.');
   }
 }
 ```
@@ -240,6 +254,8 @@ Useful fields:
 - `id`
 - `label`
 - `description`
+- `hoverText`
+- `trailingButton` — right-aligned hover button (`{ id, iconName, tooltip?, disabled? }`); click fires `execute('__trailing__:<id>')`; ignored on `children` rows
 - `iconName`
 - `current`
 - `disabled`
@@ -252,6 +268,7 @@ Useful fields:
 Rules:
 
 - **Every actionable menu item must provide `iconName`**. Only structural entries such as `separator` may omit it. This keeps menus scannable and prevents icon-less rows from slipping into mini tools.
+- `separator: true` is a standalone structural item, never a flag on an actionable row. Give it its own id and an empty label, e.g. `{ id: 'account-divider', label: '', separator: true }`; the following login/logout row is a separate item without `separator`.
 - Prefer an icon already available in Finch; see [`icons.md`](./icons.md) for the supported built-in ids.
 - If no built-in icon fits, register an SVG from Lucide (or another compatible icon library) through `ctx.icons.register()` and reference it as `ext:<packId>/<iconId>`; do not pass an unverified Lucide name as plain text.
 - Apply the same rule recursively to every item in `children`.
@@ -305,8 +322,8 @@ Use it for quick drafts, templates, and file-linked prompts.
 - Omitting `iconName` from an actionable menu item (including nested `children`)
 - Using an unverified Lucide name as `iconName` instead of a built-in id or registered `ext:` SVG
 - Using custom DOM instead of Composer actions
-- Putting long usage instructions in `tooltip` instead of `hoverText`
-- Treating `hoverText` as HTML or Markdown; Finch renders it as plain text
+- Putting menu-row explanations in the button `tooltip` instead of the `getMenu()` item's `hoverText`
+- Treating a menu item's `hoverText` as HTML or Markdown; Finch renders it as plain text
 - Forgetting that the selected child id is what reaches `execute()`
 - Calling `notifyUpdate()` on a tight loop (< 1 s) — it triggers a full re-fetch each time
 - Discarding the `register()` return value and losing access to `notifyUpdate()`
