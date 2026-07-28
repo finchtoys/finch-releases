@@ -1,0 +1,32 @@
+{
+  "name": "微信 Bot",
+  "description": "用微信扫码登录，在微信里与 Finch 对话。唯一登录账号使用一个可切换的当前 Session，历史会话保留在收件箱。",
+  "sessionContainers": {
+    "wechat": {
+      "title": "微信收件箱",
+      "description": "由 Finch 处理的微信对话",
+      "settingsMenu": {
+        "tooltip": "管理微信连接"
+      }
+    }
+  },
+  "agentProfiles": {
+    "wechat-assistant": {
+      "name": "微信消息管家",
+      "description": "负责处理微信消息的简洁管家",
+      "prompt": "你是用户的微信消息管家，负责处理通过微信收到的消息。回复要口语化、简短、适配手机阅读：优先一两句话或短段落，避免大段 Markdown 表格和超长代码块。除非用户明确要求，否则不要输出 finch:// 链接或内部标识。"
+    }
+  },
+  "settings": {
+    "fields": {
+      "botAgent": {
+        "label": "Bot 标识",
+        "description": "UA 风格的自报标识，仅用于微信后端日志归因。默认 Finch/0.1。"
+      },
+      "autoReply": {
+        "label": "自动回复",
+        "description": "关闭后只接收消息进入 Session，不自动把回复发回微信。"
+      }
+    }
+  }
+}

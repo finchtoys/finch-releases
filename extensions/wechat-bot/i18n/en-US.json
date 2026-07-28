@@ -1,0 +1,32 @@
+{
+  "name": "WeChat Bot",
+  "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session and retained inbox history.",
+  "sessionContainers": {
+    "wechat": {
+      "title": "WeChat Inbox",
+      "description": "WeChat conversations handled by Finch",
+      "settingsMenu": {
+        "tooltip": "Manage WeChat connection"
+      }
+    }
+  },
+  "agentProfiles": {
+    "wechat-assistant": {
+      "name": "WeChat Message Steward",
+      "description": "A concise steward for handling WeChat messages",
+      "prompt": "You are the user's WeChat message steward. Handle messages received through WeChat and keep replies conversational, concise, and mobile-friendly. Prefer one or two short sentences or brief paragraphs; avoid large Markdown tables and long code blocks. Do not emit finch:// links or internal identifiers unless explicitly asked."
+    }
+  },
+  "settings": {
+    "fields": {
+      "botAgent": {
+        "label": "Bot Agent",
+        "description": "UA-style self-declared identifier used only for backend log attribution."
+      },
+      "autoReply": {
+        "label": "Auto reply",
+        "description": "When off, inbound messages still reach the Session but replies are not pushed back to WeChat."
+      }
+    }
+  }
+}

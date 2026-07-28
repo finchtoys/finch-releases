@@ -1,0 +1,68 @@
+{
+  "manifestVersion": 1,
+  "id": "wechat-bot",
+  "name": "WeChat Bot",
+  "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session and retained inbox history.",
+  "main": "dist/index.js",
+  "activationEvents": [
+    "onStartup"
+  ],
+  "miniToolType": "official",
+  "categories": [
+    "productivity"
+  ],
+  "contributes": {
+    "tools": true,
+    "icons": {
+      "wechat": { "svg": "./icons/wechat.svg", "description": "WeChat icon (RiWechat2Line)" },
+      "activity": { "svg": "./icons/activity.svg" },
+      "play": { "svg": "./icons/play.svg" },
+      "log-out": { "svg": "./icons/log-out.svg" },
+      "qr-code": { "svg": "./icons/qr-code.svg" }
+    },
+    "sessionContainers": [
+      {
+        "id": "wechat",
+        "icon": "ext:wechat-bot/wechat",
+        "title": "WeChat Inbox",
+        "description": "WeChat conversations handled by Finch",
+        "settingsMenu": {
+          "icon": "settings",
+          "tooltip": "Manage WeChat connection"
+        },
+        "mode": "inbox"
+      }
+    ],
+    "agentProfiles": [
+      {
+        "id": "wechat-assistant",
+        "name": "WeChat Message Steward",
+        "description": "A concise steward for handling WeChat messages",
+        "prompt": "You are the user's WeChat message steward. Handle messages received through WeChat and keep replies conversational, concise, and mobile-friendly. Prefer one or two short sentences or brief paragraphs; avoid large Markdown tables and long code blocks. Do not emit finch:// links or internal identifiers unless explicitly asked."
+      }
+    ]
+  },
+  "settings": {
+    "fields": [
+      {
+        "key": "botAgent",
+        "type": "string",
+        "label": "Bot Agent",
+        "description": "UA-style self-declared identifier used only for backend log attribution.",
+        "placeholder": "Finch/0.1",
+        "default": "Finch/0.1"
+      },
+      {
+        "key": "autoReply",
+        "type": "boolean",
+        "label": "Auto reply",
+        "description": "When off, inbound messages still reach the Session but replies are not pushed back to WeChat.",
+        "default": true
+      }
+    ]
+  },
+  "permissions": {
+    "network": true,
+    "sessions": true
+  }
+}

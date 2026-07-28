@@ -1,0 +1,40 @@
+{
+  "name": "finch-wechat-bot",
+  "version": "0.5.5",
+  "description": "Connect WeChat to Finch through iLink with QR login, inbox sessions, proactive messaging, and Space tasks.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/wechat-bot"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "0.2.6",
+    "@types/node": "^26.1.1",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "qrcode": "1.5.4"
+  },
+  "files": [
+    "dist/",
+    "finch.json",
+    "i18n/",
+    "icons/",
+    "icon.png",
+    "README.md"
+  ]
+}
