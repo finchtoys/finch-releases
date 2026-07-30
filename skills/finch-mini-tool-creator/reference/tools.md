@@ -116,6 +116,14 @@ Rules:
 
 Use `exec.ui.requestForm()` when the tool needs user input.
 
+`requestForm()` only works inside a running tool call — it pops a form card in the
+Composer waiting area and blocks until the user submits/cancels or it times out. If you
+need to collect manual input **without** a tool call in flight (e.g. a settings-menu
+button, a ComposerAction click, or code in `activate()`), use
+`ctx.ui.showModalDialog({ ..., fields })` instead — it renders the identical field grid
+(same `MiniToolFormField[]` shape below) inside a native modal with your own action
+buttons. See `reference/ui.md` §4.1 for the comparison and an example.
+
 Recommended field types:
 
 - `text`

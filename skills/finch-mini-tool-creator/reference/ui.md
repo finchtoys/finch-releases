@@ -44,6 +44,44 @@ Use `showModalDialog()` when the user needs to choose one of several actions.
 
 Use it when a confirm dialog is too limited and a full custom window would be overkill.
 
+### 4.1 Collecting manual input: `fields` vs `requestForm`
+
+Both APIs render the exact same field grid — `MiniToolFormField[]` items of type
+`text` / `password` / `textarea` / `number` / `select` / `boolean` / `link`, with
+`required`, `secret`, `width` (`'full' | '1/2' | '1/3' | '2/3'`), `default`, and
+`options`. Pick between them based on **when** you need the input, not how to render it:
+
+| | `exec.ui.requestForm(spec)` | `ctx.ui.showModalDialog({ ..., fields })` |
+|---|---|---|
+| Where it's callable | Only inside a tool's `execute(input, exec)` | Anywhere off `ExtensionContext.ui` — ComposerAction handlers, `sessionContainers` settings-menu `execute()`, even `activate()` |
+| Depends on an Agent turn | Yes — only appears while the model is mid-turn and actually called your tool | No |
+| Where it renders | Composer waiting-area card | Native modal dialog with your own `actions` buttons |
+| Good for | "The model needs one more piece of info to finish this tool call" | "The user clicks a settings button and manually types an API key / token" — nothing here should depend on the AI deciding to call a tool |
+
+When `fields` is set on `showModalDialog`, the first `variant: 'primary'` action stays
+disabled until every `required` field is filled, and the resolved
+`ModalDialogResult.values` carries what the user typed (`Record<string, string | number | boolean>`).
+Treat `secret: true` fields the same way you'd treat any other user-entered secret —
+store them with `ctx.secrets`, never echo them back into a tool result or model-visible content.
+
+```ts
+const result = await ctx.ui.showModalDialog({
+  title: 'Configure API Key',
+  actions: [
+    { id: 'cancel', label: 'Cancel' },
+    { id: 'save', label: 'Save', variant: 'primary' },
+  ],
+  fields: [
+    { key: 'apiKey', label: 'API Key', type: 'password', secret: true, required: true },
+  ],
+});
+if (result.action === 'save') {
+  await ctx.secrets.set('apiKey', String(result.values?.apiKey ?? ''));
+}
+```
+
+See `reference/tools.md` for `exec.ui.requestForm()` usage from inside a tool's `execute()`.
+
 ## 5. Structured message text
 
 Dialog `message` supports lightweight structured text:

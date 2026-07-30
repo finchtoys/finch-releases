@@ -22,7 +22,7 @@
   {
     "id": "finch-mini-tool-creator",
     "name": "Finch 小工具开发",
-    "description": "用于开发、调试和测试 Finch 小工具。适合创建新工具、添加 Agent 工具或 Composer 按钮、排查已有工具。"
+    "description": "用于开发、调试、安装和发布 Finch 小工具。适合创建新工具、添加 Agent 工具或 Composer 按钮、排查问题、OAuth 集成、打包分发等场景。"
   },
   {
     "id": "find-skills",

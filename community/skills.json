@@ -52,7 +52,7 @@
     "id": "finch-mini-tool-creator",
     "name": "Finch Mini Tool Creator",
     "author": "Finch Team",
-    "description": "Guide for developing, debugging, and testing Finch mini tools. Use when creating a new tool, adding custom agent tools or composer action buttons, or debugging an existing tool.",
+    "description": "Guide for developing, debugging, installing, and publishing Finch mini tools. Use when creating a new tool, adding agent tools or composer buttons, debugging, OAuth integration, or packaging/distributing a mini tool.",
     "repo": "finchtoys/finch-releases",
     "installScope": "global",
     "categories": [

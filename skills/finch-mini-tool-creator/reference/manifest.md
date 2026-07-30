@@ -181,7 +181,7 @@ Bot, remote, and Agent mini tools that use `ctx.sessions` must declare the conta
 
 Container `mode` decides the home-screen interaction shape (defaults to `inbox` when omitted):
 
-- `inbox`: Bot / multi-agent aggregation. Sessions are initiated by the mini tool; the home screen shows a session list with no "new session" entry, and supports a container-level default model (the user picks it from the container row's menu).
+- `inbox`: Bot / multi-agent aggregation. Sessions are initiated by the mini tool; the home screen shows a session list with no "new session" entry, and supports a container-level default model (the user picks it from the container row's menu). `agentProfile` is optional but usually wanted here — it is what gives every inbound conversation one consistent persona.
 - `assistant`: Industry-scenario assistant. The user actively starts conversations; the home screen shows a role introduction and starter prompts, hides container model selection, and **must** bind `agentProfile` (referencing an id declared in `contributes.agentProfiles`; new sessions automatically apply that role's prompt).
 
 `icon` follows the same `IconRef` strategy as ComposerAction: use a Finch built-in id directly (e.g. `"message-circle"`, `"users"`), or reference a runtime SVG (e.g. `"ext:agent-logo"` or `"ext:my-icons/agent-logo"`). Custom SVGs still require declaring `contributes.iconPacks` first and registering via `ctx.icons.register()` in `activate()`. Omitted icons fall back to `bot`.
@@ -203,7 +203,9 @@ Container entries immediately pick up the matching `i18n/<locale>.json` copy aft
 
 Users can pick the container's default model from the container row's menu. New sessions created via `ctx.sessions.create({ containerId })` then automatically use that model; if none is chosen or the model is unavailable, it falls back to the Finch global default. The mini tool does not need to — and cannot — read or override this user preference in code. Sessions created into a `space` do not use a container model.
 
-When creating a Session, reference a statically declared Agent role via `profileId: "concierge"`. The profile prompt is stored as a supplemental snapshot on top of Finch's base system prompt; it cannot replace safety rules or elevate permissions, and the runtime cannot pass an arbitrary system prompt directly.
+An Agent role is bound at the **container** level: point `sessionContainers[].agentProfile` at a statically declared `contributes.agentProfiles[].id` (e.g. `"concierge"`), and every Session created in that container automatically carries that role. This applies to both container modes — required for `assistant`, optional for `inbox` (e.g. a Bot container giving every inbound conversation one persona) — both the Finch UI's "New chat" entry and your own `ctx.sessions.create({ containerId })` call. You do not pass `profileId` per Session. The profile prompt is snapshotted at Session creation and stored as a supplement on top of Finch's base system prompt; it cannot replace safety rules or elevate permissions, and the runtime cannot pass an arbitrary system prompt directly. Sessions created into a `space`, and ordinary user conversations, never carry an Agent profile.
+
+Finch injects the role as a **partner of the user's own Finch assistant**, with both identities coexisting: the assistant keeps its name, personality, memory, and safety rules, while the profile contributes the specialty and the division of labor. Asked "who are you", it introduces itself as the Finch assistant's partner `<profile name>` plus what it can do there. Write `prompt` as a specialty and working style; do not write "you are a brand-new AI unrelated to Finch", and do not hardcode an assistant name — users can rename theirs.
 
 ## 5. Permissions
 

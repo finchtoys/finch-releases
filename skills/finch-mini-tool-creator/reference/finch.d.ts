@@ -373,8 +373,7 @@ declare module 'finch' {
 
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
-
-    /** 为已声明容器注册唯一的设置菜单。 */
+    /** Register an optional, container-owned settings menu. */
     readonly sessionContainers: {
       registerSettingsMenu(containerId: string, provider: SessionContainerSettingsMenuProvider): Disposable & {
         /** Re-fetch the visible menu after login or other background state changes. */
@@ -508,7 +507,12 @@ declare module 'finch' {
      */
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
-    /** 引用 manifest contributes.agentProfiles 中静态声明的 Agent 角色。 */
+    /**
+     * @deprecated 已废弃且被忽略。Agent 角色由目标容器的
+     * `contributes.sessionContainers[].agentProfile` 声明决定并自动生效，
+     * 不再由调用方逐个会话指定。传入不会报错（仅打印一条废弃警告，
+     * 会话照常创建），但不产生任何效果——请改为在容器上声明。
+     */
     readonly profileId?: string;
     /** 继承发起调用的 Chat/Space 上下文；仅在 Agent tool 调用作用域内可用。 */
     readonly context?: 'caller';
@@ -615,7 +619,8 @@ declare module 'finch' {
   // ════════════════════════════════════════════════════════════════════════════
 
   /**
-   * 插件自定义表单中的单个字段，渲染在等候区表单卡片里。
+   * 插件自定义表单中的单个字段。`ctx.ui.requestForm()`（等候区表单卡片，绑定 tool
+   * 执行上下文）与 `ModalDialogOptions.fields`（独立弹窗，无需 tool 执行上下文）共用同一套字段定义。
    * @deprecated Use {@link MiniToolFormField} for new mini tools.
    */
   export interface ExtensionFormField {
@@ -1322,10 +1327,37 @@ declare module 'finch' {
     /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, ! warning lines, and standalone `![alt](src)` images. Image src accepts credential-free HTTPS URLs or base64 PNG/JPEG/WebP/GIF data URLs up to 5 MB. Dialog images stay UI-only and are not returned to the model. */
     readonly message?: string;
     readonly actions?: readonly ModalDialogActionOptions[];
+    /**
+     * 可选输入字段，复用 `ctx.ui.requestForm()` 同一套字段栅格
+     * （text/password/textarea/number/select/boolean/link）。
+     * 与 `requestForm` 不同，这个弹窗**不依赖正在运行的 tool call**——可以在
+     * `ExtensionContext.ui` 的任意时机调用（ComposerAction 处理函数、设置菜单、
+     * activate() 里等），因此适合让小工具在没有 Agent 回合的情况下手动收集文本/token 输入。
+     * 声明 `fields` 后，主按钮（第一个 `variant: 'primary'` 的 action）在必填项未填完时禁用；
+     * 提交后 `ModalDialogResult.values` 携带填写的值。
+     *
+     * @example
+     * const result = await ctx.ui.showModalDialog({
+     *   title: '配置 API Key',
+     *   actions: [
+     *     { id: 'cancel', label: '取消' },
+     *     { id: 'save', label: '保存', variant: 'primary' },
+     *   ],
+     *   fields: [
+     *     { key: 'apiKey', label: 'API Key', type: 'password', secret: true, required: true },
+     *   ],
+     * });
+     * if (result.action === 'save') {
+     *   await ctx.secrets.set('apiKey', String(result.values?.apiKey ?? ''));
+     * }
+     */
+    readonly fields?: readonly MiniToolFormField[];
   }
 
   export interface ModalDialogResult {
     readonly action: string | 'dismissed';
+    /** 仅当 `ModalDialogOptions.fields` 被设置时才存在。 */
+    readonly values?: Readonly<Record<string, string | number | boolean>>;
   }
 
   /**
@@ -1774,6 +1806,8 @@ declare module 'finch' {
     /** Manifest permissions.oauth 中声明的权限 id。 */
     providerId: string;
     providerName: string;
+    /** 可选的可信 Provider 图标 URL，例如 finch-ext-icon://<extensionId>/icon.png。 */
+    providerIcon?: string;
     /** 已包含 state 与 redirect_uri 的完整 HTTPS 授权 URL。 */
     authorizationUrl: string;
     state: string;
@@ -1859,31 +1893,101 @@ declare module 'finch' {
   }
 
   /**
-   * 一个由插件贡献的 MCP server 配置（stdio transport）。
-   * Finch 会用 `command`/`args`/`env` 启动子进程，按 MCP 协议握手并列出工具。
+   * OAuth-protected MCP server 的元数据。声明后，官方 MCP Client 代表本插件完成
+   * discovery + DCR + PKCE、凭证保存与带鉴权的 transport，插件自己不接触 token。
+   *
+   * 这与 `permissions.oauth` + `ctx.oauth.*`（插件自建 OAuth provider）是两条不同路径，
+   * 走这条路径时不需要在 `permissions.oauth` 里额外声明。
+   */
+  export interface McpServerOAuthContribution {
+    /** 稳定的本地凭证 id，供 MCP Client 存取该 server 的凭证。 */
+    readonly id?: string;
+    /** OAuth 授权弹窗中展示的 Provider 名称。 */
+    readonly providerName?: string;
+    /**
+     * OAuth 授权弹窗中的 Provider logo：**本插件包内**的相对 PNG 路径（如 `icon.png`）。
+     * 在这里声明，等于授权 MCP Client 在代持授权流程时展示本插件的 logo；
+     * Finch 会解析为 `finch-ext-icon://<本插件 id>/<path>` 并校验文件确实存在。
+     * 记得把该文件加进 `package.json#files`。
+     */
+    readonly providerIcon?: string;
+  }
+
+  /** 贡献 MCP server 的工具短标题，按原始 MCP 工具名索引。 */
+  export interface McpServerToolMetaContribution {
+    readonly titles?: Readonly<Record<string, string>>;
+  }
+
+  /** 贡献 MCP server 的 ToolCallCard inline 摘要，按原始 MCP 工具名索引。 */
+  export interface McpServerToolDisplayContribution {
+    readonly tools?: Readonly<Record<string, ToolCallDisplay>>;
+  }
+
+  /** 三种 MCP server 声明形式共享的元数据字段。 */
+  export interface McpServerContributionBase {
+    /** server 名称。MCP Bridge 默认用它生成 `mcp__<server>__<tool>` 工具名前缀。 */
+    readonly name: string;
+    /** 用户可见说明，展示在插件详情页。 */
+    readonly description?: string;
+    /** OAuth 元数据，仅对 HTTP transport 的 MCP server 有意义。 */
+    readonly oauth?: McpServerOAuthContribution;
+    /** 该 server 暴露工具的短标题。 */
+    readonly toolMeta?: McpServerToolMetaContribution;
+    /** 该 server 暴露工具的 ToolCallCard inline 摘要。 */
+    readonly toolDisplay?: McpServerToolDisplayContribution;
+  }
+
+  /**
+   * 一个由插件贡献的 MCP server 声明，三选一：
+   * 1. **仅元数据**（不带 transport）——transport 在 `activate()` 里通过
+   *    `mcp.client#registerServer()` 注册，适用于需要 API Key / token 的 server；
+   * 2. **stdio**——用 `command`/`args`/`env` 启动子进程；
+   * 3. **HTTP**——用 `url`（可选 `headers`），OAuth server 走这一种。
+   *
+   * ⚠️ 绝不要把 API Key、token 等 secret 写进静态声明；只有不含 secret 的
+   * transport 才适合直接写在 manifest 里。
    *
    * @example
+   * // stdio
    * {
    *   "name": "filesystem",
    *   "command": "npx",
    *   "args": ["-y", "@modelcontextprotocol/server-filesystem", "/data"],
    *   "description": "Local filesystem access"
    * }
+   *
+   * @example
+   * // OAuth-protected HTTP server，由 MCP Client 代持授权
+   * {
+   *   "name": "notion",
+   *   "url": "https://mcp.notion.com/mcp",
+   *   "oauth": { "id": "notion-mcp", "providerName": "Notion", "providerIcon": "icon.png" }
+   * }
    */
-  export interface McpServerContribution {
-    /** server 名称。MCP Bridge 默认用它生成 `mcp__<server>__<tool>` 工具名前缀。 */
-    readonly name: string;
-    /** 启动命令，如 `npx` 或可执行文件绝对路径。 */
-    readonly command: string;
-    /** 传给命令的参数。 */
-    readonly args?: readonly string[];
-    /** 额外环境变量。 */
-    readonly env?: Readonly<Record<string, string>>;
-    /** 子进程工作目录。 */
-    readonly cwd?: string;
-    /** 用户可见说明，展示在插件详情页。 */
-    readonly description?: string;
-  }
+  export type McpServerContribution =
+    | (McpServerContributionBase & {
+        /** 启动命令，如 `npx` 或可执行文件绝对路径。存在即表示 stdio transport。 */
+        readonly command: string;
+        /** 传给命令的参数。 */
+        readonly args?: readonly string[];
+        /** 额外环境变量。 */
+        readonly env?: Readonly<Record<string, string>>;
+        /** 子进程工作目录。 */
+        readonly cwd?: string;
+        readonly url?: never;
+      })
+    | (McpServerContributionBase & {
+        /** MCP endpoint URL。存在即表示 httpStream transport。 */
+        readonly url: string;
+        /** 静态请求头；不要在这里放 secret。 */
+        readonly headers?: Readonly<Record<string, string>>;
+        readonly env?: Readonly<Record<string, string>>;
+        readonly command?: never;
+      })
+    | (McpServerContributionBase & {
+        readonly command?: never;
+        readonly url?: never;
+      });
 
   /**
    * `package.json → finch` 字段的完整类型定义。
@@ -1943,7 +2047,13 @@ declare module 'finch' {
     readonly title?: LocalizedString;
     /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
-    /** 此容器唯一的可选设置菜单入口；运行时通过 ctx.sessionContainers.registerSettingsMenu() 填充。 */
+    /**
+     * 此容器唯一的可选设置菜单入口；运行时通过 ctx.sessionContainers.registerSettingsMenu() 填充。
+     * `inbox` 与 `assistant` 两种模式都支持，且共用同一套按钮渲染：
+     * `icon` 遵循标准 IconRef（内置图标 id 或 `ext:<packId>/<iconId>` 自定义 SVG），
+     * 省略时回退为 `sliders-horizontal`——注意这与容器自身 `icon` 的回退值 `bot` 不同。
+     * `tooltip` 省略时回退为小工具名称。
+     */
     readonly settingsMenu?: { readonly icon?: IconRef; readonly tooltip?: LocalizedString; };
     /**
      * 容器模式：
@@ -1955,7 +2065,14 @@ declare module 'finch' {
     readonly mode?: 'inbox' | 'assistant';
     /**
      * 绑定的 Agent 角色 profile id，引用 `contributes.agentProfiles` 中声明的 id。
-     * `assistant` 模式必填；新会话自动绑定该 profile。
+     * `assistant` 模式必填，`inbox` 模式可选（例如 Bot 容器给所有来信会话统一人设）。
+     * 该角色会以「用户 Finch 助手的搭档」身份注入：两个身份共存，Finch 本体的名字、
+     * 性格与安全规则保留，角色只负责扩展专长与分工。因此 `prompt` 请写成"专长 + 工作方式"，
+     * 不要写成"你是一个全新的、与 Finch 无关的 AI"。
+     * 该容器内创建的每个会话都会自动绑定此 profile —— 无论
+     * 是用户在 Finch 界面点「新对话」，还是小工具自己调用 `ctx.sessions.create()`；
+     * profile 内容在会话创建时快照冻结，后续修改 manifest 不影响已存在的会话。
+     * 容器之外的普通会话与 Space 会话永远不会带上 agentProfile。
      */
     readonly agentProfile?: string;
     /**

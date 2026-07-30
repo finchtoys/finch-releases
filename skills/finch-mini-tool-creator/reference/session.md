@@ -23,6 +23,7 @@ You must declare both a session container and the `sessions` permission:
           "icon": "message-circle",
           "title": "Bot Inbox",
           "description": "One conversation per external contact",
+          "agentProfile": "responder",
           "starterPrompts": [
             {
               "title": "Start session",
@@ -52,17 +53,18 @@ Rules:
 
 - `contributes.sessionContainers[].id` is scoped to your mini tool. You can only create containers you declared.
 - `permissions.sessions` is required for every `ctx.sessions` call.
-- Optional `agentProfiles` lets you choose a fixed system-prompt persona at `create()` time via `profileId`. The profile prompt is appended to Finch's base system prompt; it cannot override safety rules or permissions.
+- Optional `agentProfiles` declares fixed system-prompt personas. A profile is bound to a **container**, not to an individual `create()` call: set `sessionContainers[].agentProfile` to the profile id and every Session born in that container automatically carries it. This works in both modes — required for `assistant`, optional for `inbox` (e.g. a Bot container giving every inbound conversation the same persona) — whether the user clicks "New chat" in the Finch UI or your mini tool calls `ctx.sessions.create()`. The profile prompt is appended to Finch's base system prompt; it cannot override safety rules or permissions. Sessions outside a container (plain conversations, Space-targeted Sessions) never carry a profile.
+- Finch injects the profile as a **partner of the user's own Finch assistant**, and both identities coexist: the assistant keeps its name, personality, memory, and safety rules, while your profile supplies the specialty and division of labor. Asked "who are you", it introduces itself as the Finch assistant's partner `<profile name>` and what it can do here. So write `prompt` as a specialty plus working style — never as "you are a brand-new AI unrelated to Finch", and do not hardcode an assistant name, since the user may have renamed theirs.
 - `icon` follows the same `IconRef` rules as Composer actions: use a built-in Finch icon id, or register an SVG icon pack and reference it with `ext:<packId>/<iconId>`. Falls back to `bot` if omitted.
 - `title` and `description` support `LocalizedString`; you can also override them in `i18n/<locale>.json` under `sessionContainers.<id>`.
 - `starterPrompts` cards appear on the container home. Finch shows at most four cards. When the user clicks a card, Finch creates a new container Session and sends the card's `prompt` as the first message.
 - `mode` (optional, `'inbox' | 'assistant'`) picks the container's home-page behavior:
-  - `inbox` (default) — Bot / multi-agent aggregation. Sessions are created by the mini tool itself; the home page shows a Session list with no "new chat" entry, and the container supports the per-container default model (see §4).
+  - `inbox` (default) — Bot / multi-agent aggregation. Sessions are created by the mini tool itself; the home page shows a Session list with no "new chat" entry, and the container supports the per-container default model (see §4). `agentProfile` is optional here but usually wanted: it is what gives every inbound conversation a consistent persona (e.g. "reply in short, mobile-friendly messages" for a chat Bot).
   - `assistant` — an industry-scenario assistant. The user starts conversations themselves; the home page shows a role introduction plus `starterPrompts`, hides the container model picker, and **requires** `agentProfile` to be set (new Sessions auto-bind to that profile).
 
 ### 1.1 Container settings menu
 
-An `inbox` container may reserve one settings-menu button beside its model picker. The manifest declaration controls whether the button exists; dynamic `getMenu()` results must never be used as the visibility signal.
+An `inbox` or `assistant` container may reserve one settings-menu button in its header actions. In `inbox` mode it appears beside the model picker; in `assistant` mode it appears in the assistant header action area. The manifest declaration controls whether the button exists; dynamic `getMenu()` results must never be used as the visibility signal.
 
 ```json
 {
@@ -110,6 +112,7 @@ Rules:
 - A status display is not an action. Return it as a disabled row and return login/logout as separate actionable rows with distinct ids.
 - `separator: true` is a standalone structural item, not an attribute of the row below it. Return `{ id: 'account-divider', label: '', separator: true }` followed by a separate login/logout row without `separator`.
 - Every actionable row needs `iconName`, following the standard `IconRef` rules.
+- `settingsMenu.icon` is optional and follows the same `IconRef` rules (built-in id, or `ext:<packId>/<iconId>` for a registered SVG). Omitted, it falls back to `sliders-horizontal` — **not** the container's own `bot` fallback; these are two independent icons. `settingsMenu.tooltip` falls back to the mini tool name. Both modes render the exact same button, so one declaration covers `inbox` and `assistant` alike.
 - A successful `execute()` automatically asks Finch to refresh this menu. If state changes later in a background OAuth callback or polling loop, call `menu.notifyUpdate()`; Finch re-fetches immediately while the menu is visible.
 - Empty or failed `getMenu()` results do not remove the button. The manifest `settingsMenu` declaration remains authoritative.
 
@@ -140,7 +143,7 @@ You cannot mix `containerId` and `space` in the same `create()` call.
 const session = await ctx.sessions.create({
   containerId: 'inbox',          // required for container placement
   title: 'Chat with Alice',      // optional; users can rename later
-  profileId: 'responder',        // optional; references declared agentProfiles
+  // No profileId: the container's declared agentProfile is applied automatically.
   activity: 'interactive',       // default
   permissionMode: 'ask',         // default for interactive
   initialMessage: {
@@ -159,7 +162,7 @@ console.log(session.sessionId);
 | `containerId` | `string` | Required for container placement. Must match a declared `sessionContainers` id. |
 | `space` | `{ spaceId: string }` | Required for Space placement. Mutually exclusive with `containerId`. |
 | `title` | `string` | Optional initial title. |
-| `profileId` | `string` | Optional Agent profile from `contributes.agentProfiles`. |
+| `profileId` | `string` | **Deprecated and ignored.** The Agent profile comes from the container's `agentProfile` declaration and is applied automatically. Passing it never fails session creation — Finch logs a deprecation warning and ignores the value. Declare the profile on the container instead. |
 | `activity` | `'interactive' \| 'background'` | Defaults to `interactive`. |
 | `permissionMode` | `'ask' \| 'acceptCalls'` | Defaults to `ask` for interactive, `acceptCalls` for background. |
 | `context` | `'caller'` | Only valid during an Agent tool call; inherits the caller's cwd, model, policy, and Space context. |
@@ -361,7 +364,7 @@ When the queue is full, `send()` returns a `rejected` receipt with `retryAfterMs
 - Use `background` activity and `acceptCalls` permission mode for unattended work so the user is not interrupted.
 - Keep `initialMessage` short. Large first messages count against the same text and attachment limits as `send()`.
 - Do not poll `listEvents()` in a tight loop. Use `onDidReceiveEvent()` for live updates, `waitForTurn()` when one operation needs one exact terminal result, and `listEvents()` only for history/recovery.
-- Use `agentProfiles` for fixed personas instead of trying to pass arbitrary system prompts at runtime. Profile prompts are supplements, not overrides.
+- Use `agentProfiles` for fixed personas instead of trying to pass arbitrary system prompts at runtime, and bind them on the container via `sessionContainers[].agentProfile` rather than per `create()` call. Declaring a profile without pointing a container at it means no Session ever uses it. Profile prompts are supplements, not overrides.
 - If you need a Space-placed Session, ask the user for the Space or obtain it from a tool call's `spaceId`; do not guess Space ids.
 
 ---

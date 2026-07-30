@@ -4,14 +4,14 @@ This document covers how mini tools integrate with MCP servers via the MCP Clien
 
 ## 1. Two-layer design
 
-MCP integration separates **presentation metadata** from **transport config**:
+MCP integration combines **static declarations** with optional **runtime registration**:
 
 | Layer | Where | What it carries |
 |---|---|---|
-| Static contribution | `package.json → contributes.mcpServers` | `name`, `toolMeta`, `toolDisplay` — presentation only |
+| Static contribution | `finch.json → contributes.mcpServers` | `name`, `toolMeta`, `toolDisplay`, optional secret-free transport — metadata and declarative config |
 | Runtime registration | `activate()` → `mcp.client#registerServer()` | `command`/`url`, `args`, `env`, `oauth` — resolved transport and authentication |
 
-The MCP bridge merges both layers: transport from the runtime call, presentation from the contribution. Tool titles and ToolCallCard inline summaries are written to `~/.finch/tools.json` when the tools connect.
+The MCP bridge merges both layers. Runtime registration supplies dynamic transport and overrides the matching static entry; static declarations supply presentation metadata and can also supply a secret-free transport. Tool titles and ToolCallCard inline summaries are written to `~/.finch/tools.json` when the tools connect.
 
 **Key rule**: Never put API keys or tokens in the static manifest. For API-key servers, collect the value in a secure form and register the transport at runtime. For OAuth-enabled remote MCP servers, declare `oauth` and let MCP Client perform discovery, DCR, PKCE, refresh, and authenticated transport; never collect an OAuth token yourself.
 
@@ -19,40 +19,38 @@ The MCP bridge merges both layers: transport from the runtime call, presentation
 
 ## 2. Static contribution (metadata only)
 
-Declare the server in `package.json` to register presentation metadata. The `name` field is required; transport fields are optional and should only be included when no secrets are needed.
+Declare the server in `finch.json` to register presentation metadata. The `name` field is required; transport fields are optional and should only be included when no secrets are needed.
 
 ### Metadata-only entry (recommended for secret-dependent servers)
 
 ```json
 {
-  "finch": {
-    "requires": {
-      "capabilities": ["mcp.client"]
-    },
-    "contributes": {
-      "mcpServers": [
-        {
-          "name": "my-server",
-          "description": "My MCP server. Call setup_my_server to configure.",
-          "toolMeta": {
-            "titles": {
-              "my_tool": "My Tool"
-            }
-          },
-          "toolDisplay": {
-            "tools": {
-              "my_tool": {
-                "inline": {
-                  "mode": "join",
-                  "fields": [{ "path": "query", "maxLength": 80 }],
-                  "template": "{query}"
-                }
+  "requires": {
+    "capabilities": ["mcp.client"]
+  },
+  "contributes": {
+    "mcpServers": [
+      {
+        "name": "my-server",
+        "description": "My MCP server. Call setup_my_server to configure.",
+        "toolMeta": {
+          "titles": {
+            "my_tool": "My Tool"
+          }
+        },
+        "toolDisplay": {
+          "tools": {
+            "my_tool": {
+              "inline": {
+                "mode": "join",
+                "fields": [{ "path": "query", "maxLength": 80 }],
+                "template": "{query}"
               }
             }
           }
         }
-      ]
-    }
+      }
+    ]
   }
 }
 ```
@@ -99,7 +97,7 @@ async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup
   }
   const mcp = ctx.capabilities.get('mcp.client');
   await mcp.registerServer({
-    name: 'my-server',             // must match contributes.mcpServers[].name
+    name: 'my-server',             // should match contributes.mcpServers[].name
     command: 'npx',
     args: ['-y', 'my-mcp-server'],
     env: { API_KEY: setup.apiKey },
@@ -116,7 +114,7 @@ export function deactivate(): void {
 }
 ```
 
-**Why poll for `mcp.client`**: Finch activates extensions alphabetically. If MCP Client activates after your extension, `ctx.capabilities.has('mcp.client')` is initially false. A short poll handles this without a hard dependency on activation order.
+**Why poll for `mcp.client`**: Extension activation timing is not a dependency contract. If MCP Client activates after your extension, `ctx.capabilities.has('mcp.client')` is initially false. A short poll handles this without relying on activation order.
 
 ---
 
@@ -223,6 +221,33 @@ await mcp.disconnectServerOAuth('notion');
 
 Then call `unregisterServer()` during deactivation as usual. Never place `access_token`, `refresh_token`, `client_secret`, or an `Authorization` header in `registerServer()` when `oauth` is enabled.
 
+#### Provider logo in the consent dialog
+
+MCP Client runs the DCR flow on your behalf, so by default the dialog shows no brand logo. Declare the PNG in **your own** manifest and MCP Client passes it through:
+
+```json
+{
+  "contributes": {
+    "mcpServers": [
+      {
+        "name": "Notion",
+        "oauth": {
+          "id": "notion-mcp",
+          "providerName": "Notion MCP",
+          "providerIcon": "icon.png"
+        }
+      }
+    ]
+  }
+}
+```
+
+`providerIcon` is a relative PNG path inside your extension, and it must be listed in `files` so it ships with the package. The manifest declaration is the only trusted source: Finch resolves it to `finch-ext-icon://<your-extension-id>/<path>` and rejects any logo the owning extension did not declare, so the bridge cannot borrow another extension's brand.
+
+For a runtime-registered server, the runtime `oauth.id` and `oauth.providerName` remain the connection configuration; the manifest supplies only the trusted logo. Keep the `name` (and normally `id` / `providerName`) aligned between both places. A fully static server uses the manifest's entire `oauth` object.
+
+No extra `permissions.oauth` entry is needed — the OAuth permission stays with MCP Client. This is **path B** in `oauth.md`; if your mini tool instead calls a normal HTTPS API with its own OAuth client, use path A (`permissions.oauth` + `ctx.oauth.*`) and ignore this section.
+
 Do not call `shell.openExternal`, start a loopback callback server, or render a callback page in the mini tool. MCP Client delegates those interaction concerns to Finch OAuth core through `ctx.oauth.authorize()`, so MCP and normal OAuth share the same native confirmation card, `BrowserOAuthFlowDriver`, HTTPS relay page, `finch://oauth/callback` routing, cancellation, and timeout behavior.
 
 Finch follows the authorization server's RFC 7591 Dynamic Client Registration flow and registers `client_name: Finch`, `client_uri: https://finchwork.app`, the Finch logo, and the HTTPS callback. Do not use `finch://` directly as a production redirect URI—keep the externally verifiable HTTPS callback and let it hand off locally to the custom protocol. A published Client ID Metadata Document may still be used for servers that explicitly require URL-based clients, but Finch does not prefer it over the server's documented DCR flow.
@@ -233,7 +258,7 @@ For a user-managed MCP server added through Finch's MCP management tool, the equ
 
 ## 6. Tool naming
 
-The bridge exposes tools as `mcp__<serverName>__<toolName>`. Keep `name` stable — it becomes part of the model-facing tool name.
+The bridge exposes tools as `mcp__<serverName>__<toolName>`. Keep `name` stable — it becomes part of the model-facing tool name. Name matching between static declarations and runtime registration is normalized, but use the same spelling for clarity.
 
 ---
 
