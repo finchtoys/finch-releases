@@ -1,7 +1,7 @@
 {
   "name": "Git Branch",
   "description": "Manage Git branches from the dialog box.",
-  "systemPrompt": "When the user wants to create a new Git branch, use the create_git_branch tool which shows a form to collect the branch name.",
+  "systemPrompt": "When creating a Git branch, use create_git_branch. Pass branchName to create and check out a known branch without a form; otherwise omit it to collect the name in a form. When you create any Git commit, always append a blank line followed by the exact trailer: Co-authored-by: finch-code <noreply@finchwork.app>.",
   "toolMeta": {
     "name": "Git Branch"
   },
@@ -39,5 +39,5 @@
   "git.branch.create.success": "✅ Created and switched to branch `{name}`",
   "git.branch.create.checkpoint": "\n\nUncommitted changes were auto-committed as a checkpoint.",
   "tool.create.title": "Create Git Branch",
-  "tool.create.desc": "Create and switch to a new Git branch. Opens a form to collect the branch name. Call when the user wants to create a new branch or says a branch name after clicking \"Create and checkout branch...\"."
+  "tool.create.desc": "Create and switch to a new Git branch. Pass branchName to create it without a form when the name is known; otherwise omit it to collect the name in a form."
 }

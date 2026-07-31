@@ -16,6 +16,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const CURRENT_BRANCH_KEY = 'currentBranch';
+const FINCH_CODE_CO_AUTHOR = 'Co-authored-by: finch-code <noreply@finchwork.app>';
 
 // Tracks the most-recently-seen cwd so the background poller can use it.
 let activeCwd: string | undefined;
@@ -307,6 +308,8 @@ export function activate(ctx: finch.ExtensionContext): void {
             await git(cwd, [
               'commit', '-m',
               ctx.i18n.t('git.branch.switch.commit.msg', { branch: itemId }),
+              '-m',
+              FINCH_CODE_CO_AUTHOR,
             ]);
             checkpointCommit = await git(cwd, ['rev-parse', '--short', 'HEAD']).catch(() => undefined);
           }
@@ -341,34 +344,45 @@ export function activate(ctx: finch.ExtensionContext): void {
       description: ctx.i18n.t('tool.create.desc'),
       inputSchema: {
         type: 'object',
-        properties: {},
+        properties: {
+          branchName: {
+            type: 'string',
+            description: 'The new branch name. When provided, create and check out the branch without showing a form.',
+          },
+        },
         required: [],
       },
       risk: 'medium',
-      async execute(_input, exec) {
+      async execute(input, exec) {
         await exec.storage.delete('pendingCreateBranch').catch(() => {});
 
-        const result = await exec.ui.requestForm({
-          title: ctx.i18n.t('git.branch.create.title'),
-          description: ctx.i18n.t('git.branch.create.desc'),
-          submitLabel: ctx.i18n.t('git.branch.create.submit'),
-          fields: [
-            {
-              key: 'branchName',
-              label: ctx.i18n.t('git.branch.create.field'),
-              type: 'text',
-              required: true,
-              placeholder: ctx.i18n.t('git.branch.create.ph'),
-            },
-          ],
-          timeoutMs: 120_000,
-        });
+        const suppliedBranchName = (input as { branchName?: unknown }).branchName;
+        let branchName: string;
+        if (typeof suppliedBranchName === 'string') {
+          branchName = suppliedBranchName;
+        } else {
+          const result = await exec.ui.requestForm({
+            title: ctx.i18n.t('git.branch.create.title'),
+            description: ctx.i18n.t('git.branch.create.desc'),
+            submitLabel: ctx.i18n.t('git.branch.create.submit'),
+            fields: [
+              {
+                key: 'branchName',
+                label: ctx.i18n.t('git.branch.create.field'),
+                type: 'text',
+                required: true,
+                placeholder: ctx.i18n.t('git.branch.create.ph'),
+              },
+            ],
+            timeoutMs: 120_000,
+          });
 
-        if (!result.submitted) {
-          return { content: [{ type: 'text', text: ctx.i18n.t('git.branch.create.cancelled') }] };
+          if (!result.submitted) {
+            return { content: [{ type: 'text', text: ctx.i18n.t('git.branch.create.cancelled') }] };
+          }
+
+          branchName = result.values.branchName as string;
         }
-
-        const branchName = result.values.branchName as string;
         if (!branchName || !/^[a-zA-Z0-9_./-]+$/.test(branchName)) {
           return {
             content: [
@@ -389,6 +403,8 @@ export function activate(ctx: finch.ExtensionContext): void {
           await git(cwd, [
             'commit', '-m',
             `checkpoint: before creating branch ${branchName}`,
+            '-m',
+            FINCH_CODE_CO_AUTHOR,
           ]);
         }
 

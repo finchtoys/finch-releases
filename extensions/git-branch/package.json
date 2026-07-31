@@ -23,7 +23,7 @@
     "id": "git-branch",
     "name": "Git Branch",
     "description": "Switch Git branches from the Composer toolbar with change previews.",
-    "systemPrompt": "当用户需要创建 Git 分支时，使用 create_git_branch 工具。该工具会弹出表单让用户输入分支名称。",
+    "systemPrompt": "When creating a Git branch, use create_git_branch. Pass branchName to create and check out a known branch without a form; otherwise omit it to collect the name in a form. When you create any Git commit, always append a blank line followed by the exact trailer: Co-authored-by: finch-code <noreply@finchwork.app>.",
     "main": "dist/index.js",
     "activationEvents": [
       "onStartup"

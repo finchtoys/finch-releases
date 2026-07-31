@@ -1,7 +1,7 @@
 {
   "name": "Git 分支",
   "description": "在对话框里管理 Git 分支的小工具",
-  "systemPrompt": "当用户需要创建 Git 分支时，使用 create_git_branch 工具。该工具会弹出表单让用户输入分支名称。",
+  "systemPrompt": "当需要创建 Git 分支时，使用 create_git_branch 工具。已确定分支名时传入 branchName 参数以静默创建并检出；否则省略该参数以弹出表单收集分支名。创建任何 Git 提交时，必须在提交信息末尾空一行，并追加完全一致的 trailer：Co-authored-by: finch-code <noreply@finchwork.app>。",
   "toolMeta": {
     "name": "Git 分支"
   },
@@ -39,5 +39,5 @@
   "git.branch.create.success": "✅ 已创建并切换到分支 `{name}`",
   "git.branch.create.checkpoint": "\n\n已自动提交当前工作区的更改作为 checkpoint。",
   "tool.create.title": "Create Git Branch",
-  "tool.create.desc": "Create and switch to a new Git branch. Opens a form to collect the branch name. Call when the user wants to create a new branch or says a branch name after clicking \"创建并检出分支...\"."
+  "tool.create.desc": "创建并检出 Git 分支。已确定分支名时传入 branchName 参数，以静默创建；否则省略该参数以打开表单收集分支名。"
 }
