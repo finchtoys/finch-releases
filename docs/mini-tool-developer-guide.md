@@ -525,7 +525,7 @@ ctx.subscriptions.push({ dispose: () => clearInterval(timer) });
 
 轮询间隔建议 ≥ 3 秒。`ctx.sessionId` 在会话界面可用，切换开关状态可以按会话隔离而不是全局。
 
-![composer_action](imgs/composer_action.png)
+<img src="imgs/composer_action.png" alt="composer_action" width="628" style="max-width:100%">
 
 ### 6.4 菜单
 
@@ -547,7 +547,7 @@ ctx.subscriptions.push({ dispose: () => clearInterval(timer) });
 - **`separator: true` 是独立的一项**，不是下一行的属性。
 - 长说明用 `hoverText`（纯文本，保留换行，不解析 Markdown），不要塞进 `label`。
 
-![menu](imgs/composer_menu.png)
+<img src="imgs/menu.png" alt="menu" width="700" style="max-width:50%">
 
 ### 6.5 模态框
 
@@ -579,7 +579,7 @@ await dialog.close('connected');
 const result = await dialog;   // { action: 'connected' }
 ```
 
-![showModalDialog2](imgs/showModalDialog2.png)
+<img src="imgs/showModalDialog2.png" alt="showModalDialog2" width="700" style="max-width:50%">
 
 ### 6.6 表单
 
@@ -612,7 +612,7 @@ if (result.action === 'save') {
 
 `fields` 存在时，第一个 `variant: 'primary'` 按钮在必填项填完前保持禁用。`secret: true` 字段的值不回传给模型，必须用 `ctx.secrets` 存储，不要写进工具结果。
 
-![showModalDialog](imgs/showModalDialog.png)
+<img src="imgs/showModalDialog.png" alt="showModalDialog" width="700" style="max-width:50%">
 
 ---
 
@@ -712,7 +712,7 @@ Finch 负责浏览器交互、加密存储、刷新加锁、Authorization 头注
 
 **OAuth 客户端由发布者注册和维护**，公开 Client ID 随包分发，不要让终端用户自己去申请 OAuth 应用。`icon` 强烈建议配置，否则授权弹窗没有品牌标识。
 
-![oauth](imgs/oauth.png)
+<img src="imgs/oauth.png" alt="oauth" width="700" style="max-width:100%">
 
 ### 7.4 OAuth 路径 B：OAuth 保护的 MCP server
 
@@ -772,7 +772,7 @@ flowchart LR
 
 `starterPrompts` 是首页引导卡片，最多显示 4 张。点击后 Finch 新建一个容器会话并把卡片的 `prompt` 作为第一条消息发出。
 
-![assistant](imgs/assistant.png)
+<img src="imgs/assistant.png" alt="assistant" width="700" style="max-width:50%">
 
 ### 8.3 agentProfile：给容器一个人设
 
@@ -850,7 +850,7 @@ ctx.subscriptions.push(menu);
 - 空的或失败的 `getMenu()` 不会移除按钮，可见性以 manifest 为准。
 - 一个容器只能注册一个设置菜单，且只有拥有它的小工具能注册。
 
-![sessionContainerMenu](imgs/sessionContainerMenu.png)
+<img src="imgs/sessionContainerMenu.png" alt="sessionContainerMenu" width="700" style="max-width:100%">
 
 ### 8.5 容器默认模型
 
