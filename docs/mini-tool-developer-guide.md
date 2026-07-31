@@ -525,7 +525,7 @@ ctx.subscriptions.push({ dispose: () => clearInterval(timer) });
 
 轮询间隔建议 ≥ 3 秒。`ctx.sessionId` 在会话界面可用，切换开关状态可以按会话隔离而不是全局。
 
-> 📷 **截图位**：Composer 工具栏上的按钮与 badge，含 active 高亮态
+![composer_action](imgs/composer_action.png)
 
 ### 6.4 菜单
 
@@ -547,7 +547,7 @@ ctx.subscriptions.push({ dispose: () => clearInterval(timer) });
 - **`separator: true` 是独立的一项**，不是下一行的属性。
 - 长说明用 `hoverText`（纯文本，保留换行，不解析 Markdown），不要塞进 `label`。
 
-> 📷 **截图位**：菜单展开态，含状态行、分隔线、动作行
+![menu](imgs/composer_menu.png)
 
 ### 6.5 模态框
 
@@ -579,7 +579,7 @@ await dialog.close('connected');
 const result = await dialog;   // { action: 'connected' }
 ```
 
-> 📷 **截图位**：带二维码的模态框
+![showModalDialog2](imgs/showModalDialog2.png)
 
 ### 6.6 表单
 
@@ -612,7 +612,7 @@ if (result.action === 'save') {
 
 `fields` 存在时，第一个 `variant: 'primary'` 按钮在必填项填完前保持禁用。`secret: true` 字段的值不回传给模型，必须用 `ctx.secrets` 存储，不要写进工具结果。
 
-> 📷 **截图位**：模态框表单 与 Composer 等待区表单卡片，两者并列
+![showModalDialog](imgs/showModalDialog.png)
 
 ---
 
@@ -712,7 +712,7 @@ Finch 负责浏览器交互、加密存储、刷新加锁、Authorization 头注
 
 **OAuth 客户端由发布者注册和维护**，公开 Client ID 随包分发，不要让终端用户自己去申请 OAuth 应用。`icon` 强烈建议配置，否则授权弹窗没有品牌标识。
 
-> 📷 **截图位**：Finch 原生 OAuth 授权确认卡片（含 provider 图标）
+![oauth](imgs/oauth.png)
 
 ### 7.4 OAuth 路径 B：OAuth 保护的 MCP server
 
@@ -772,7 +772,7 @@ flowchart LR
 
 `starterPrompts` 是首页引导卡片，最多显示 4 张。点击后 Finch 新建一个容器会话并把卡片的 `prompt` 作为第一条消息发出。
 
-> 📷 **截图位**：inbox 容器首页（会话列表）与 assistant 容器首页（角色介绍 + 引导卡片）
+![assistant](imgs/assistant.png)
 
 ### 8.3 agentProfile：给容器一个人设
 
@@ -850,7 +850,7 @@ ctx.subscriptions.push(menu);
 - 空的或失败的 `getMenu()` 不会移除按钮，可见性以 manifest 为准。
 - 一个容器只能注册一个设置菜单，且只有拥有它的小工具能注册。
 
-> 📷 **截图位**：容器头部的设置菜单按钮及其展开态
+![sessionContainerMenu](imgs/sessionContainerMenu.png)
 
 ### 8.5 容器默认模型
 
