@@ -15,6 +15,34 @@
     {
       "toolName": "mcp__github__*",
       "key": "*"
+    },
+    {
+      "toolName": "WebFetch",
+      "key": "github.com"
+    },
+    {
+      "toolName": "Bash",
+      "key": "git add"
+    },
+    {
+      "toolName": "Bash",
+      "key": "git commit"
+    },
+    {
+      "toolName": "Bash",
+      "key": "git check-ignore"
+    },
+    {
+      "toolName": "Bash",
+      "key": "git push"
+    },
+    {
+      "toolName": "Bash",
+      "key": "grep version"
+    },
+    {
+      "toolName": "Bash",
+      "key": "npm view"
     }
   ],
   "ask": [],
