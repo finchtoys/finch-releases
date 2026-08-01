@@ -1,0 +1,35 @@
+{
+  "name": "finch-notion",
+  "version": "0.1.1",
+  "description": "Connect Notion to Finch — search pages, read databases, and manage your workspace through MCP.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://www.notion.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/notion"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "^0.2.8",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  },
+  "files": [
+    "dist/",
+    "finch.json",
+    "icons/",
+    "i18n/",
+    "icon.png",
+    "README.md",
+    "README.zh-CN.md"
+  ]
+}
