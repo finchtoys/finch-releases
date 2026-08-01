@@ -16,6 +16,7 @@ import type * as finch from 'finch';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServerConfig, type McpServerConfig, type McpTool, type McpToolResult } from './client.js';
+import { authorizeMcpOAuth, clearMcpOAuth, createMcpOAuthProvider, type McpOAuthConfig } from './oauth.js';
 
 type ManagedMcpServerConfig = McpServerConfig & {
   ownerExtensionId?: string;
@@ -43,7 +44,37 @@ type ContributedServerMeta = {
   qualifiedName?: string;
   toolMeta?: ManagedMcpServerConfig['toolMeta'];
   toolDisplay?: ManagedMcpServerConfig['toolDisplay'];
+  /** Provider logo declared by the owning extension, already qualified to `finch-ext-icon://<id>/<file>.png`. */
+  oauthProviderIcon?: string;
 };
+
+/** Read `contributes.mcpServers[].oauth.providerIcon` and qualify it to the owner's icon URL.
+ *  The manifest is the only trusted source: Finch re-validates the ownership of this URL
+ *  before it reaches the OAuth consent dialog. */
+function contributedProviderIcon(raw: Record<string, unknown>, ownerExtensionId: string): string | undefined {
+  const oauth = raw.oauth;
+  if (!oauth || typeof oauth !== 'object') return undefined;
+  const icon = (oauth as Record<string, unknown>).providerIcon;
+  if (typeof icon !== 'string') return undefined;
+  const path = icon.trim().replace(/^\/+/, '');
+  if (!path || !path.toLowerCase().endsWith('.png') || path.includes('\\')) return undefined;
+  if (path.split('/').some((segment) => !segment || segment === '.' || segment === '..')) return undefined;
+  return `finch-ext-icon://${ownerExtensionId}/${path}`;
+}
+
+/** Attach the owning extension's declared provider logo to an OAuth server config.
+ *  A logo already present on the config (user file / runtime) is left untouched. */
+function withContributedProviderIcon(
+  server: ManagedMcpServerConfig,
+  contributed: ContributedServerMeta | undefined,
+): ManagedMcpServerConfig {
+  const icon = contributed?.oauthProviderIcon;
+  if (!icon || !isHttpConfig(server) || !server.oauth) return server;
+  // Override the manifest's relative path with the trusted, owner-qualified URL.
+  // Runtime registration cannot supply this field, so it can only originate from the
+  // contribution we just verified.
+  return { ...server, oauth: { ...server.oauth, providerIcon: icon } };
+}
 
 interface ServersFile {
   servers?: ManagedMcpServerConfig[];
@@ -432,9 +463,11 @@ function readContributedServers(ctx: finch.ExtensionContext): ContributedServerM
     return values.filter(isContributedServerEntry).map((server): ContributedServerMeta => {
       const raw = server as Record<string, unknown>;
       const name = String(raw.name).trim();
+      const providerIcon = contributedProviderIcon(raw, contribution.extensionId);
       return {
         name,
         ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
+        ...(providerIcon ? { oauthProviderIcon: providerIcon } : {}),
         toolMeta: raw.toolMeta as ContributedServerMeta['toolMeta'],
         toolDisplay: raw.toolDisplay as ContributedServerMeta['toolDisplay'],
         ownerExtensionId: contribution.extensionId,
@@ -457,15 +490,16 @@ function mergeServerWithContribution(
   server: ManagedMcpServerConfig,
   contributed: ContributedServerMeta | undefined,
 ): ManagedMcpServerConfig {
-  if (!contributed || server.ownerExtensionId) return server;
-  return {
+  if (!contributed) return server;
+  if (server.ownerExtensionId) return withContributedProviderIcon(server, contributed);
+  return withContributedProviderIcon({
     ...server,
     ownerExtensionId: contributed.ownerExtensionId,
     ownerExtensionName: contributed.ownerExtensionName,
     qualifiedName: contributed.qualifiedName,
     toolMeta: contributed.toolMeta ?? server.toolMeta,
     toolDisplay: contributed.toolDisplay ?? server.toolDisplay,
-  };
+  }, contributed);
 }
 
 /** Validate and coerce an untrusted runtime server config received over the
@@ -483,6 +517,18 @@ function normalizeRuntimeServer(input: unknown): ManagedMcpServerConfig | null {
   if (hasUrl) {
     base.url = raw.url;
     if (raw.headers && typeof raw.headers === 'object') base.headers = raw.headers;
+    if (raw.oauth && typeof raw.oauth === 'object') {
+      const oauth = raw.oauth as Record<string, unknown>;
+      if (typeof oauth.id === 'string' && oauth.id.trim()) {
+        base.oauth = {
+          id: oauth.id.trim(),
+          ...(Array.isArray(oauth.scopes) ? { scopes: oauth.scopes.filter((value): value is string => typeof value === 'string') } : {}),
+          ...(typeof oauth.providerName === 'string' ? { providerName: oauth.providerName } : {}),
+          ...(typeof oauth.clientName === 'string' ? { clientName: oauth.clientName } : {}),
+          ...(typeof oauth.clientUri === 'string' ? { clientUri: oauth.clientUri } : {}),
+        } satisfies McpOAuthConfig;
+      }
+    }
   } else {
     base.command = raw.command;
     if (Array.isArray(raw.args)) base.args = raw.args;
@@ -505,14 +551,14 @@ function mergeRuntimeWithContribution(
   contributed: ContributedServerMeta | undefined,
 ): ManagedMcpServerConfig {
   if (!contributed) return runtime;
-  return {
+  return withContributedProviderIcon({
     ...runtime,
     ownerExtensionId: runtime.ownerExtensionId ?? contributed.ownerExtensionId,
     ownerExtensionName: runtime.ownerExtensionName ?? contributed.ownerExtensionName,
     qualifiedName: contributed.qualifiedName ?? runtime.qualifiedName,
     toolMeta: contributed.toolMeta ?? runtime.toolMeta,
     toolDisplay: contributed.toolDisplay ?? runtime.toolDisplay,
-  };
+  }, contributed);
 }
 
 /**
@@ -556,7 +602,7 @@ function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[
         ...(meta?.toolMeta ? { toolMeta: meta.toolMeta } : {}),
         ...(meta?.toolDisplay ? { toolDisplay: meta.toolDisplay } : {}),
       };
-      byName.set(entry.name, entry);
+      byName.set(entry.name, withContributedProviderIcon(entry, meta));
     }
   }
   for (const s of runtimeServers.values()) byName.set(s.name, mergeRuntimeWithContribution(s, contributedByName.get(sanitizeSegment(s.name))));
@@ -638,7 +684,10 @@ async function connectIfNeeded(name: string, logger: finch.Logger, reconnectAtte
   serverStatus.set(name, reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
 
   const promise = (async () => {
-    const client = createMcpClient(config);
+    const authProvider = isHttpConfig(config) && config.oauth
+      ? await createMcpOAuthProvider(config.oauth, activeCtx!.storage)
+      : undefined;
+    const client = createMcpClient(config, authProvider);
     try {
       await withTimeout(client.connect(CONNECT_TIMEOUT_MS), CONNECT_TIMEOUT_MS + 1_000, `MCP server "${name}" connect`);
       const tools = await withTimeout(client.listTools(LIST_TOOLS_TIMEOUT_MS), LIST_TOOLS_TIMEOUT_MS + 1_000, `MCP server "${name}" listTools`);
@@ -722,7 +771,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
   // single cheap handshake, so prewarming is safe. stdio servers stay lazy —
   // eagerly spawning every stdio process at startup risks orphaned processes.
   for (const [name, config] of configs) {
-    if (isHttpConfig(config)) {
+    if (isHttpConfig(config) && !config.oauth) {
       void connectIfNeeded(name, ctx.logger).catch(() => {
         // Status map + extension logs retain the user-visible error; lazy retry on use.
       });
@@ -770,11 +819,13 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       args?: string;
       url?: string;
       authHeader?: string;
+      oauth?: boolean;
       secretEnvKeys?: string[];
       plainEnvKeys?: string[];
     };
     // Infer transport from provided fields: url → httpStream, command → stdio
     const isHttp = typeof args.url === 'string' && args.url.length > 0;
+    const useOAuth = isHttp && args.oauth === true;
     const secretKeys = (args.secretEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     const plainKeys = (args.plainEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
 
@@ -790,7 +841,9 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       fields.push(
         { key: 'name', label: t('field.name'), type: 'text', required: true, default: args.name ?? '', width: '1/3' },
         { key: 'url', label: t('field.url'), type: 'text', required: true, placeholder: 'https://…', default: args.url ?? '', width: '2/3' },
-        {
+      );
+      if (!useOAuth) {
+        fields.push({
           key: 'authToken',
           label: isBearer ? t('field.token.bearer') : t('field.token.customValue', { header: httpHeaderName }),
           type: 'password',
@@ -798,8 +851,8 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
           description: isBearer
             ? t('field.token.desc.bearerAdd')
             : t('field.token.desc.customAdd', { header: httpHeaderName }),
-        },
-      );
+        });
+      }
     } else {
       // stdio: name (1/2) + command (1/2) on one row; args textarea below.
       fields.push(
@@ -839,14 +892,15 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     if (isHttp) {
       const url = String(v.url ?? '').trim();
       if (!url) return { content: [{ type: 'text', text: 'No URL provided; nothing was saved.' }], isError: true };
-      const auth = buildHttpAuth(httpHeaderName, String(v.authToken ?? ''), undefined);
+      const auth = useOAuth ? {} : buildHttpAuth(httpHeaderName, String(v.authToken ?? ''), undefined);
       server = {
         name,
         url,
+        ...(useOAuth ? { oauth: { id: sanitizeSegment(name), providerName: name, clientName: 'Finch', clientUri: 'https://finchwork.app' } } : {}),
         ...(auth.headers ? { headers: auth.headers } : {}),
         ...(auth.env ? { env: auth.env } : {}),
       };
-      summary = `httpStream → ${url}${auth.headers ? ' (authenticated)' : ''}`;
+      summary = `httpStream → ${url}${useOAuth ? ' (OAuth)' : auth.headers ? ' (authenticated)' : ''}`;
     } else {
       // env-key fields apply to stdio servers only.
       const env: Record<string, string> = {};
@@ -887,6 +941,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       args?: string;
       url?: string;
       authHeader?: string;
+      oauth?: boolean;
       secretEnvKeys?: string[];
       plainEnvKeys?: string[];
     };
@@ -912,6 +967,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       : typeof args.command === 'string' && args.command.length > 0
         ? false
         : existingIsHttp;
+    const useOAuth = isHttp && (args.oauth === true || (args.oauth === undefined && existingIsHttp && Boolean(existing.oauth)));
     const existingEnv = existing.env ?? {};
     const secretKeys = (args.secretEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     const plainKeys = (args.plainEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
@@ -929,7 +985,9 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       fields.push(
         { key: 'name', label: t('field.name'), type: 'text', required: true, default: requestedNewName || name, width: '1/3' },
         { key: 'url', label: t('field.url'), type: 'text', required: true, placeholder: 'https://…', default: args.url ?? (existingIsHttp ? (existing as { url: string }).url : ''), width: '2/3' },
-        {
+      );
+      if (!useOAuth) {
+        fields.push({
           key: 'authToken',
           label: isBearer ? t('field.token.bearer') : t('field.token.customValue', { header: httpHeaderName }),
           type: 'password',
@@ -939,8 +997,8 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
             : isBearer
               ? t('field.token.desc.bearerEdit')
               : t('field.token.desc.customEdit', { header: httpHeaderName }),
-        },
-      );
+        });
+      }
     } else {
       // stdio: name (1/2) + command (1/2) on one row; args textarea below.
       fields.push(
@@ -990,14 +1048,17 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     if (isHttp) {
       const url = String(v.url ?? '').trim();
       if (!url) return { content: [{ type: 'text', text: 'No URL provided; nothing was saved.' }], isError: true };
-      const auth = buildHttpAuth(httpHeaderName, String(v.authToken ?? ''), existingEnv[AUTH_TOKEN_ENV]);
+      const auth = useOAuth ? {} : buildHttpAuth(httpHeaderName, String(v.authToken ?? ''), existingEnv[AUTH_TOKEN_ENV]);
       server = {
         name: nextName,
         url,
+        ...(useOAuth ? { oauth: existingIsHttp && existing.oauth
+          ? existing.oauth
+          : { id: sanitizeSegment(nextName), providerName: nextName, clientName: 'Finch', clientUri: 'https://finchwork.app' } } : {}),
         ...(auth.headers ? { headers: auth.headers } : {}),
         ...(auth.env ? { env: auth.env } : {}),
       };
-      summary = `httpStream → ${url}${auth.headers ? ' (authenticated)' : ''}`;
+      summary = `httpStream → ${url}${useOAuth ? ' (OAuth)' : auth.headers ? ' (authenticated)' : ''}`;
     } else {
       // Rebuild stdio env from the rendered env fields, preserving prior values
       // when the user leaves a field blank.
@@ -1063,6 +1124,34 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     };
   }
 
+  async function connectMcpServerOAuth(input: Record<string, unknown>): Promise<finch.ToolResult> {
+    const name = String(input.name ?? '').trim();
+    const config = configs.get(name);
+    if (!config || !isHttpConfig(config)) {
+      return { content: [{ type: 'text', text: `HTTP MCP server "${name}" was not found.` }], isError: true };
+    }
+    if (!config.oauth) {
+      return { content: [{ type: 'text', text: `MCP server "${name}" is not configured for OAuth.` }], isError: true };
+    }
+    disconnectServer(name);
+    await authorizeMcpOAuth(config.url, config.oauth, ctx.storage, ctx.oauth);
+    serverStatus.set(name, 'pending');
+    await connectIfNeeded(name, ctx.logger);
+    return { content: [{ type: 'text', text: `Connected MCP server "${name}" with OAuth discovery, DCR, and PKCE.` }] };
+  }
+
+  async function disconnectMcpServerOAuth(input: Record<string, unknown>): Promise<finch.ToolResult> {
+    const name = String(input.name ?? '').trim();
+    const config = configs.get(name);
+    if (!config || !isHttpConfig(config) || !config.oauth) {
+      return { content: [{ type: 'text', text: `OAuth MCP server "${name}" was not found.` }], isError: true };
+    }
+    disconnectServer(name);
+    await clearMcpOAuth(config.oauth, ctx.storage);
+    serverStatus.set(name, 'pending');
+    return { content: [{ type: 'text', text: `Disconnected OAuth from MCP server "${name}".` }] };
+  }
+
   ctx.subscriptions.push(
     ctx.tools.register({
       name: 'MCP',
@@ -1078,27 +1167,28 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         },
       },
       description:
-        'Manage Model Context Protocol (MCP) server connections with action=list/add/edit/remove. ' +
+        'Manage Model Context Protocol (MCP) server connections with action=list/add/edit/remove/connect/disconnect. ' +
         'Use action=list to inspect configured services before ToolSearch or before edit/remove. ' +
-        'Use action=add when the user wants to connect a new MCP server. For an HTTP (url) server just pass name+url — the secure form shows ONE "API token" field that auto-creates a standard "Authorization: Bearer <token>" header; you never pass, see, or hand-edit the token or any header. Only set authHeader if the server needs a NON-standard header (e.g. "X-Api-Key"). ' +
+        'Use action=add when the user wants to connect a new MCP server. For an OAuth MCP server pass oauth=true; the saved server then uses discovery + DCR + PKCE and action=connect starts authorization. For a token-authenticated HTTP server pass name+url — the secure form shows ONE "API token" field that auto-creates a standard "Authorization: Bearer <token>" header; you never pass, see, or hand-edit the token or any header. Only set authHeader if the server needs a NON-standard header (e.g. "X-Api-Key"). ' +
         'For stdio (command) servers, pass secretEnvKeys/plainEnvKeys for the env vars the user should fill. Never ask the user to paste secrets in chat. ' +
         'Use action=edit/remove only for user-configured servers in the local servers.json; extension-injected servers cannot be edited or removed. ' +
         'To rename a server, call action=edit with name=<current name> and newName=<desired name> — this prefills the confirmation form with the new name so the user just has to hit save. ' +
         'TIMING: action=add/edit open a secure form and this tool call BLOCKS until the user submits or cancels it. By the time you receive the tool result, the user has ALREADY filled in and submitted the form (including any token) — never tell the user "you should see a form" or "please fill in the token" after this returns; describe the outcome in past tense using the returned status instead. ' +
-        'To use actual MCP server tools, call Finch ToolSearch with source:"mcp" first, then call the injected mcp__<server>__<tool> function.',
+        'To use actual MCP server tools, first call Finch ToolSearch with source:"mcp:<server>" when the target server is known; use source:"mcp" only if that precise search finds no usable tool, then call the injected mcp__<server>__<tool> function.',
       inputSchema: {
         type: 'object',
         properties: {
           action: {
             type: 'string',
-            enum: ['list', 'add', 'edit', 'remove'],
-            description: 'MCP management action to perform.',
+            enum: ['list', 'add', 'edit', 'remove', 'connect', 'disconnect'],
+            description: 'MCP management action. connect/disconnect run standards-based OAuth for an OAuth-enabled HTTP server.',
           },
-          name: { type: 'string', description: 'Server name. Required for add/edit/remove; for edit/remove use the exact name from action=list.' },
+          name: { type: 'string', description: 'Server name. Required for add/edit/remove/connect/disconnect; use the exact name from action=list.' },
           newName: { type: 'string', description: 'action=edit only. New name to rename the server to. Prefills the "Server name" field in the confirmation form; the server keeps its current name if omitted.' },
           command: { type: 'string', description: 'For stdio servers: executable, e.g. "npx". Presence implies stdio transport for add/edit.' },
           args: { type: 'string', description: 'For stdio: whitespace-separated arguments, e.g. "-y @modelcontextprotocol/server-filesystem /path".' },
           url: { type: 'string', description: 'For HTTP servers: the MCP endpoint URL. Presence implies httpStream transport for add/edit.' },
+          oauth: { type: 'boolean', description: 'HTTP servers only. Set true to use MCP OAuth discovery, Dynamic Client Registration, and PKCE instead of an API token.' },
           authHeader: {
             type: 'string',
             description: 'HTTP servers only. Optional. Omit for the normal case — the form collects a token and sends "Authorization: Bearer <token>". Set this ONLY for a non-standard auth header name, e.g. "X-Api-Key", and the token is then sent as that header\'s raw value.',
@@ -1124,8 +1214,10 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         if (action === 'add') return addMcpServer(payload, exec);
         if (action === 'edit') return editMcpServer(payload, exec);
         if (action === 'remove') return removeMcpServer(payload);
+        if (action === 'connect') return connectMcpServerOAuth(payload);
+        if (action === 'disconnect') return disconnectMcpServerOAuth(payload);
         return {
-          content: [{ type: 'text', text: 'Unknown MCP action. Use one of: list, add, edit, remove.' }],
+          content: [{ type: 'text', text: 'Unknown MCP action. Use one of: list, add, edit, remove, connect, disconnect.' }],
           isError: true,
         };
       },
@@ -1140,17 +1232,31 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         refreshServerConfigs(ctx);
         const query = String(input.query ?? '').trim().toLowerCase();
         const queryTerms = query.split(/\s+/).filter(Boolean);
-        // limit applies across servers to prevent flooding, but a server whose
-        // name is directly matched returns ALL its tools so the caller gets the
-        // complete capability set, not an arbitrary first-N slice.
+        const source = String(input.source ?? '').trim().toLowerCase();
+        const requestedServer = source.startsWith('mcp:') ? source.slice('mcp:'.length).trim() : '';
+        const matchingServer = requestedServer
+          ? [...configs.keys()].find((server) => sanitizeSegment(server) === sanitizeSegment(requestedServer))
+          : undefined;
+        // A specified MCP server is an exact selector, not a hint. Returning no
+        // result for an unknown name avoids connecting every configured server.
+        if (requestedServer && !matchingServer) return [];
+
+        // limit applies across servers to prevent flooding, but a server selected
+        // explicitly by name returns ALL its tools so the caller gets its complete
+        // capability set, not an arbitrary first-N slice.
         const limit = Math.max(1, Math.min(Number(input.limit ?? 10) || 10, 200));
+        const namedServers = [...configs.keys()].filter((server) => {
+          const normalized = server.toLowerCase();
+          return query === normalized || queryTerms.includes(normalized);
+        });
+        const servers = matchingServer ? [matchingServer] : namedServers.length > 0 ? namedServers : [...configs.keys()];
         const results: finch.ToolSearchResult[] = [];
-        for (const server of configs.keys()) {
+        for (const server of servers) {
           if (results.length >= limit) break;
-          // Server matches if the query is empty OR any individual query term
-          // appears in the server name. Using the full query string would fail
-          // for multi-word queries like "filesystem MCP tools read write".
-          const serverMatches = queryTerms.length === 0 || queryTerms.some((term) => server.toLowerCase().includes(term));
+          // A server is broad-matched only by an explicit selector or its full
+          // configured name. A generic word like "search" must not activate all
+          // tools from a server merely because that word appears in its name.
+          const serverMatches = Boolean(matchingServer) || query.length === 0 || query === server.toLowerCase() || queryTerms.includes(server.toLowerCase());
           try {
             await connectIfNeeded(server, ctx.logger);
           } catch (err) {
@@ -1158,9 +1264,9 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
             continue;
           }
           for (const tool of serverTools.get(server) ?? []) {
-            // When the server itself matched by name, return ALL its tools so the
-            // caller activates the full capability set. Only apply the cross-server
-            // limit when filtering by individual tool content (serverMatches=false).
+            // When the server was explicitly selected by name, return ALL its
+            // tools so the caller activates the complete capability set. Only
+            // apply the cross-server limit when filtering by tool content.
             if (!serverMatches && results.length >= limit) break;
             const haystack = `${server} ${tool.name} ${tool.description ?? ''}`.toLowerCase();
             // Include the tool if the server name matched (broad match) OR if
@@ -1222,6 +1328,16 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         const client = clients.get(server)!;
         return client.callTool(name, args ?? {});
       },
+      async connectServer(server: string): Promise<{ ok: boolean }> {
+        const result = await connectMcpServerOAuth({ name: server });
+        if (result.isError) throw new Error(result.content[0]?.type === 'text' ? result.content[0].text : 'MCP OAuth failed');
+        return { ok: true };
+      },
+      async disconnectServerOAuth(server: string): Promise<{ ok: boolean }> {
+        const result = await disconnectMcpServerOAuth({ name: server });
+        if (result.isError) throw new Error(result.content[0]?.type === 'text' ? result.content[0].text : 'MCP OAuth disconnect failed');
+        return { ok: true };
+      },
       /**
        * Register (or replace) a runtime MCP server owned by the calling extension.
        * The config lives only in memory and is reconciled immediately, then we
@@ -1257,10 +1373,13 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         // registrations (idempotent — safe when nothing is cached), so the reconnect
         // below always re-pushes a fresh `mcp__<server>__*` tool set into main.
         disconnectServer(config.name);
-        // Eagerly connect so tools register right away instead of staying pending.
-        void connectIfNeeded(config.name, ctx.logger).catch(() => {
-          // Status map + extension logs retain the user-visible error; lazy retry on use.
-        });
+        // OAuth must begin only from an explicit user action through connectServer().
+        // Token/API-key servers can still connect eagerly once their secure setup succeeds.
+        if (!isHttpConfig(config) || !config.oauth) {
+          void connectIfNeeded(config.name, ctx.logger).catch(() => {
+            // Status map + extension logs retain the user-visible error; lazy retry on use.
+          });
+        }
         return { ok: true };
       },
       /** Remove a runtime server previously registered by registerServer(). */

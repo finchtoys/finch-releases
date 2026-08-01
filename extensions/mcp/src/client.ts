@@ -8,7 +8,9 @@
 import { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import type { McpOAuthConfig } from './oauth.js';
 import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 
 export type McpServerConfig = McpStdioServerConfig | McpHttpStreamServerConfig;
@@ -36,6 +38,8 @@ export interface McpHttpStreamServerConfig {
   headers?: Record<string, string>;
   /** Values used to expand header placeholders; merged with process.env. */
   env?: Record<string, string>;
+  /** Standards-based MCP OAuth discovery + DCR + PKCE. */
+  oauth?: McpOAuthConfig;
 }
 
 /** Type guard: true when config describes an httpStream server (has `url`). */
@@ -84,8 +88,8 @@ export interface McpClient {
   close(): void;
 }
 
-export function createMcpClient(config: McpServerConfig): McpClient {
-  if (isHttpConfig(config)) return new SdkBackedMcpClient(config);
+export function createMcpClient(config: McpServerConfig, authProvider?: OAuthClientProvider): McpClient {
+  if (isHttpConfig(config)) return new SdkBackedMcpClient(config, authProvider);
   return new SdkBackedMcpClient(config as McpStdioServerConfig);
 }
 
@@ -100,7 +104,10 @@ class SdkBackedMcpClient implements McpClient {
   /** Called when the connection drops unexpectedly (not via close()). */
   onclose?: () => void;
 
-  constructor(private readonly config: McpServerConfig) {}
+  constructor(
+    private readonly config: McpServerConfig,
+    private readonly authProvider?: OAuthClientProvider,
+  ) {}
 
   get name(): string {
     return this.config.name;
@@ -213,6 +220,7 @@ class SdkBackedMcpClient implements McpClient {
   private createTransport(): Transport {
     if (isHttpConfig(this.config)) {
       return new StreamableHTTPClientTransport(new URL(this.config.url), {
+        authProvider: this.authProvider,
         requestInit: {
           headers: expandHeaders(this.config.headers, this.config.env),
         },

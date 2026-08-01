@@ -1,6 +1,6 @@
 {
   "name": "@finchtoys/mcp-client",
-  "version": "1.1.20",
+  "version": "1.2.8",
   "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
@@ -34,7 +34,7 @@
     "toolMeta": {
       "name": "MCP"
     },
-    "systemPrompt": "Use MCP with action=list/add/edit/remove to manage configured MCP services; never ask users to paste secrets in chat, because add/edit opens a secure form for secret values. To add an HTTP (url) MCP server just pass name+url — the form shows one API-token field and auto-creates a standard 'Authorization: Bearer <token>' header; never pass, view, or hand-edit the token or any header, and only set authHeader for a non-standard header name (e.g. X-Api-Key). To use actual MCP server tools, call Finch ToolSearch with source:\"mcp\" first — mcp__<server>__<tool> names are never pre-loaded and will fail if called directly. ToolSearch connects matching servers, discovers their tools, and injects mcp__<server>__<tool> functions into the current run. Authorization can be granted per-tool (mcp__filesystem__read_file) or with a wildcard (mcp__filesystem__*).",
+    "systemPrompt": "Use MCP with action=list/add/edit/remove/connect/disconnect to manage configured MCP services. For an OAuth-enabled HTTP MCP service, action=connect runs OAuth discovery, Dynamic Client Registration, and PKCE; do not check status first when the user asks to authorize. Never ask users to paste secrets in chat, because add/edit opens a secure form for secret values. To add an HTTP (url) MCP server just pass name+url — the form shows one API-token field and auto-creates a standard 'Authorization: Bearer <token>' header; never pass, view, or hand-edit the token or any header, and only set authHeader for a non-standard header name (e.g. X-Api-Key). To use actual MCP server tools, when the target server name is known first call Finch ToolSearch with source:\"mcp:<server>\"; fall back to source:\"mcp\" only if that precise search finds no usable tool, because mcp__<server>__<tool> names are never pre-loaded and will fail if called directly. ToolSearch connects the selected servers, discovers their tools, and injects mcp__<server>__<tool> functions into the current run. Authorization can be granted per-tool (mcp__filesystem__read_file) or with a wildcard (mcp__filesystem__*).",
     "promptGuides": [
       {
         "id": "setup-filesystem",
@@ -67,7 +67,10 @@
     "permissions": {
       "filesystem": "read",
       "network": true,
-      "shell": true
+      "shell": true,
+      "oauth": [
+        "mcp"
+      ]
     }
   },
   "dependencies": {
