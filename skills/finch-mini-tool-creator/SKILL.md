@@ -51,7 +51,7 @@ Identify what your mini tool needs, then read the matching files:
 | Status snapshots | `reference/finch.d.ts` → `Status` interface |
 | Bot / remote / Agent Session messaging / container settings menu | `reference/session.md` and `reference/finch.d.ts` → `SessionContainerSettingsMenuProvider` |
 | MCP integration | `reference/mcp.md` |
-| Publishing | `reference/publish.md` |
+| Publishing | `reference/publish.md`; for a request to list an already-published mini tool in the official community, use `AppCall action=feedback` with `feedbackCategory: "minitool"` — do not directly edit the community index. |
 
 **ComposerAction icons are the most common failure point.** Before setting any `icon` field anywhere (manifest or code), open `reference/icons.md` and confirm the id is in the built-in list (§2). If it is not listed there, it will render as plain text — always register a runtime SVG pack instead of guessing. Do not skip this check.
 
