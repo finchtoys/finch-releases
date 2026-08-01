@@ -8,7 +8,7 @@
 
   "menu.quick": "快捷操作",
   "menu.add": "新建待办",
-  "menu.add.desc": "添加新事项",
+  "menu.add.desc": "手动输入",
   "menu.view": "查看全部",
   "menu.view.desc": "全部事项",
   "menu.automation": "设置自动化提醒",
@@ -31,6 +31,18 @@
   "confirm.complete.cancel": "取消",
   "badge.inProgress": "{count} 个进行中",
   "badge.empty": "无任务",
+  "toast.openSessionFailed": "无法打开待办来源会话",
+  "toast.added": "已新增待办：{title}",
+
+  "form.add.title": "新建待办",
+  "form.add.field.title": "标题",
+  "form.add.field.title.placeholder": "输入待办内容…",
+  "form.add.field.status": "状态",
+  "form.add.field.status.todo": "待办",
+  "form.add.field.status.inProgress": "进行中",
+  "form.add.field.linkSession": "关联当前会话",
+  "form.add.cancel": "取消",
+  "form.add.submit": "添加",
 
   "tool.add.title": "新增待办",
   "tool.add.description": "向用户的个人待办清单新增一项，默认状态为待办。用户要求记下、新增或创建任务时使用。",

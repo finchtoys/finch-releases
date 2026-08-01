@@ -1,16 +1,38 @@
 import type * as finch from 'finch';
 
+// ── Type augmentation ──────────────────────────────────────────────────────
+// The published 0.2.7 type package does not yet include `fields` on
+// ModalDialogOptions or `values` on ModalDialogResult, but the Finch runtime
+// supports them (see main repo packages/minitool-api/finch.d.ts).
+// These interfaces bridge the gap until the next API publish.
+
+interface ModalDialogFieldOptions extends finch.ModalDialogOptions {
+  readonly fields?: readonly finch.MiniToolFormField[];
+}
+
+interface ModalDialogFieldResult extends finch.ModalDialogResult {
+  readonly values?: Readonly<Record<string, string | number | boolean>>;
+}
+
 const STORAGE_KEY = 'tasks.v1';
 const MAX_TITLE_LENGTH = 200;
 const ICON_PACK_ID = 'todo-list';
 const SQUARE_ICON = `ext:${ICON_PACK_ID}/square` as const;
+const ARROW_RIGHT_ICON = `ext:${ICON_PACK_ID}/arrow-right` as const;
+const PLUS_ICON = `ext:${ICON_PACK_ID}/plus` as const;
 const MENU_TITLE_MAX_WIDTH = 28;
 
 type TodoStatus = 'todo' | 'in_progress' | 'completed';
 
-// hoverText is supported by current Finch runtimes and will be included in the next API package.
+// hoverText and trailingButton are supported by current Finch runtimes and will be included in the next API package.
 type MenuItem = Omit<finch.ComposerActionMenuItem, 'children'> & {
   readonly hoverText?: string;
+  readonly trailingButton?: {
+    readonly id: string;
+    readonly iconName: string;
+    readonly tooltip?: string;
+    readonly disabled?: boolean;
+  };
   readonly children?: MenuItem[];
 };
 
@@ -21,6 +43,7 @@ interface TodoTask {
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
+  sourceSessionId?: string;
 }
 
 interface MatchResult {
@@ -53,6 +76,7 @@ function normalizeTask(value: unknown): TodoTask | undefined {
     createdAt: task.createdAt,
     startedAt: typeof task.startedAt === 'string' ? task.startedAt : undefined,
     completedAt: typeof task.completedAt === 'string' ? task.completedAt : undefined,
+    sourceSessionId: typeof task.sourceSessionId === 'string' ? task.sourceSessionId : undefined,
   };
 }
 
@@ -204,7 +228,7 @@ function registerTools(ctx: finch.ExtensionContext, notifyUpdate: () => void): v
         required: ['title'],
       },
       risk: 'low',
-      async execute(input) {
+      async execute(input, executionContext) {
         const title = cleanTitle((input as { title?: unknown }).title);
         if (!title) return textResult(ctx.i18n.t('result.invalidTitle'));
 
@@ -214,6 +238,7 @@ function registerTools(ctx: finch.ExtensionContext, notifyUpdate: () => void): v
             title,
             status: 'todo',
             createdAt: new Date().toISOString(),
+            sourceSessionId: executionContext.sessionId,
           };
           tasks.push(next);
           return next;
@@ -327,7 +352,7 @@ function quickActions(ctx: finch.ExtensionContext): MenuItem[] {
       id: 'add',
       label: ctx.i18n.t('menu.add'),
       description: ctx.i18n.t('menu.add.desc'),
-      iconName: 'notebook-pen',
+      iconName: PLUS_ICON,
       group: 'quick',
       groupLabel: ctx.i18n.t('menu.quick'),
     },
@@ -346,6 +371,14 @@ function quickActions(ctx: finch.ExtensionContext): MenuItem[] {
       group: 'quick',
     },
   ];
+}
+
+function sessionButton(task: TodoTask): MenuItem['trailingButton'] | undefined {
+  if (!task.sourceSessionId) return undefined;
+  return {
+    id: `open-session:${task.id}`,
+    iconName: ARROW_RIGHT_ICON,
+  };
 }
 
 function inProgressItems(
@@ -372,6 +405,7 @@ function inProgressItems(
     id: `complete:${task.id}`,
     ...menuTitle(task.title, supportsHoverText),
     iconName: SQUARE_ICON,
+    trailingButton: sessionButton(task),
     group: 'in-progress',
     groupLabel: index === 0 ? ctx.i18n.t('menu.inProgress.group') : undefined,
     groupMaxVisible: index === 0 ? 6 : undefined,
@@ -408,6 +442,7 @@ function todoMenu(
       id: `start:${task.id}`,
       ...menuTitle(task.title, supportsHoverText),
       iconName: SQUARE_ICON,
+      trailingButton: sessionButton(task),
       group: 'todo',
       groupLabel: index === 0 ? ctx.i18n.t('menu.todo.group') : undefined,
       groupMaxVisible: index === 0 ? 6 : undefined,
@@ -422,6 +457,14 @@ export function activate(ctx: finch.ExtensionContext): void {
     square: {
       svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>',
       description: 'Unchecked todo item',
+    },
+    'arrow-right': {
+      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>',
+      description: 'Open source conversation',
+    },
+    plus: {
+      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+      description: 'Add new todo',
     },
   }));
 
@@ -446,9 +489,102 @@ export function activate(ctx: finch.ExtensionContext): void {
       ];
     },
 
-    async execute(_actionContext, itemId, actions) {
+    async execute(actionContext, itemId, actions) {
+      if (itemId.startsWith('__trailing__:open-session:')) {
+        const id = itemId.slice('__trailing__:open-session:'.length);
+        const task = (await loadTasks(ctx)).find((candidate) => candidate.id === id);
+        if (!task?.sourceSessionId) return;
+        try {
+          await actions.navigation.openSession(task.sourceSessionId);
+        } catch (error) {
+          ctx.logger.error('failed to open todo source session', error);
+          await ctx.ui.showToast({
+            title: ctx.i18n.t('toast.openSessionFailed'),
+            variant: 'error',
+          });
+        }
+        return;
+      }
       if (itemId === 'add') {
-        await actions.composer.fill(ctx.i18n.t('prompt.add'));
+        const isInSession = actionContext.surface === 'session' && !!actionContext.sessionId;
+
+        const fields: finch.MiniToolFormField[] = [
+          {
+            key: 'title',
+            label: ctx.i18n.t('form.add.field.title'),
+            type: 'text',
+            placeholder: ctx.i18n.t('form.add.field.title.placeholder'),
+            required: true,
+            width: '2/3',
+          },
+          {
+            key: 'status',
+            label: ctx.i18n.t('form.add.field.status'),
+            type: 'select',
+            default: 'todo',
+            width: '1/3',
+            options: [
+              { value: 'todo', label: ctx.i18n.t('form.add.field.status.todo') },
+              { value: 'in_progress', label: ctx.i18n.t('form.add.field.status.inProgress') },
+            ],
+          },
+        ];
+
+        if (isInSession) {
+          fields.push({
+            key: 'linkSession',
+            label: ctx.i18n.t('form.add.field.linkSession'),
+            type: 'boolean',
+            default: true,
+          });
+        }
+
+        const dialogOptions: ModalDialogFieldOptions = {
+          title: ctx.i18n.t('form.add.title'),
+          actions: [
+            { id: 'cancel', label: ctx.i18n.t('form.add.cancel') },
+            { id: 'submit', label: ctx.i18n.t('form.add.submit'), variant: 'primary' },
+          ],
+          fields,
+        };
+
+        const result = await ctx.ui.showModalDialog(
+          dialogOptions as finch.ModalDialogOptions,
+        ) as ModalDialogFieldResult;
+
+        if (result.action !== 'submit') return;
+
+        const title = cleanTitle(result.values?.title);
+        if (!title) {
+          await ctx.ui.showToast({
+            title: ctx.i18n.t('result.invalidTitle'),
+            variant: 'warning',
+          });
+          return;
+        }
+
+        const linkSession = isInSession && result.values?.linkSession === true;
+        const sourceSessionId = linkSession ? actionContext.sessionId : undefined;
+        const status: TodoStatus = result.values?.status === 'in_progress' ? 'in_progress' : 'todo';
+
+        const task = await mutateTasks(ctx, (tasks) => {
+          const now = new Date().toISOString();
+          const next: TodoTask = {
+            id: createId(),
+            title,
+            status,
+            createdAt: now,
+            startedAt: status === 'in_progress' ? now : undefined,
+            sourceSessionId,
+          };
+          tasks.push(next);
+          return next;
+        });
+        notifyUpdate();
+        ctx.ui.showToast({
+          title: ctx.i18n.t('toast.added', { title: task.title }),
+          variant: 'success',
+        });
         return;
       }
       if (itemId === 'view') {

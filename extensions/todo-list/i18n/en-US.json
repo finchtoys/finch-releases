@@ -8,7 +8,7 @@
 
   "menu.quick": "Quick actions",
   "menu.add": "New todo",
-  "menu.add.desc": "Add a task",
+  "menu.add.desc": "Manual input",
   "menu.view": "View all",
   "menu.view.desc": "All tasks",
   "menu.automation": "Set automation reminder",
@@ -31,6 +31,18 @@
   "confirm.complete.cancel": "Cancel",
   "badge.inProgress": "{count} in progress",
   "badge.empty": "No tasks",
+  "toast.openSessionFailed": "Could not open the task's source conversation",
+  "toast.added": "Added todo: {title}",
+
+  "form.add.title": "New Todo",
+  "form.add.field.title": "Title",
+  "form.add.field.title.placeholder": "Enter task…",
+  "form.add.field.status": "Status",
+  "form.add.field.status.todo": "Todo",
+  "form.add.field.status.inProgress": "In progress",
+  "form.add.field.linkSession": "Link to current conversation",
+  "form.add.cancel": "Cancel",
+  "form.add.submit": "Add",
 
   "tool.add.title": "Add todo",
   "tool.add.description": "Add one item to the user's personal task list with todo status. Use when the user asks to remember, add, or create a task.",

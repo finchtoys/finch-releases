@@ -1,6 +1,6 @@
 {
   "name": "finch-todolist",
-  "version": "0.2.6",
+  "version": "0.3.2",
   "type": "module",
   "description": "A simple personal task list for Finch.",
   "author": {
@@ -73,7 +73,8 @@
     }
   },
   "devDependencies": {
-    "@finchtoys/minitool-api": "^0.1.16",
+    "@finchtoys/minitool-api": "^0.2.6",
+    "@types/node": "^24.13.3",
     "typescript": "^5.6.0"
   },
   "files": [
