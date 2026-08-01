@@ -7,7 +7,6 @@ import QRCode from 'qrcode';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CONTAINER_ID = 'wechat';
-const PROFILE_ID = 'wechat-assistant';
 /**
  * 图标以静态 SVG 文件形式声明在 manifest 的 `contributes.icons`（见 icons/ 目录）。
  * 静态图标由主进程直接从磁盘解析，不依赖扩展是否已激活——因此侧栏容器入口图标在
@@ -430,16 +429,14 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
           break;
         case 'confirmed': {
           if (!st.bot_token || !st.ilink_bot_id) throw new Error('Login was confirmed but required credentials are missing');
-          const previousBotId = await ctx.storage.get<string>(KEY_BOT_ID);
           const baseUrl = (st.baseurl || currentBase).replace(/\/+$/, '');
           await ctx.storage.set(KEY_TOKEN, st.bot_token);
           await ctx.storage.set(KEY_BASE_URL, baseUrl);
           await ctx.storage.set(KEY_BOT_ID, st.ilink_bot_id);
           if (st.ilink_user_id) await ctx.storage.set(KEY_OWNER_USER, st.ilink_user_id);
-          if (previousBotId && previousBotId !== st.ilink_bot_id) {
-            await ctx.storage.delete(KEY_CURSOR);
-            await ctx.storage.delete(KEY_ACTIVE_SESSION);
-          }
+          // 新扫码凭证可能使旧 getupdates cursor 与当前会话失效，即使 bot ID 不变也必须重建。
+          await ctx.storage.delete(KEY_CURSOR);
+          await ctx.storage.delete(KEY_ACTIVE_SESSION);
           activeQr = undefined;
           loginPhase = 'idle';
           lastError = undefined;
@@ -540,6 +537,8 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     loginPhase = 'idle';
     activeQr = undefined;
     stopMessageLoop = true;
+    messageRunning = false;
+    lastError = undefined;
     await ctx.storage.delete(KEY_TOKEN);
     await ctx.storage.delete(KEY_BASE_URL);
     await ctx.storage.delete(KEY_BOT_ID);
@@ -574,7 +573,6 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       containerId: CONTAINER_ID,
       title: formatWechatSessionTitle(label),
       activity: 'background',
-      profileId: PROFILE_ID,
       permissionMode: 'acceptCalls',
     });
     await ctx.storage.set(KEY_ACTIVE_SESSION, created.sessionId);
@@ -907,7 +905,12 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
           try {
             await handleInbound(msg);
           } catch (error) {
-            ctx.logger.error('handle inbound failed', error);
+            // 重新登录后旧 Session 可能已失效；清除指针，让下一条消息自动创建新的微信会话。
+            await ctx.storage.delete(KEY_ACTIVE_SESSION);
+            const detail = error instanceof Error
+              ? { name: error.name, message: error.message, stack: error.stack }
+              : { value: String(error) };
+            ctx.logger.error('handle inbound failed', { peerId: msg.from_user_id, detail });
           }
         }
         backoffIndex = 0;
@@ -944,7 +947,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
           ? '等待输入配对码'
           : loginRunning
             ? loginPhase === 'scanned' ? '已扫码，等待手机确认' : '等待扫码'
-            : messageRunning
+            : loggedIn && messageRunning
               ? '已连接'
               : loggedIn
                 ? '已登录，等待重新连接'

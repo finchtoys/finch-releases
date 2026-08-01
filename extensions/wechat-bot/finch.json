@@ -18,7 +18,8 @@
       "activity": { "svg": "./icons/activity.svg" },
       "play": { "svg": "./icons/play.svg" },
       "log-out": { "svg": "./icons/log-out.svg" },
-      "qr-code": { "svg": "./icons/qr-code.svg" }
+      "qr-code": { "svg": "./icons/qr-code.svg" },
+      "scan-qr-code": { "svg": "./icons/scan-qr-code.svg" }
     },
     "sessionContainers": [
       {
@@ -26,8 +27,9 @@
         "icon": "ext:wechat-bot/wechat",
         "title": "WeChat Inbox",
         "description": "WeChat conversations handled by Finch",
+        "agentProfile": "wechat-assistant",
         "settingsMenu": {
-          "icon": "settings",
+          "icon": "ext:wechat-bot/scan-qr-code",
           "tooltip": "Manage WeChat connection"
         },
         "mode": "inbox"

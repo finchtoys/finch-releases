@@ -66,7 +66,7 @@
 
 - Container id：`wechat`
 - Container mode：`inbox`
-- 微信当前 Session：`background` + `acceptCalls` + `wechat-assistant` profile（微信消息管家）
+- 微信当前 Session：`background` + `acceptCalls`；容器 `agentProfile` 自动绑定 `wechat-assistant`（微信消息管家）
 - 唯一登录账号只维护一个当前 Session 指针
 - `wechat_new` 创建新 Session 并切换指针，旧 Session 保留
 - Space 任务使用 Space placement，不放进微信 inbox
