@@ -1080,12 +1080,14 @@ npx @finchtoys/minitools where
 
 ### 10.4 发布
 
-作为普通 npm 包发布即可，之后用户能直接 `npx @finchtoys/minitools add <包名>` 安装。发布前确认：
+作为普通 npm 包发布即可，之后用户能直接 `npx @finchtoys/minitools add <包名>` 安装，**不需要 Finch 官方审核**。发布前确认：
 
-- `package.json#files` 包含 `dist/`、`i18n/`、图标资源目录
+- `package.json#files` 包含 `dist/`、`i18n/`、图标资源目录、`icon.png`
 - `main` 指向编译产物且文件真实存在
 - manifest 用英文默认串，本地化放 `i18n/<locale>.json`
 - 声明的权限是真正需要的最小集
+
+进社区推荐目录（`community/mini-tools.json`）是可选项，不是安装前提——完整的打包白名单、`icon.png` 规格、`npm publish` 步骤，以及如何向官方提交发布申请，见《[发布小工具到社区](minitools-publishing.md)》。
 
 ---
 
