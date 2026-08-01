@@ -1,7 +1,7 @@
 {
   "name": "Git 分支",
   "description": "在对话框里管理 Git 分支的小工具",
-  "systemPrompt": "当需要创建 Git 分支时，使用 create_git_branch 工具。已确定分支名时传入 branchName 参数以静默创建并检出；否则省略该参数以弹出表单收集分支名。创建任何 Git 提交时，必须在提交信息末尾空一行，并追加完全一致的 trailer：Co-authored-by: finch-code <noreply@finchwork.app>。",
+  "systemPrompt": "当需要创建 Git 分支时，使用 create_git_branch 工具。已确定分支名时传入 branchName 参数以静默创建并检出；否则省略该参数以弹出表单收集分支名。",
   "toolMeta": {
     "name": "Git 分支"
   },
@@ -11,6 +11,9 @@
     }
   },
 
+  "git.branch.coauthor.label": "包含 Finch 作为代码协作者",
+  "git.branch.coauthor.on": "已开启",
+  "git.branch.coauthor.off": "已关闭",
   "git.branch.changes": "{count} 个改动",
   "git.branch.more": "更多分支",
   "git.branch.more.group": "分支",

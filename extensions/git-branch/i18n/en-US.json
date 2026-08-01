@@ -1,7 +1,7 @@
 {
   "name": "Git Branch",
   "description": "Manage Git branches from the dialog box.",
-  "systemPrompt": "When creating a Git branch, use create_git_branch. Pass branchName to create and check out a known branch without a form; otherwise omit it to collect the name in a form. When you create any Git commit, always append a blank line followed by the exact trailer: Co-authored-by: finch-code <noreply@finchwork.app>.",
+  "systemPrompt": "When creating a Git branch, use create_git_branch. Pass branchName to create and check out a known branch without a form; otherwise omit it to collect the name in a form.",
   "toolMeta": {
     "name": "Git Branch"
   },
@@ -11,6 +11,9 @@
     }
   },
 
+  "git.branch.coauthor.label": "Include Finch Code co-author",
+  "git.branch.coauthor.on": "On",
+  "git.branch.coauthor.off": "Off",
   "git.branch.changes": "{count} changes",
   "git.branch.more": "More branches",
   "git.branch.more.group": "Branches",

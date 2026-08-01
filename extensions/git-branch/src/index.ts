@@ -16,6 +16,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const CURRENT_BRANCH_KEY = 'currentBranch';
+const CO_AUTHOR_ENABLED_KEY = 'coAuthorEnabled';
 const FINCH_CODE_CO_AUTHOR = 'Co-authored-by: finch-code <noreply@finchwork.app>';
 
 // Tracks the most-recently-seen cwd so the background poller can use it.
@@ -150,6 +151,7 @@ export function activate(ctx: finch.ExtensionContext): void {
     ctx.icons.register('git-branch', {
       plus: { svg: readIconSvg('plus'), description: 'Create branch' },
       'plus-circle': { svg: readIconSvg('plus-circle'), description: 'Create branch' },
+      handshake: { svg: readIconSvg('handshake'), description: 'Include Finch Code co-author' },
     }),
   );
 
@@ -166,6 +168,13 @@ export function activate(ctx: finch.ExtensionContext): void {
           return branch;
         }
         return await ctx.storage.get<string>(CURRENT_BRANCH_KEY);
+      },
+
+      async getReminder({ cwd, surface }): Promise<string | undefined> {
+        if (surface === 'home' || !cwd || !isGitRepo(cwd) || (await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY)) === false) {
+          return undefined;
+        }
+        return `When creating any Git commit, append a blank line followed by the exact trailer: ${FINCH_CODE_CO_AUTHOR}`;
       },
 
       async getMenu({ cwd }): Promise<finch.ComposerActionMenuItem[]> {
@@ -203,7 +212,18 @@ export function activate(ctx: finch.ExtensionContext): void {
             }),
           );
 
-          const items: finch.ComposerActionMenuItem[] = [];
+          const coAuthorEnabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false;
+          const items: finch.ComposerActionMenuItem[] = [{
+            id: '__toggle_co_author__',
+            label: ctx.i18n.t('git.branch.coauthor.label'),
+            description: ctx.i18n.t(coAuthorEnabled ? 'git.branch.coauthor.on' : 'git.branch.coauthor.off'),
+            current: coAuthorEnabled,
+            iconName: 'ext:git-branch/handshake',
+          }, {
+            id: '__coauthor_sep__',
+            label: '',
+            separator: true,
+          }];
 
           items.push({
             id: currentBranch,
@@ -273,6 +293,13 @@ export function activate(ctx: finch.ExtensionContext): void {
       async execute({ cwd }, itemId: string, actions: finch.ComposerActionActions): Promise<void> {
         if (!cwd || !itemId) return;
 
+        if (itemId === '__toggle_co_author__') {
+          const enabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false;
+          await ctx.storage.set(CO_AUTHOR_ENABLED_KEY, !enabled);
+          composerAction.notifyUpdate();
+          return;
+        }
+
         // ── Create branch: 直接填入 Prompt ────────────────────────────
         if (itemId === '__create_branch__') {
           await actions.fillComposer(ctx.i18n.t('git.branch.create.prompt'));
@@ -308,8 +335,9 @@ export function activate(ctx: finch.ExtensionContext): void {
             await git(cwd, [
               'commit', '-m',
               ctx.i18n.t('git.branch.switch.commit.msg', { branch: itemId }),
-              '-m',
-              FINCH_CODE_CO_AUTHOR,
+              ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false
+                ? ['-m', FINCH_CODE_CO_AUTHOR]
+                : []),
             ]);
             checkpointCommit = await git(cwd, ['rev-parse', '--short', 'HEAD']).catch(() => undefined);
           }
@@ -403,8 +431,9 @@ export function activate(ctx: finch.ExtensionContext): void {
           await git(cwd, [
             'commit', '-m',
             `checkpoint: before creating branch ${branchName}`,
-            '-m',
-            FINCH_CODE_CO_AUTHOR,
+            ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false
+              ? ['-m', FINCH_CODE_CO_AUTHOR]
+              : []),
           ]);
         }
 
