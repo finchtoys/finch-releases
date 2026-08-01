@@ -27,6 +27,7 @@ const ALL_ICONS: IconDef[] = [
   { id: 'config',                  svgName: 'config',                  labelKey: 'icon.config',       descKey: 'icon.config.desc' },
   { id: 'toast',                   svgName: 'toast',                   labelKey: 'icon.toast',        descKey: 'icon.toast.desc' },
   { id: 'preview',                 svgName: 'preview',                 labelKey: 'icon.preview',      descKey: 'icon.preview.desc' },
+  { id: 'modal-form',              svgName: 'modal-form',              labelKey: 'icon.modal-form',   descKey: 'icon.modal-form.desc' },
 ];
 const iconMap = new Map(ALL_ICONS.map(i => [i.id, i]));
 
@@ -43,6 +44,7 @@ const ALL_ACTIONS: ActionDef[] = [
   { id: 'login',      labelKey: 'action.login',      icon: ICON('login'),      promptKey: 'action.login.prompt',      group: '表单' },
   { id: 'timeout',    labelKey: 'action.timeout',     icon: ICON('timeout'),    promptKey: 'action.timeout.prompt',    group: '表单' },
   { id: 'config',     labelKey: 'action.config',      icon: ICON('config'),    promptKey: 'action.config.prompt',     group: '表单' },
+  { id: 'modal-form', labelKey: 'action.modal-form',  icon: ICON('modal-form'), promptKey: 'action.modal-form.prompt', group: '表单' },
   { id: 'toast',      labelKey: 'action.toast',       icon: ICON('toast'),     promptKey: 'action.toast.prompt',      group: 'UI 演示' },
   { id: 'confirm-dialog', labelKey: 'action.confirm-dialog', icon: ICON('toast'), promptKey: 'action.confirm-dialog.prompt', group: 'UI 演示' },
   { id: 'inline-confirm', labelKey: 'action.inline-confirm', icon: ICON('toast'), promptKey: 'action.inline-confirm.prompt', group: 'UI 演示' },
@@ -347,6 +349,7 @@ function registerIconPreviewTool(ctx: finch.ExtensionContext) {
           { name: 'config',     label: '配置向导（Lucide settings）', file: 'settings.svg → config.svg' },
           { name: 'toast',      label: '弹框与提示（Lucide bell）', file: 'bell.svg → toast.svg' },
           { name: 'preview',    label: '图标预览（Lucide eye）',   file: 'eye.svg → preview.svg' },
+          { name: 'modal-form', label: 'showModalDialog 表单（Lucide app-window）', file: 'app-window.svg → modal-form.svg' },
         ];
 
         const table = icons.map(i =>
@@ -370,7 +373,7 @@ function registerIconPreviewTool(ctx: finch.ExtensionContext) {
               '- Manifest 中：`"icon": "mini-tool-demo"`（指向 pack id）',
               '- 菜单项 iconName：`"ext:mini-tool-demo/xxx"`',
               '- 注册：`ctx.icons.register(\'mini-tool-demo\', { ... })`',
-              '- 来源：6 枚来自 Lucide，1 枚自定义',
+              '- 来源：7 枚来自 Lucide，1 枚自定义',
             ].join('\n'),
           }],
         };
@@ -473,6 +476,44 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
         // 记录上次操作
         await ctx.storage.set(LAST_ACTION_KEY, itemId);
 
+        // ── ctx.ui.showModalDialog + fields：直接弹出手动输入表单 ──
+        // 与其余「表单」组条目不同，这里不 fillComposer、不经过任何 Agent tool call——
+        // 点击按钮就地弹出原生 Modal 收集输入，演示「无需依赖 AI」的手动表单场景
+        // （例如设置里手动填 API Key/Token）。
+        if (itemId === 'modal-form') {
+          const i = ctx.i18n;
+          const result = await ctx.ui.showModalDialog({
+            title: i.t('modal.form.title'),
+            description: i.t('modal.form.description'),
+            actions: [
+              { id: 'cancel', label: i.t('modal.form.cancel') },
+              { id: 'save', label: i.t('modal.form.save'), variant: 'primary' },
+            ],
+            fields: [
+              { key: 'endpoint', label: i.t('modal.form.endpoint.label'), type: 'text', placeholder: i.t('modal.form.endpoint.placeholder'), required: true, width: '2/3' },
+              { key: 'timeout', label: i.t('modal.form.timeout.label'), type: 'number', default: 30, width: '1/3' },
+              { key: 'apiKey', label: i.t('modal.form.apiKey.label'), type: 'password', secret: true, required: true, description: i.t('modal.form.apiKey.description') },
+              { key: 'enabled', label: i.t('modal.form.enabled.label'), type: 'boolean', default: true },
+              { key: 'docs', label: i.t('modal.form.docs.label'), type: 'link', href: 'https://finchwork.app', width: '1/2' },
+            ],
+          });
+
+          if (result.action !== 'save') {
+            ctx.ui.showToast({ title: i.t('modal.form.result.cancelled'), variant: 'info', position: 'TC' });
+            return;
+          }
+
+          // 只把非敏感字段存起来做展示；secret 字段的值不应回显或落盘明文。
+          await ctx.storage.set('modalFormEndpoint', String(result.values?.endpoint ?? ''));
+          ctx.ui.showToast({
+            title: i.t('modal.form.result.saved'),
+            description: i.t('modal.form.result.saved.desc', { endpoint: String(result.values?.endpoint ?? '') }),
+            variant: 'success',
+            position: 'TC',
+          });
+          return;
+        }
+
         if (itemId === 'confirm-dialog') {
           const result = await ctx.ui.showConfirmDialog({
             title: ctx.i18n.t('confirm.dialog.danger.title'),
@@ -549,7 +590,7 @@ function registerComposerAction(ctx: finch.ExtensionContext) {
 export function activate(ctx: finch.ExtensionContext): void {
   ctx.logger.info('mini-tool-demo activating...');
 
-  // Register icon pack — all 7 custom SVG icons
+  // Register icon pack — all 8 custom SVG icons
   ctx.subscriptions.push(
     ctx.icons.register('mini-tool-demo', {
       'mini-tool-demo':  { svg: readIconSvg('mini-tool-demo'),  description: 'Extension Example main icon' },
@@ -559,6 +600,7 @@ export function activate(ctx: finch.ExtensionContext): void {
       'config':     { svg: readIconSvg('config'),     description: 'Config wizard' },
       'toast':      { svg: readIconSvg('toast'),      description: 'Toast demo' },
       'preview':    { svg: readIconSvg('preview'),    description: 'Icon preview' },
+      'modal-form': { svg: readIconSvg('modal-form'), description: 'showModalDialog fields demo' },
     }),
   );
 
@@ -574,7 +616,7 @@ export function activate(ctx: finch.ExtensionContext): void {
   // Register composer action
   registerComposerAction(ctx);
 
-  ctx.logger.info('mini-tool-demo activated — 7 tools + 1 composer action + 7 custom icons');
+  ctx.logger.info('mini-tool-demo activated — 7 tools + 1 composer action + 8 custom icons');
 }
 
 export function deactivate(): void {

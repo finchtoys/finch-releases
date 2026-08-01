@@ -8,6 +8,7 @@ A comprehensive demo extension that showcases all Finch mini tool capabilities �
 - **Login Form** — a practical login form example with `secret` fields that are never returned to the model.
 - **Timeout Test** — shows how to set an auto-cancel timeout on a form (configurable seconds, or no timeout).
 - **Project Config** — a multi-field config wizard with selects, booleans, and side-by-side layout.
+- **Modal Form (no AI)** — same field grid via `ctx.ui.showModalDialog({ fields })`, opened directly from the Composer button click. No tool call, no Agent turn — for manual-input scenarios like settings/API-key entry (requires `@finchtoys/minitool-api` ≥ 0.2.7).
 - **Toast & Messages** — demos `showToast` variants (success / info / warning / error) and the `showMessage` banner, including an Undo action.
 - **Confirmation UI** — demos both `showConfirmDialog` (including the danger variant) and the non-blocking Composer inline confirmation bar.
 - **Custom Icons** — shows how to register and reference custom SVG icons via `ctx.icons.register()`.
@@ -56,6 +57,7 @@ npx @finchtoys/extensions update mini-tool-demo
 - **模拟登录表单** — 含 `secret` 字段的登录表单，密码值不会返回给模型。
 - **超时测试** — 演示表单的自动取消超时（可配置秒数，或不超时）。
 - **项目配置向导** — 多字段配置表单，含下拉、布尔和并排布局。
+- **弹窗表单（无需 AI）** — 同一套字段网格改用 `ctx.ui.showModalDialog({ fields })` 弹出，直接由 Composer 按钮点击触发。不经过任何 tool call，也不依赖 Agent 回合——适合设置类的手动输入场景，比如填写 API Key（需 `@finchtoys/minitool-api` ≥ 0.2.7）。
 - **弹框与提示** — 演示 `showToast` 的四种变体（success / info / warning / error）及顶部 `showMessage`，含撤销按钮。
 - **确认交互** — 演示 `showConfirmDialog`（含危险操作样式）与非阻塞的 Composer 内联确认条。
 - **自定义图标** — 展示如何通过 `ctx.icons.register()` 注册并引用自定义 SVG 图标。

@@ -1,6 +1,6 @@
 {
   "name": "@finchtoys/mini-tool-demo",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Comprehensive Finch mini tool demo — demonstrates all mini tool capabilities including forms, toasts, custom icons, tools, composer actions, and i18n.",
   "author": {
@@ -16,7 +16,7 @@
   "license": "MIT",
   "main": "dist/index.js",
   "scripts": {
-    "copy-icons": "cp node_modules/lucide-static/icons/list.svg icons/all-fields.svg && cp node_modules/lucide-static/icons/log-in.svg icons/login.svg && cp node_modules/lucide-static/icons/timer.svg icons/timeout.svg && cp node_modules/lucide-static/icons/settings.svg icons/config.svg && cp node_modules/lucide-static/icons/bell.svg icons/toast.svg && cp node_modules/lucide-static/icons/eye.svg icons/preview.svg",
+    "copy-icons": "cp node_modules/lucide-static/icons/list.svg icons/all-fields.svg && cp node_modules/lucide-static/icons/log-in.svg icons/login.svg && cp node_modules/lucide-static/icons/timer.svg icons/timeout.svg && cp node_modules/lucide-static/icons/settings.svg icons/config.svg && cp node_modules/lucide-static/icons/bell.svg icons/toast.svg && cp node_modules/lucide-static/icons/eye.svg icons/preview.svg && cp node_modules/lucide-static/icons/app-window.svg icons/modal-form.svg",
     "prebuild": "npm run copy-icons",
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch"
@@ -93,7 +93,7 @@
     }
   },
   "devDependencies": {
-    "@finchtoys/minitool-api": "^0.1.16",
+    "@finchtoys/minitool-api": "^0.2.7",
     "@types/node": "^26.1.0",
     "lucide-static": "^1.23.0",
     "typescript": "^5.6.0"
