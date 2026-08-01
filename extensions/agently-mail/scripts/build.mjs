@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 const extensionRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Copy Lucide SVG icons
-const iconNames = ['mail', 'link', 'circle-check', 'send', 'inbox', 'search'];
+const iconNames = ['mail', 'link', 'circle-check', 'send', 'inbox', 'search', 'refresh-cw', 'download', 'badge-check', 'circle-alert'];
 const iconsDir = resolve(extensionRoot, 'icons');
 await mkdir(iconsDir, { recursive: true });
 const { copyFile } = await import('node:fs/promises');

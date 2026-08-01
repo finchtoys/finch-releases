@@ -1,10 +1,13 @@
 import type * as finch from 'finch';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { checkCliVersion, updateCli, type CliVersionStatus } from './cli-version.js';
+import { CLI_PACKAGE } from './cli-path.js';
 
 const SERVER_NAME = 'agently-mail';
 const PACK_ID = 'agently-mail';
 const ICON = (name: string) => `ext:${PACK_ID}/${name}`;
+const CLI_STATUS_REFRESH_MS = 6 * 60 * 60 * 1000; // re-check every 6 hours in the background
 
 function readIconSvg(name: string): string {
   return readFileSync(new URL(`../icons/${name}.svg`, import.meta.url), 'utf-8');
@@ -28,6 +31,58 @@ interface McpClientCapability {
 }
 
 let activeCtx: finch.ExtensionContext | undefined;
+let cliStatus: CliVersionStatus = { state: 'checking' };
+let cliUpdating = false;
+
+function cliMenuItem(): finch.ComposerActionMenuItem {
+  if (cliUpdating) {
+    return { id: 'cli-updating', label: '正在更新 CLI…', iconName: ICON('refresh-cw'), disabled: true };
+  }
+  switch (cliStatus.state) {
+    case 'checking':
+      return { id: 'cli-checking', label: '检测 CLI 版本中…', iconName: ICON('refresh-cw'), disabled: true };
+    case 'missing':
+      return {
+        id: 'cli-install',
+        label: 'CLI 未安装 · 点击安装',
+        iconName: ICON('download'),
+        hoverText: `点击运行 npm install -g ${CLI_PACKAGE} 安装官方 CLI。`,
+      };
+    case 'outdated':
+      return {
+        id: 'cli-update',
+        label: `CLI v${cliStatus.installed} · 有新版 v${cliStatus.latest}`,
+        iconName: ICON('refresh-cw'),
+        hoverText: '点击更新到最新版本。',
+      };
+    case 'current':
+      return {
+        id: 'cli-current',
+        label: `CLI v${cliStatus.installed} · 已是最新`,
+        iconName: ICON('badge-check'),
+        disabled: true,
+      };
+    case 'error':
+      return {
+        id: 'cli-error',
+        label: '无法检测 CLI 版本',
+        iconName: ICON('circle-alert'),
+        hoverText: cliStatus.message,
+        disabled: true,
+      };
+    default:
+      return { id: 'cli-unknown', label: 'CLI 状态未知', iconName: ICON('circle-alert'), disabled: true };
+  }
+}
+
+async function refreshCliStatus(action?: { notifyUpdate(): void }): Promise<void> {
+  try {
+    cliStatus = await checkCliVersion();
+  } catch (error) {
+    cliStatus = { state: 'error', message: error instanceof Error ? error.message : String(error) };
+  }
+  action?.notifyUpdate();
+}
 
 function buildServer(ctx: finch.ExtensionContext): McpServerConfig {
   return {
@@ -146,6 +201,10 @@ export function activate(ctx: finch.ExtensionContext): void {
     send: { svg: readIconSvg('send'), description: 'Compose mail' },
     inbox: { svg: readIconSvg('inbox'), description: 'Recent mail' },
     search: { svg: readIconSvg('search'), description: 'Search mail' },
+    'refresh-cw': { svg: readIconSvg('refresh-cw'), description: 'Check / update CLI version' },
+    download: { svg: readIconSvg('download'), description: 'Install CLI' },
+    'badge-check': { svg: readIconSvg('badge-check'), description: 'CLI up to date' },
+    'circle-alert': { svg: readIconSvg('circle-alert'), description: 'CLI version check failed' },
   }));
 
   ctx.subscriptions.push(ctx.tools.register({
@@ -274,9 +333,29 @@ export function activate(ctx: finch.ExtensionContext): void {
         { id: 'compose', label: '写一封邮件', iconName: ICON('send') },
         { id: 'inbox', label: '查看最近邮件', iconName: ICON('inbox') },
         { id: 'search', label: '搜索邮件', iconName: ICON('search') },
+        { id: '__sep-cli__', label: '', separator: true },
+        cliMenuItem(),
       ];
     },
     async execute(_context, itemId, actions) {
+      if (itemId === 'cli-install' || itemId === 'cli-update') {
+        if (cliUpdating) return;
+        cliUpdating = true;
+        action.notifyUpdate();
+        await ctx.ui.showToast({ title: '正在更新 Agently CLI…', description: `npm install -g ${CLI_PACKAGE}`, variant: 'info' });
+        const result = await updateCli();
+        cliUpdating = false;
+        if (result.ok) {
+          await refreshCliStatus(action);
+          const label = cliStatus.state === 'current' || cliStatus.state === 'outdated' ? `v${cliStatus.installed}` : '';
+          await ctx.ui.showToast({ title: 'Agently CLI 更新完成', description: label ? `已安装 ${label}` : undefined, variant: 'success' });
+        } else {
+          action.notifyUpdate();
+          await ctx.ui.showToast({ title: 'Agently CLI 更新失败', description: result.output.slice(0, 300), variant: 'error' });
+        }
+        return;
+      }
+
       const prompts: Record<string, string> = {
         connect: '连接 QQ Agent 邮箱。请调用 connect_agently_mail 工具；它会先弹出确认框，只有我点击继续授权后才启动 OAuth。',
         status: '检查 QQ Agent 邮箱连接状态。',
@@ -288,6 +367,10 @@ export function activate(ctx: finch.ExtensionContext): void {
     },
   });
   ctx.subscriptions.push(action);
+
+  void refreshCliStatus(action);
+  const cliRefreshTimer = setInterval(() => void refreshCliStatus(action), CLI_STATUS_REFRESH_MS);
+  ctx.subscriptions.push({ dispose: () => clearInterval(cliRefreshTimer) });
 }
 
 export function deactivate(): void {

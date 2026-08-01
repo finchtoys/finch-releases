@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CLI_NAME, CLI_PACKAGE, resolveCli } from './cli-path.js';
 
 const execFileAsync = promisify(execFile);
-const CLI_NAME = 'agently-cli';
 const AUTH_URL_PATTERN = /https?:\/\/[^\s"'<>]+/;
 const AUTH_URL_TIMEOUT_MS = 45_000;
 
@@ -20,26 +17,6 @@ let authProcess: ChildProcess | undefined;
 let authState: AuthState = 'idle';
 let authUrl: string | undefined;
 let authError: string | undefined;
-
-function resolveCli(): string {
-  const explicit = process.env.AGENTLY_CLI_PATH?.trim();
-  if (explicit && existsSync(explicit)) return explicit;
-
-  const candidates = [
-    join(dirname(process.execPath), CLI_NAME),
-    `/usr/local/bin/${CLI_NAME}`,
-    `/opt/homebrew/bin/${CLI_NAME}`,
-  ];
-  const nvmRoot = join(homedir(), '.nvm', 'versions', 'node');
-  try {
-    for (const version of readdirSync(nvmRoot).sort().reverse()) {
-      candidates.push(join(nvmRoot, version, 'bin', CLI_NAME));
-    }
-  } catch {
-    // nvm is optional; fall back to PATH below.
-  }
-  return candidates.find((candidate) => existsSync(candidate)) ?? CLI_NAME;
-}
 
 function textResult(text: string, isError = false) {
   return { content: [{ type: 'text' as const, text }], ...(isError ? { isError: true } : {}) };
@@ -61,7 +38,7 @@ async function runCli(args: string[]): Promise<ReturnType<typeof textResult>> {
     const detail = error as Error & { stdout?: string; stderr?: string; code?: string | number };
     const output = String(detail.stderr || detail.stdout || detail.message || error).trim();
     const missing = detail.code === 'ENOENT'
-      ? `The official Agently CLI is not installed. Run: npm install -g @tencent-qqmail/agently-cli\n${output}`
+      ? `The official Agently CLI is not installed. Run: npm install -g ${CLI_PACKAGE}\n${output}`
       : output;
     return textResult(missing, true);
   }
