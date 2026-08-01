@@ -100,6 +100,10 @@ flowchart TB
 
 > 强烈推荐使用 finch-mini-tool-creator skill 来创建小工具。 你只需要用自然语言描述你的需求，Finch 会帮你完成小工具的开发。如果你想了解更多小工具细节，可以继续往下阅读。
 
+> 在开始开发小工具之前，建议你在工具箱更新一下小工具说明书，可以获取到 Finch 最新的小工具能力，和使用说明。我们鼓励，开发者直接向 Finch 提问，而不是依赖文档。
+
+<img src="imgs/update_skill.png" alt="update_skill" width="700" style="max-width:30%">
+
 ### 2.1 最小结构
 
 ```text
@@ -528,6 +532,19 @@ ctx.subscriptions.push({ dispose: () => clearInterval(timer) });
 
 轮询间隔建议 ≥ 3 秒。`ctx.sessionId` 在会话界面可用，切换开关状态可以按会话隔离而不是全局。
 
+**`getReminder()`：每轮发送前追加强提醒。** 除了 badge 和菜单，ComposerAction 还能在用户每次发送消息前给模型追加一段系统层提醒，用来约束"这一轮"该怎么做——不占用一个独立的 Agent 工具，也不需要用户手写指令。
+
+```ts
+async getReminder({ surface, sessionId }) {
+  return isEnabled(sessionId) ? REMINDER : undefined;
+}
+```
+
+- 返回 `string` 时，这段文字会作为提醒注入这一轮上下文；返回 `undefined` 什么都不追加。
+- 每轮发送前都会重新调用，可以按 `surface`（`home` / `session`）和 `sessionId` 返回不同内容，做成开关式、一次性或按会话持久化的提醒。
+- 提醒是**追加给模型的系统层文本**，不会出现在聊天气泡里，也不经过用户审阅，谨慎使用，避免和可见对话内容矛盾。
+- 典型案例是官方 `plan-mode` 小工具的"计划模式"：用户点亮按钮后，`getReminder()` 每轮返回"只输出结构化计划，不要执行任何工具，等待用户确认"；`onClick` 负责切换按钮状态并持久化到 `ctx.storage`；模型给出计划后，再配合 `onTurnEnd` 钩子（模型这一轮结束时触发）弹出确认对话框，用户确认则自动关闭计划模式并把执行指令 `actions.composer.fill()` 进输入框，形成"先计划、后执行"的完整闭环。
+
 <img src="imgs/composer_action.png" alt="composer_action" width="628" style="max-width:100%">
 
 ### 6.4 菜单
@@ -582,7 +599,7 @@ await dialog.close('connected');
 const result = await dialog;   // { action: 'connected' }
 ```
 
-<img src="imgs/showModalDialog2.png" alt="showModalDialog2" width="700" style="max-width:50%">
+<img src="imgs/showModalDialog2.png" alt="showModalDialog2" width="700" style="max-width:30%">
 
 ### 6.6 表单
 
