@@ -11,7 +11,7 @@
     }
   },
 
-  "git.branch.coauthor.label": "包含 Finch 作为代码协作者",
+  "git.branch.coauthor.label": "包含 {finchName} 作为代码协作者",
   "git.branch.coauthor.on": "已开启",
   "git.branch.coauthor.off": "已关闭",
   "git.branch.changes": "{count} 个改动",

@@ -11,7 +11,7 @@
     }
   },
 
-  "git.branch.coauthor.label": "Include Finch Code co-author",
+  "git.branch.coauthor.label": "Include {finchName} as code co-author",
   "git.branch.coauthor.on": "On",
   "git.branch.coauthor.off": "Off",
   "git.branch.changes": "{count} changes",

@@ -17,13 +17,18 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const CURRENT_BRANCH_KEY = 'currentBranch';
 const CO_AUTHOR_ENABLED_KEY = 'coAuthorEnabled';
-const FINCH_CODE_CO_AUTHOR = 'Co-authored-by: finch-code <noreply@finchwork.app>';
+const FINCH_CODE_EMAIL = 'noreply@finchwork.app';
 
 // Tracks the most-recently-seen cwd so the background poller can use it.
 let activeCwd: string | undefined;
 
 function readIconSvg(name: string): string {
   return readFileSync(new URL(`../icons/${name}.svg`, import.meta.url), 'utf-8');
+}
+
+async function getCoAuthorTrailer(ctx: finch.ExtensionContext): Promise<string> {
+  const { assistantName } = await ctx.app.getInfo();
+  return `Co-authored-by: ${assistantName} <${FINCH_CODE_EMAIL}>`;
 }
 
 // ── Git helpers ──────────────────────────────────────────────────────────────
@@ -174,7 +179,7 @@ export function activate(ctx: finch.ExtensionContext): void {
         if (surface === 'home' || !cwd || !isGitRepo(cwd) || (await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY)) === false) {
           return undefined;
         }
-        return `When creating any Git commit, append a blank line followed by the exact trailer: ${FINCH_CODE_CO_AUTHOR}`;
+        return `When creating any Git commit, append a blank line followed by the exact trailer: ${await getCoAuthorTrailer(ctx)}`;
       },
 
       async getMenu({ cwd }): Promise<finch.ComposerActionMenuItem[]> {
@@ -213,9 +218,10 @@ export function activate(ctx: finch.ExtensionContext): void {
           );
 
           const coAuthorEnabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false;
+          const { assistantName } = await ctx.app.getInfo();
           const items: finch.ComposerActionMenuItem[] = [{
             id: '__toggle_co_author__',
-            label: ctx.i18n.t('git.branch.coauthor.label'),
+            label: ctx.i18n.t('git.branch.coauthor.label', { finchName: assistantName }),
             description: ctx.i18n.t(coAuthorEnabled ? 'git.branch.coauthor.on' : 'git.branch.coauthor.off'),
             current: coAuthorEnabled,
             iconName: 'ext:git-branch/handshake',
@@ -336,7 +342,7 @@ export function activate(ctx: finch.ExtensionContext): void {
               'commit', '-m',
               ctx.i18n.t('git.branch.switch.commit.msg', { branch: itemId }),
               ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false
-                ? ['-m', FINCH_CODE_CO_AUTHOR]
+                ? ['-m', await getCoAuthorTrailer(ctx)]
                 : []),
             ]);
             checkpointCommit = await git(cwd, ['rev-parse', '--short', 'HEAD']).catch(() => undefined);
@@ -432,7 +438,7 @@ export function activate(ctx: finch.ExtensionContext): void {
             'commit', '-m',
             `checkpoint: before creating branch ${branchName}`,
             ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false
-              ? ['-m', FINCH_CODE_CO_AUTHOR]
+              ? ['-m', await getCoAuthorTrailer(ctx)]
               : []),
           ]);
         }
