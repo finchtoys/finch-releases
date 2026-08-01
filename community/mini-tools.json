@@ -194,7 +194,7 @@
   },
   {
     "id": "todo-list",
-    "version": "0.2.4",
+    "version": "0.3.3",
     "name": "Todo List",
     "author": "Finch Team",
     "description": "Keep track of todos, current tasks, and completed items in one place.",
