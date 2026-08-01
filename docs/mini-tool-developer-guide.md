@@ -450,6 +450,9 @@ async function registerWhenReady(ctx: finch.MiniToolContext, apiKey: string) {
 | 容器级账号/连接设置 | 容器 settings menu（见 §8.4） |
 | 悬浮小部件（桌宠、计时器） | `ctx.ui.createCanvasWindow()` |
 
+当然，你可以通过小工具演示来了解小工具的部分UI 能力
+<img src="imgs/demo.png" alt="demo" width="700" style="max-width:50%">
+
 ### 6.2 触发链路
 
 ```mermaid
