@@ -45,6 +45,11 @@
     "description": "全功能演示扩展，覆盖 Finch 小工具的所有核心能力：表单、弹框、自定义图标、工具栏按钮、国际化。"
   },
   {
+    "id": "notion",
+    "name": "Notion",
+    "description": "通过官方 Notion MCP 连接 Finch，支持搜索页面、读取数据库、管理工作区。"
+  },
+  {
     "id": "office-tools",
     "name": "Office 工具",
     "description": "通过 OfficeCLI 读取、创建和编辑 Word、Excel、PowerPoint 文件。"
@@ -73,5 +78,10 @@
     "id": "todo-list",
     "name": "待办清单",
     "description": "轻松记录待办，跟进进行中的事项，并归档已完成内容。"
+  },
+  {
+    "id": "wechat-bot",
+    "name": "微信 Bot",
+    "description": "通过微信 iLink 连接微信到 Finch，支持扫码登录、收件箱会话、主动消息与 Space 任务。"
   }
 ]

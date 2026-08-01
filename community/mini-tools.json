@@ -124,6 +124,21 @@
     ]
   },
   {
+    "id": "notion",
+    "version": "0.1.1",
+    "name": "Notion",
+    "author": "Finch Team",
+    "description": "Connect Notion to Finch — search pages, read databases, and manage your workspace through MCP.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "finch-notion",
+    "extensionType": "official",
+    "categories": [
+      "productivity",
+      "research"
+    ],
+    "featured": true
+  },
+  {
     "id": "office-tools",
     "version": "0.3.2",
     "name": "Office Tools",
@@ -200,6 +215,20 @@
     "description": "Keep track of todos, current tasks, and completed items in one place.",
     "repo": "finchtoys/finch-releases",
     "npm": "finch-todolist",
+    "extensionType": "official",
+    "categories": [
+      "productivity"
+    ],
+    "featured": true
+  },
+  {
+    "id": "wechat-bot",
+    "version": "0.5.12",
+    "name": "WeChat Bot",
+    "author": "Finch Team",
+    "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session and retained inbox history.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "finch-wechat-bot",
     "extensionType": "official",
     "categories": [
       "productivity"
