@@ -1,6 +1,6 @@
 {
   "name": "@finchtoys/mcp-client",
-  "version": "1.2.8",
+  "version": "1.2.10",
   "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
