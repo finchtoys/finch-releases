@@ -1,11 +1,33 @@
-# Finch Mini Tools Releases
+# Finch
 
-This repository is the public release hub for [Finch](https://finchwork.app/). It hosts Finch release assets, official extension source code, and the community registries used by the Finch app and community website.
+**A lightweight, easy-to-use desktop AI agent for macOS and Windows.**
+
+You work with Finch in natural language. It reads and processes local files you
+authorize, remembers context across sessions, and extends through mini tools,
+skills, and MCP integrations. Built on the open source project
+[Pi](https://pi.dev/).
+
+[Download](https://finchwork.app/en/downloads) ·
+[Docs](https://finchwork.app/en/docs) ·
+[Changelog](https://finchwork.app/en/changelog) ·
+[finchwork.app](https://finchwork.app/)
 
 ![home](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/home.jpg)
 
+| | |
+|---|---|
+| Platforms | macOS (Apple Silicon and Intel), Windows 10, Windows 11 |
+| Price | The desktop app is free, permanently. Cloud services and model tokens are billed separately. |
+| Models | 13+ cloud model providers, plus local models — you supply your own API key |
+| Extensibility | Mini tools, skills, MCP servers |
+| Interface languages | Simplified Chinese, English |
+| Built on | [Pi](https://pi.dev/) |
 
 ## About this repository
+
+This repository is the public release hub for Finch. It hosts Finch release
+assets, official extension source code, and the community registries used by the
+Finch app and community website.
 
 The repository contains:
 
@@ -78,8 +100,6 @@ Before opening a Pull Request, ensure that the `id` matches your extension ident
 Available categories: `productivity`, `developer`, `creative`, `research`, `finance`, `commerce`, and `education`.
 
 ## How community mini tools are pulled
-
-![welcome](https://github.com/puterjam/finch/blob/master/welcome.jpg)
 
 Finch does not bundle every community extension into the app. Instead, it pulls the recommended registry at runtime:
 
