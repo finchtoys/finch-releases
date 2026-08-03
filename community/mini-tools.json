@@ -125,7 +125,7 @@
   },
   {
     "id": "notion",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "name": "Notion",
     "author": "Finch Team",
     "description": "Connect Notion to Finch — search pages, read databases, and manage your workspace through MCP.",
@@ -223,7 +223,7 @@
   },
   {
     "id": "wechat-bot",
-    "version": "0.5.12",
+    "version": "0.5.13",
     "name": "WeChat Bot",
     "author": "Finch Team",
     "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session and retained inbox history.",
