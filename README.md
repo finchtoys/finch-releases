@@ -61,41 +61,20 @@ See the [complete mini tool publishing guide](skills/finch-mini-tool-creator/ref
 
 ## Submit your mini tool
 
-Want to make your extension discoverable in Finch? Publish it, then submit it to the community registry.
+Want to make your extension discoverable in Finch? Publish it, then request a listing — the community registry (`community/mini-tools.json` and `community/mini-tools.zh-CN.json`) is maintained by the Finch team, so please **do not open a Pull Request editing these files directly**.
 
 1. Publish the extension to npm, or make its GitHub repository publicly downloadable.
-2. Fork this repository.
-3. Add an entry to [`community/mini-tools.json`](community/mini-tools.json), ordered alphabetically by `id`.
-4. Add the matching Chinese display text to [`community/mini-tools.zh-CN.json`](community/mini-tools.zh-CN.json).
-5. Open a Pull Request with a short description of your extension.
+2. Make sure it meets the [publishing checklist](#mini-tool-publishing-checklist) above, including a valid `icon.png`.
+3. [Open an Issue](https://github.com/finchtoys/finch-releases/issues/new) with the `minitool` label, following the format of [issue #22](https://github.com/finchtoys/finch-releases/issues/22), and include:
+   - npm package name (or GitHub `repo`)
+   - `finch.id` (the extension identifier)
+   - current `version`
+   - a short English description (and Chinese translation if available)
+   - confirmation that `icon.png` is included and meets the size requirement
+   - declared permissions (`filesystem`, `network`, `shell`, etc.)
+   - a suggested category from the list below
 
-Each entry in `mini-tools.json` must include:
-
-```json
-{
-  "id": "my-extension",
-  "version": "1.0.0",
-  "name": "My Extension",
-  "author": "Your name or organization",
-  "description": "A concise description of what the extension does.",
-  "repo": "owner/repository",
-  "npm": "@scope/my-extension",
-  "extensionType": "community",
-  "categories": ["productivity"]
-}
-```
-
-The Chinese override contains only the translated user-facing fields:
-
-```json
-{
-  "id": "my-extension",
-  "name": "我的扩展",
-  "description": "扩展功能的简短说明。"
-}
-```
-
-Before opening a Pull Request, ensure that the `id` matches your extension identifier, `version` is current, the entry has at least one valid category, and both registry files remain alphabetically ordered. `featured` is reserved for curated recommendations.
+The Finch team will review the request and add the entry to `mini-tools.json` / `mini-tools.zh-CN.json` on your behalf.
 
 Available categories: `productivity`, `developer`, `creative`, `research`, `finance`, `commerce`, and `education`.
 
