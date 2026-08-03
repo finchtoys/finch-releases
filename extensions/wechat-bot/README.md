@@ -1,101 +1,45 @@
 # WeChat Bot · 微信 Bot
 
-通过微信 iLink 把微信消息接入 Finch。通信流程参考 npm 包 [`@tencent-weixin/openclaw-weixin`](https://www.npmjs.com/package/@tencent-weixin/openclaw-weixin) 2.4.6，并使用 Finch 1.5.1 / `@finchtoys/minitool-api` 0.2.6 的 Session Container 和原生 Modal 能力。
+把微信变成你随身携带的 Finch 入口。人在外面、没开电脑的时候，也能用微信直接跟 Finch 对话、派任务、收结果。
 
-## 功能
+## 这个扩展能做什么
 
-- 在原生登录弹窗中显示微信二维码，不进入模型上下文
-- 唯一登录微信账号对应一个当前 Finch Session，历史会话保留在 inbox；新会话标题带 UTC+8 创建时间
-- Session Container 使用 `mode: "inbox"`
-- 接收文本、语音转文字、图片、文件和视频
-- 将 Finch 的最终回复自动发回微信
-- 允许其他 Agent 主动发送微信文本消息
-- 从微信创建 Space 任务、继续发送消息和查询状态
-- 微信收件箱 SessionView 设置菜单提供登录、重连、重新登录和退出控制；独立登录项始终保留，并在状态切换后主动刷新
+你平时可能习惯电脑上跟 Finch 聊，但很多时候灵感或需要处理的事出现在通勤路上、开会间隙、饭桌上 —— 这时候打开微信就行：
 
-## 登录入口
+- 给微信里的 Finch 发一句话、一段语音，它会读懂并处理，处理完直接在微信回复你。
+- 发照片或文件过去，让 Finch 帮你看看、分析、整理。
+- 让 Finch 把一件正事交给某个专属 Space（比如「读书笔记」「产品需求」）去处理，处理完自动发微信通知你结果。
+- 之前发的消息、Finch 的回复都会留在这个微信对话里，随时能往回翻。
 
-微信收件箱的 SessionView 菜单中，「登录微信」和「重新登录」会直接打开原生二维码弹窗，不注册登录 Agent 工具，因此二维码和登录流程不会进入模型上下文。二维码有效期以微信服务端返回为准；扫码确认成功后扩展会主动关闭弹窗。每次新二维码都有独立轮询，旧登录不会阻塞新二维码的成功状态。
+简单说：微信收件箱里那个对话，就是一个完整的 Finch 会话，只是入口换成了微信。
 
-若 iLink 要求数字配对码，当前原生 Modal 无文本输入能力，扩展会提示重新获取二维码。
+## 快速上手
 
-## Agent 工具
+### 登录
 
-### `wechat_new`
+打开微信收件箱对应的对话，在设置菜单里点击「登录微信」，会弹出一个二维码 —— 用你自己的微信扫码确认即可，跟平时网页版微信登录一样。登录后，这个微信账号发来的消息都会由 Finch 接收和回复。
 
-立即创建一个新的微信 inbox Session，并把它设为当前会话。旧 Session 会保留；触发工具的当前 turn 仍从旧 Session 回复，之后收到的微信消息进入新 Session。
+### 开始对话
 
-```json
-{ "title": "可选的新会话标题" }
-```
+登录成功后直接发消息就行，文字、语音、图片、文件、视频都支持。Finch 处理完会把结果发回你的微信。
 
-### `wechat_send`
+### 换个新话题
 
-向微信主动发送文本：
+如果想抛开之前聊过的内容，重新开始一个话题，直接跟 Finch 说「开个新对话」即可。之前的记录不会丢，还留在微信收件箱里，随时可以翻回去看。
 
-```json
-{
-  "message": "任务已经完成。",
-  "recipient": "可选的微信 userId"
-}
-```
+### 把任务交给某个 Space
 
-`recipient` 省略时发送给扫码登录的微信账号。
+如果这件事更适合放到某个专属的 Space（比如需要那个项目的资料和规则），可以直接跟 Finch 说，比如「把这件事交给读书笔记那个 Space 处理」。Finch 会在对应 Space 里单独跑这个任务，完成后主动发微信通知你结果，你不需要一直等着。
 
-### `wechat_space_task`
+### 重新登录或退出
 
-通过 `action` 管理 Space 任务：
+如果换了手机、扫码过期，或者想换一个微信账号，在设置菜单里选择「重新登录」；不想继续使用了，选择「退出」即可。
 
-- `create`：需要 `spaceId`、`message`，可选 `title`、`notifyPeerId`
-- `send`：需要 `taskId`、`message`
-- `status`：可选 `taskId`、`waitMs`；不传 `taskId` 时列出全部任务
+## 使用条件
 
-任务 Session 会出现在目标 Space 的正常会话列表中，并保留该 Space 的目录、规则和记忆。任务完成或失败后，如设置了 `notifyPeerId`，结果会自动发回微信。
+- 一个可以扫码登录的微信账号。
+- 已启用本扩展的 Finch 桌面版。
 
-## 登录流程
+## 隐私说明
 
-1. 在 ComposerAction 菜单点击「登录微信」。
-2. 扩展直接请求 `get_bot_qrcode`。
-3. 将 `qrcode_img_content` 编码为 PNG，通过 `ctx.ui.showModalDialog()` 的 Markdown data URI 展示。
-4. 后台长轮询 `get_qrcode_status`。
-5. 登录确认后保存 iLink 状态并自动启动 `getupdates` 消息循环。
-
-支持 `wait`、`scaned`、`need_verifycode`、`scaned_but_redirect`、`confirmed`、`expired`、`verify_code_blocked` 和 `binded_redirect` 状态。
-
-## Session 设计
-
-- Container id：`wechat`
-- Container mode：`inbox`
-- 微信当前 Session：`background` + `acceptCalls`；容器 `agentProfile` 自动绑定 `wechat-assistant`（微信消息管家）
-- 唯一登录账号只维护一个当前 Session 指针
-- `wechat_new` 创建新 Session 并切换指针，旧 Session 保留
-- Space 任务使用 Space placement，不放进微信 inbox
-- `turn.completed` 后将最终文本发回微信
-- `turn.waiting` 会反映为任务等待状态
-
-## 配置
-
-| 字段 | 说明 |
-|---|---|
-| `botAgent` | iLink 后端日志归因标识，默认 `Finch/0.1` |
-| `autoReply` | 是否把 Finch 回复自动发回微信 |
-
-## 权限与数据
-
-- `network`：访问微信 iLink API 和媒体 CDN
-- `sessions`：创建并收发扩展拥有的 Finch Session
-
-登录凭证、消息游标、当前 Session 指针和任务记录保存在扩展私有 `ctx.storage` 中。日志不会主动输出二维码 key、登录凭证或消息正文。
-
-## 开发
-
-```bash
-npm install
-npm run build
-npx @finchtoys/minitools doctor .
-```
-
-运行依赖：
-
-- `qrcode` 1.5.4
-- `@finchtoys/minitool-api` 0.2.2
+登录状态和消息记录只保存在你自己电脑本地，不会被上传或共享。二维码和登录过程也不会进入 Finch 的对话上下文，不用担心被模型「看到」你的账号信息。

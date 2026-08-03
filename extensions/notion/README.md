@@ -1,61 +1,53 @@
 # Notion
 
-Connect Notion to Finch — search pages, read databases, and manage your workspace through the official Notion MCP server.
+Bring your Notion workspace into Finch. Search, read, and write your notes and databases without leaving the conversation.
 
-## How it works
+## What this is for
 
-This extension connects Finch to the official Notion MCP endpoint (`https://mcp.notion.com/mcp`) using standards-based OAuth:
+If your notes, tasks, and knowledge base live in Notion, this extension lets Finch reach into them directly — so you can ask questions, pull content into what you're working on, or have Finch write results back to Notion for you.
 
-1. **RFC 9728** protected-resource discovery
-2. **RFC 8414** authorization-server discovery
-3. **RFC 7591** Dynamic Client Registration
-4. **Authorization Code + PKCE**
-5. Token refresh through the official MCP SDK
-6. Authenticated Streamable HTTP MCP connection
+Some things people use it for:
 
-No API keys or tokens to manage — everything goes through Notion's official OAuth flow.
+- *"Find my meeting notes from last Tuesday and summarize the action items."*
+- *"Look up how we set up the deployment process in the Engineering wiki."*
+- *"Add this research summary as a new page under my Reading Notes."*
+- *"What's on my Tasks database that's due this week?"*
+- *"Who's on the Marketing team space?"*
+
+Finch treats your Notion content as reference material — it reads what's relevant to your request and can create or update pages when you ask it to.
 
 ## Getting started
 
-### Connect
+1. Click the **Notion** button in the Composer toolbar and choose **Connect Notion**.
+2. A window opens asking you to sign in and authorize access to your Notion workspace — this happens through Notion's own official login, so your password never passes through Finch.
+3. Once approved, Finch can start working with your Notion content right away.
 
-Click the **Notion** button in the Composer toolbar, then select **Connect Notion**. Finch immediately opens its native OAuth dialog, from which you can continue to Notion in your browser. After authorizing, Finch gains access to your Notion workspace.
+You can also just tell Finch *"connect my Notion"* and it will start the same process.
 
-You can also ask the agent: *"Connect Notion"* — it will call the `notion_login` tool.
+If you ever see an authorization error while using Notion, just ask Finch to reconnect — it will prompt you to sign in again.
 
-### Using Notion tools
+## Everyday use
 
-Once connected, the agent can discover and call Notion MCP tools directly via ToolSearch. Available tools include:
+Once connected, there's nothing extra to set up — just talk to Finch naturally about your Notion content:
 
-- **Search** — Search across all pages and databases
-- **Fetch page** — Retrieve page content and properties
-- **Create pages** — Create new pages with content
-- **Update page** — Edit existing page content
-- **Fetch database** — Query database entries
-- **Get users / teams** — List workspace members and teams
+- Ask it to find something: *"Search Notion for the Q3 roadmap."*
+- Ask it to summarize or explain a page you point it to.
+- Ask it to create new pages, journal entries, or task items.
+- Ask it to update an existing page with new information.
+- Ask it about your workspace, like which databases or team members exist.
 
-### Disconnect
+## Managing the connection
 
-Click the **Notion** toolbar button → **Disconnect**. This removes locally stored OAuth credentials. You'll need to reauthorize to use Notion again.
+Open the **Notion** button in the toolbar any time to:
 
-## Toolbar menu
+- Jump straight to searching your pages or browsing your databases.
+- Disconnect Notion, which removes Finch's access until you sign in again.
 
-| State | Menu items |
-|---|---|
-| Not connected | Connect Notion |
-| Connected | Search pages · Browse databases · Disconnect |
+## What you'll need
 
-## Agent tool
-
-| Tool | Description |
-|---|---|
-| `notion_login` | OAuth connect / reauthorize. Starts Finch's native OAuth flow immediately. The agent calls this when the user asks to connect, or when Notion MCP tools return authentication errors. |
-
-## Requirements
-
-- Finch with MCP Client extension enabled
-- A Notion account
+- A Notion account with access to the workspace you want to use.
+- Finch desktop app with this extension enabled.
 
 ## Privacy
 
-OAuth credentials are stored locally and never shared. Notion content is treated as untrusted external input.
+Your Notion sign-in stays with Notion — Finch never sees or stores your password. The access details are kept only on your own computer. Anything Finch reads from Notion is treated as outside content, not instructions, so it won't act on hidden commands buried in a page.
