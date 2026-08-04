@@ -54,6 +54,20 @@
     "featured": false
   },
   {
+    "id": "ego-browser",
+    "version": "0.1.0",
+    "name": "Ego Browser",
+    "author": "puterjam",
+    "description": "Let Finch browse the web in isolated Ego Lite task spaces while users follow, inspect, take over, and close the Agent's pages.",
+    "repo": "puterjam/finch-tools",
+    "npm": "finch-ego-lite",
+    "extensionType": "community",
+    "categories": [
+      "developer",
+      "productivity"
+    ]
+  },
+  {
     "id": "finch-pet",
     "version": "1.0.6",
     "name": "Finch Pet",
