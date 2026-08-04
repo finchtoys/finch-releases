@@ -96,6 +96,19 @@
     "featured": true
   },
   {
+    "id": "kimi-webbridge",
+    "version": "1.0.1",
+    "name": "Web Assistant",
+    "author": "Arthur",
+    "description": "Let Finch use your existing Chrome session to open websites, click, fill forms, capture screenshots, and save PDFs.",
+    "repo": "BlessedChild/finch-web-assistant",
+    "npm": "finch-web-assistant",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ]
+  },
+  {
     "id": "mcp",
     "name": "MCP Client",
     "author": "Finch Team",
