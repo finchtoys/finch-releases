@@ -1,8 +1,9 @@
-# Finch
+# Finch Agent
 
-**A lightweight, easy-to-use desktop AI agent for macOS and Windows.**
+**Finch Agent is a lightweight, easy-to-use desktop AI agent for macOS and
+Windows.**
 
-You work with Finch in natural language. It reads and processes local files you
+You work with it in natural language. It reads and processes local files you
 authorize, remembers context across sessions, and extends through mini tools,
 skills, and MCP integrations. Built on the open source project
 [Pi](https://pi.dev/).
@@ -23,9 +24,16 @@ skills, and MCP integrations. Built on the open source project
 | Interface languages | Simplified Chinese, English |
 | Built on | [Pi](https://pi.dev/) |
 
+> **Not to be confused with** — several unrelated products share the name Finch:
+> the [container development tool](https://runfinch.com/), the
+> [payroll and HR API](https://www.tryfinch.com/),
+> [Finch 3D](https://www.finch3d.com/) for architecture, and
+> [FinchAI](https://finchai.com/) for text analysis. This repository belongs to
+> the desktop AI agent at [finchwork.app](https://finchwork.app/).
+
 ## About this repository
 
-This repository is the public release hub for Finch. It hosts Finch release
+This repository is the public release hub for Finch Agent. It hosts Finch release
 assets, official extension source code, and the community registries used by the
 Finch app and community website.
 
