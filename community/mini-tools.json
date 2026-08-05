@@ -25,7 +25,8 @@
     "categories": [
       "productivity",
       "research"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "brave-search",
@@ -79,7 +80,8 @@
     "categories": [
       "developer",
       "productivity"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "finch-pet",
