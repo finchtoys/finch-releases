@@ -5,6 +5,11 @@
     "description": "通过官方 CLI 和 MCP 工具连接 QQ Agent 邮箱。"
   },
   {
+    "id": "anydoc",
+    "name": "AnyDoc 文档阅读",
+    "description": "把 Word、Excel、PowerPoint、OpenDocument、RTF、EPUB、CSV 和 PDF 读成干净的 Markdown，长文档支持大纲与分页。"
+  },
+  {
     "id": "brave-search",
     "name": "Brave 搜索",
     "description": "通过 Brave Search API 搜索互联网，获取最新网页结果。"

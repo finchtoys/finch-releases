@@ -14,6 +14,20 @@
     "featured": true
   },
   {
+    "id": "anydoc",
+    "version": "0.1.0",
+    "name": "AnyDoc",
+    "author": "puterjam",
+    "description": "Read Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, CSV, and PDF files as clean Markdown, with outline and paging support for long documents.",
+    "repo": "puterjam/finch-tools",
+    "npm": "finch-anydoc",
+    "extensionType": "community",
+    "categories": [
+      "productivity",
+      "research"
+    ]
+  },
+  {
     "id": "brave-search",
     "version": "1.0.0",
     "name": "Brave Search",
