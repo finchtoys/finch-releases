@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { CLI_PACKAGE, resolveCli } from './cli-path.js';
+import { CLI_PACKAGE, extendedPathEnv, resolveCli, resolveNpm } from './cli-path.js';
 
 const execFileAsync = promisify(execFile);
 const VERSION_PATTERN = /(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/;
@@ -71,14 +71,22 @@ export async function checkCliVersion(): Promise<CliVersionStatus> {
 /** Install or upgrade the CLI to the latest version via `npm install -g`. */
 export async function updateCli(): Promise<{ ok: boolean; output: string }> {
   try {
-    const { stdout, stderr } = await execFileAsync('npm', ['install', '-g', CLI_PACKAGE], {
+    const { stdout, stderr } = await execFileAsync(resolveNpm(), ['install', '-g', CLI_PACKAGE], {
       timeout: 120_000,
       maxBuffer: 10 * 1024 * 1024,
       windowsHide: true,
+      env: { ...process.env, PATH: extendedPathEnv() },
     });
     return { ok: true, output: (stdout || stderr || '').trim() };
   } catch (error) {
-    const detail = error as Error & { stdout?: string; stderr?: string };
+    const detail = error as Error & { stdout?: string; stderr?: string; code?: string | number };
+    if (detail.code === 'ENOENT') {
+      return {
+        ok: false,
+        output:
+          '找不到 npm 可执行文件。请确认已安装 Node.js/npm，或设置环境变量 AGENTLY_NPM_PATH 指向 npm 的绝对路径后重启 Finch。',
+      };
+    }
     return { ok: false, output: String(detail.stderr || detail.stdout || detail.message || error).trim() };
   }
 }
