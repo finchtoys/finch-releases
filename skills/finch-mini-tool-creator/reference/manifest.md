@@ -15,7 +15,6 @@ When `finch.json` is present, `package.json#finch` is ignored.
 
 **Field inheritance from `package.json`** (only when `finch.json` omits the field):
 
-- `id` ← `name`
 - `name` / `displayName` ← `name`
 - `description` ← `description`
 - `main` ← `main`
@@ -26,7 +25,6 @@ Example — standalone `finch.json` with no package.json dependency:
 ```json
 {
   "manifestVersion": 1,
-  "id": "my-mini-tool",
   "name": "My Mini Tool",
   "main": "dist/index.js",
   "activationEvents": ["onStartup"],
@@ -41,7 +39,6 @@ Example — `finch.json` relying on `package.json` for `version` and `descriptio
 ```json
 {
   "manifestVersion": 1,
-  "id": "my-mini-tool",
   "name": "My Mini Tool",
   "main": "dist/index.js",
   "activationEvents": ["onStartup"],
@@ -67,7 +64,7 @@ All other sections in this document apply to both `finch.json` and `package.json
 
 The manifest tells Finch:
 
-- the mini tool id and display name
+- the mini tool display name and runtime metadata
 - what runtime entry to load
 - which capabilities the mini tool contributes
 - which permissions it needs
@@ -77,15 +74,16 @@ Keep executable code in `src/`, and keep the manifest declarative.
 
 ## 2. Minimal fields
 
-A usable mini tool manifest should include:
+A usable community mini tool manifest should include:
 
 - `manifestVersion`
-- `id`
 - `name`
 - `main`
 - `activationEvents`
 - `contributes`
 - `permissions` when needed
+
+Its stable installation identity is `package.json#name`, from which Finch derives the runtime id. Do not add `finch.id` to a community mini tool; it is only needed by directly copied bundled extensions.
 
 Example:
 
@@ -93,7 +91,6 @@ Example:
 {
   "finch": {
     "manifestVersion": 1,
-    "id": "my-mini-tool",
     "name": "My Mini Tool",
     "main": "dist/index.js",
     "activationEvents": ["onStartup"],
@@ -106,7 +103,7 @@ Example:
 
 ## 3. Core manifest rules
 
-- `id` must be stable after install.
+- Keep `package.json#name` stable after publishing: Finch derives the installed id from it.
 - `main` points to the compiled entry file.
 - `name` / `description` should be human-facing and concise.
 - Keep new mini tools on a default string-based manifest and move locale text into `i18n/<locale>.json`.
@@ -149,7 +146,6 @@ Bot, remote, and Agent mini tools that use `ctx.sessions` must declare the conta
 ```json
 {
   "manifestVersion": 1,
-  "id": "my-mini-tool",
   "name": "My Mini Tool",
   "main": "dist/index.js",
   "activationEvents": ["onStartup"],
@@ -184,7 +180,7 @@ Container `mode` decides the home-screen interaction shape (defaults to `inbox` 
 - `inbox`: Bot / multi-agent aggregation. Sessions are initiated by the mini tool; the home screen shows a session list with no "new session" entry, and supports a container-level default model (the user picks it from the container row's menu). `agentProfile` is optional but usually wanted here — it is what gives every inbound conversation one consistent persona.
 - `assistant`: Industry-scenario assistant. The user actively starts conversations; the home screen shows a role introduction and starter prompts, hides container model selection, and **must** bind `agentProfile` (referencing an id declared in `contributes.agentProfiles`; new sessions automatically apply that role's prompt).
 
-`icon` follows the same `IconRef` strategy as ComposerAction: use a Finch built-in id directly (e.g. `"message-circle"`, `"users"`), or reference a runtime SVG (e.g. `"ext:agent-logo"` or `"ext:my-icons/agent-logo"`). Custom SVGs still require declaring `contributes.iconPacks` first and registering via `ctx.icons.register()` in `activate()`. Omitted icons fall back to `bot`.
+`icon` follows the same `IconRef` strategy as ComposerAction: use a Finch built-in id directly (e.g. `"message-circle"`, `"users"`), or reference this mini tool's runtime SVG as `"ext:agent-logo"`. Finch qualifies its pack automatically; use `"ext:<packId>/<iconId>"` only for a foreign pack. Custom SVGs still require declaring `contributes.iconPacks` first and registering via `ctx.icons.register()` in `activate()`. Omitted icons fall back to `bot`.
 
 `title` / `description` can be a `LocalizedString` directly, or overridden per container id in a locale file:
 

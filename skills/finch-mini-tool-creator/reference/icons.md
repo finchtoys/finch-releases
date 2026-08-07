@@ -14,11 +14,15 @@ Supported forms:
 | kebab-case built-in | `'clipboard-check'` | Recommended — matches lucide.dev ids |
 | PascalCase built-in | `'ClipboardCheck'` | Also works — auto-converted to kebab |
 | `lucide:<id>` | `'lucide:clipboard-check'` | Explicit prefix, always safe |
-| `ext:<iconId>` | `'ext:my-logo'` | Current pack shorthand (runtime SVG) |
-| `ext:<packId>/<iconId>` | `'ext:my-pack/my-logo'` | Fully qualified runtime SVG |
+| `ext:<iconId>` | `'ext:my-logo'` | **Recommended for an icon owned by this mini tool.** Finch resolves its pack automatically. |
+| `ext:<packId>/<iconId>` | `'ext:my-pack/my-logo'` | Fully qualified runtime SVG; use only when a foreign pack must be explicit. |
 
 > **If a string is not in the built-in list and not prefixed `lucide:` / `ext:`, Finch renders it as plain text.**
 > This is the most common mistake — always verify the id is in the table below before shipping.
+
+### Own-pack shorthand
+
+Register your custom SVG pack normally, but do **not** repeat its id at every call site. Within the same mini tool, write `ext:<iconId>`; Finch expands it to `ext:<packId>/<iconId>` before it reaches the renderer. Use the full form only for an icon from another mini tool or when deliberately disambiguating multiple packs.
 
 ---
 
@@ -125,17 +129,17 @@ Use the registered icon for toolbar icons, SessionContainer `icon`, or ComposerA
 
 ```ts
 // package.json → finch.contributes.sessionContainers
-// [{ "id": "inbox", "icon": "ext:my-icons/send-message", "title": "Inbox" }]
+// [{ "id": "inbox", "icon": "ext:send-message", "title": "Inbox" }]
 
-// Shorthand (same pack only)
+// Recommended for this mini tool's own registered icon.
 async getIcon() { return 'ext:send-message'; }
 
-// Fully qualified (cross-pack or safer)
-async getIcon() { return 'ext:my-icons/send-message'; }
+// Use the full form only for another pack.
+async getIconFromOtherPack() { return 'ext:other-pack/send-message'; }
 
 async getMenu() {
   return [
-    { id: 'translate', label: 'Translate', iconName: 'ext:my-icons/translate' },
+    { id: 'translate', label: 'Translate', iconName: 'ext:translate' },
   ];
 }
 ```

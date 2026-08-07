@@ -169,8 +169,8 @@ Finch discovers mini tools from two supported tiers, checked in this order:
 
 Notes:
 
-- The extension id and the directory name should match.
-- **The extension id is derived from `package.json#name` at install time, not from `finch.id`.** Unscoped names pass through unchanged (`finch-my-tool` → id `finch-my-tool`); scoped names join scope and name with `@` (`@yourscope/finch-my-tool` → id `yourscope@finch-my-tool`). This applies whenever `add`/`update`/the Toolcase "install extension" picker installs your package. Don't hand-pick or worry about `finch.id` colliding with someone else's — npm package names are already globally unique. See `reference/publish.md` §2 for full detail (including why `@` and not `-`).
+- The installed directory is named after the runtime id. Do not hard-code or depend on that directory name in your package.
+- **For every community mini tool, choose a stable, globally unique `package.json#name`; this is its identity.** Finch derives the runtime extension id at install time, rather than using `finch.id`: `finch-my-tool` → `finch-my-tool`, `@yourscope/finch-my-tool` → `yourscope@finch-my-tool`. Use a scoped npm package (`@your-scope/finch-…`) whenever possible, keep its name stable after publishing, and omit `finch.id` entirely. `finch.id` is only meaningful for Finch's directly copied bundled extensions. See `reference/publish.md` §2 for the compatibility and migration details.
 - Project-level installs are not supported.
 - Always install with the official CLI so the real path is used.
 
@@ -183,7 +183,6 @@ Notes:
 A minimal mini tool needs:
 
 - `manifestVersion`
-- `id`
 - `name`
 - `main`
 - `activationEvents`
@@ -194,7 +193,7 @@ For Composer toolbar buttons, declare `id`, `icon`, and short `tooltip` text in 
 
 A SessionContainer in either `inbox` or `assistant` mode can expose **one optional settings menu** in its header actions. In `inbox` mode it appears beside the model picker; in `assistant` mode it appears in the assistant header action area. Declare `settingsMenu` on that exact `contributes.sessionContainers` item, then register it at runtime with `ctx.sessionContainers.registerSettingsMenu(containerId, provider)`. The same container cannot register a second menu; only its owning mini tool can register it. Use `getMenu()` for rows and `execute()` for the selected row; `execute()` may call `ctx.ui.showModalDialog()` for account login or connection settings.
 
-**Icon rule (mandatory):** Before setting the `icon` field, read `reference/icons.md` §2 and confirm the id appears in the built-in table. If it does not, register a runtime SVG pack (§3) and use an `ext:` reference. An unrecognised id silently renders as plain text — there is no warning.
+**Icon rule (mandatory):** Before setting the `icon` field, read `reference/icons.md` §2 and confirm the id appears in the built-in table. If it does not, register a runtime SVG pack (§3) and use `ext:<iconId>` for an icon in your own mini tool; Finch expands it to the correct fully-qualified pack id. Only cross-mini-tool references need `ext:<packId>/<iconId>`. An unrecognised bare id silently renders as plain text — there is no warning.
 
 **Manifest i18n rule (mandatory):** AI-generated and hand-authored manifests must use plain English strings as defaults for every user-visible field. Never embed `LocalizedString` language maps in a manifest. Put all localized copy in `i18n/<locale>.json`, using stable IDs, keys, option values, or documented array indexes to override the default. Every new user-visible manifest field must ship with a corresponding i18n override design; inline localization is not an acceptable fallback.
 

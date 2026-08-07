@@ -157,7 +157,6 @@ npx @finchtoys/minitools update <id>
   },
   "finch": {
     "manifestVersion": 1,
-    "id": "my-tool",
     "name": "My Tool",
     "main": "dist/index.js",
     "activationEvents": ["onStartup"],

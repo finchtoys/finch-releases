@@ -167,7 +167,7 @@ Behavior and constraints:
 - **Replaces the description** — while the button is shown, it takes the place of the row's `description` text (they never show at once).
 - **Separate click routing** — clicking the button fires `execute(ctx, '__trailing__:<button.id>', actions)`, NOT the row's own `execute(itemId)`. The click does not bubble to the row and does **not** close the menu; if you want to close it, drive the Composer via `actions.composer.*` from your handler.
 - **Not on submenu rows** — items with `children` cannot have a trailing button; the field is ignored there (those rows already show the submenu chevron).
-- `iconName` is required and follows the usual `IconRef` rules (built-in name or `ext:<packId>/<iconId>`); `tooltip` renders as a native title; `disabled` greys it out.
+- `iconName` is required and follows the usual `IconRef` rules (a built-in name or `ext:<iconId>` for this mini tool's registered SVG; only cross-pack icons need `ext:<packId>/<iconId>`); `tooltip` renders as a native title; `disabled` greys it out.
 
 ### `getReminder(ctx)`
 
@@ -270,7 +270,7 @@ Rules:
 - **Every actionable menu item must provide `iconName`**. Only structural entries such as `separator` may omit it. This keeps menus scannable and prevents icon-less rows from slipping into mini tools.
 - `separator: true` is a standalone structural item, never a flag on an actionable row. Give it its own id and an empty label, e.g. `{ id: 'account-divider', label: '', separator: true }`; the following login/logout row is a separate item without `separator`.
 - Prefer an icon already available in Finch; see [`icons.md`](./icons.md) for the supported built-in ids.
-- If no built-in icon fits, register an SVG from Lucide (or another compatible icon library) through `ctx.icons.register()` and reference it as `ext:<packId>/<iconId>`; do not pass an unverified Lucide name as plain text.
+- If no built-in icon fits, register an SVG from Lucide (or another compatible icon library) through `ctx.icons.register()` and reference your own icon as `ext:<iconId>`; Finch qualifies it automatically. Use `ext:<packId>/<iconId>` only to disambiguate another pack; do not pass an unverified Lucide name as plain text.
 - Apply the same rule recursively to every item in `children`.
 - Keep same-group items contiguous.
 - Use `children` for hover submenus.
