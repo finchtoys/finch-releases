@@ -115,7 +115,6 @@ export class MediaManager {
     const aeskeyHex = aeskey.toString('hex');
 
     this.ctx.logger.debug(`${label}: uploading rawsize=${rawsize} filesize=${filesize} mediaType=${mediaType}`);
-
     const uploadResp = await this.getUploadUrl(toUserId, filekey, mediaType, rawsize, rawfilemd5, filesize, aeskeyHex);
     const downloadParam = await this.uploadBufferToCdn(
       data, aeskey,
@@ -196,7 +195,8 @@ export class MediaManager {
       image_item: {
         media: {
           encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-          aes_key: Buffer.from(uploaded.aeskeyHex, 'hex').toString('base64'),
+          // 官方协议：base64(32 字符 hex 文本)，不是 base64(原始 16 字节 key)。
+          aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
           encrypt_type: 1,
         },
         mid_size: uploaded.fileSizeCiphertext,
@@ -211,7 +211,7 @@ export class MediaManager {
       video_item: {
         media: {
           encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-          aes_key: Buffer.from(uploaded.aeskeyHex, 'hex').toString('base64'),
+          aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
           encrypt_type: 1,
         },
         video_size: uploaded.fileSizeCiphertext,
@@ -226,7 +226,7 @@ export class MediaManager {
       file_item: {
         media: {
           encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-          aes_key: Buffer.from(uploaded.aeskeyHex, 'hex').toString('base64'),
+          aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
           encrypt_type: 1,
         },
         file_name: fileName,
