@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { CLI_PACKAGE, extendedPathEnv, resolveCli, resolveNpm } from './cli-path.js';
+import { CLI_PACKAGE, extendedPathEnv, installPrefix, resolveCli, resolveNpm } from './cli-path.js';
 
 const execFileAsync = promisify(execFile);
 const VERSION_PATTERN = /(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/;
@@ -68,15 +69,26 @@ export async function checkCliVersion(): Promise<CliVersionStatus> {
   }
 }
 
-/** Install or upgrade the CLI to the latest version via `npm install -g`. */
+/**
+ * Install or upgrade the CLI to the latest version via `npm install -g`.
+ * Installs into a user-owned prefix (`installPrefix()`) instead of the
+ * system default (often `/usr/local`, root-owned on macOS) so it never
+ * needs sudo and can't hit EACCES on the global `bin`/`lib` symlink step.
+ */
 export async function updateCli(): Promise<{ ok: boolean; output: string }> {
+  const prefix = installPrefix();
   try {
-    const { stdout, stderr } = await execFileAsync(resolveNpm(), ['install', '-g', CLI_PACKAGE], {
-      timeout: 120_000,
-      maxBuffer: 10 * 1024 * 1024,
-      windowsHide: true,
-      env: { ...process.env, PATH: extendedPathEnv() },
-    });
+    await mkdir(prefix, { recursive: true });
+    const { stdout, stderr } = await execFileAsync(
+      resolveNpm(),
+      ['install', '-g', `--prefix=${prefix}`, CLI_PACKAGE],
+      {
+        timeout: 120_000,
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: true,
+        env: { ...process.env, PATH: extendedPathEnv() },
+      },
+    );
     return { ok: true, output: (stdout || stderr || '').trim() };
   } catch (error) {
     const detail = error as Error & { stdout?: string; stderr?: string; code?: string | number };
@@ -85,6 +97,12 @@ export async function updateCli(): Promise<{ ok: boolean; output: string }> {
         ok: false,
         output:
           '找不到 npm 可执行文件。请确认已安装 Node.js/npm，或设置环境变量 AGENTLY_NPM_PATH 指向 npm 的绝对路径后重启 Finch。',
+      };
+    }
+    if (detail.code === 'EACCES' || /EACCES/.test(String(detail.stderr))) {
+      return {
+        ok: false,
+        output: `没有写入权限：${prefix}\n请检查该目录及其父目录的权限，或删除后重试。`,
       };
     }
     return { ok: false, output: String(detail.stderr || detail.stdout || detail.message || error).trim() };

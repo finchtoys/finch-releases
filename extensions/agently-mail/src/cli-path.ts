@@ -6,16 +6,34 @@ export const CLI_NAME = 'agently-cli';
 export const CLI_PACKAGE = '@tencent-qqmail/agently-cli';
 
 /**
+ * User-owned npm global-install prefix used by `updateCli()`. Many macOS
+ * setups (Homebrew Node, system Node) point the default npm global prefix
+ * at `/usr/local`, which is root-owned — `npm install -g` then fails with
+ * EACCES for a non-sudo GUI process. Installing under the user's home
+ * directory instead avoids requiring sudo entirely.
+ */
+export function installPrefix(): string {
+  return join(homedir(), '.finch', 'agently-cli');
+}
+
+/** Directory containing installed CLI binaries under `installPrefix()`. */
+export function installBinDir(): string {
+  return process.platform === 'win32' ? installPrefix() : join(installPrefix(), 'bin');
+}
+
+/**
  * Resolve the local `agently-cli` executable.
- * Checked in order: explicit env override, the Finch executable's own
- * directory, common global-install locations, then any nvm-managed
- * Node versions, finally falling back to bare `PATH` lookup.
+ * Checked in order: explicit env override, our own user-owned install
+ * prefix, the Finch executable's own directory, common global-install
+ * locations, then any nvm-managed Node versions, finally falling back to
+ * bare `PATH` lookup.
  */
 export function resolveCli(): string {
   const explicit = process.env.AGENTLY_CLI_PATH?.trim();
   if (explicit && existsSync(explicit)) return explicit;
 
   const candidates = [
+    join(installBinDir(), CLI_NAME),
     join(dirname(process.execPath), CLI_NAME),
     `/usr/local/bin/${CLI_NAME}`,
     `/opt/homebrew/bin/${CLI_NAME}`,
