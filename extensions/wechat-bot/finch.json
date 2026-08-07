@@ -1,8 +1,8 @@
 {
   "manifestVersion": 1,
-  "id": "wechat-bot",
+  "id": "finch-wechat-bot",
   "name": "WeChat Bot",
-  "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session and retained inbox history.",
+  "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session, retained inbox history, and full media support (image/video/file).",
   "main": "dist/index.js",
   "activationEvents": [
     "onStartup"
@@ -24,12 +24,12 @@
     "sessionContainers": [
       {
         "id": "wechat",
-        "icon": "ext:wechat-bot/wechat",
+        "icon": "ext:wechat",
         "title": "WeChat Inbox",
         "description": "WeChat conversations handled by Finch",
         "agentProfile": "wechat-assistant",
         "settingsMenu": {
-          "icon": "ext:wechat-bot/scan-qr-code",
+          "icon": "ext:scan-qr-code",
           "tooltip": "Manage WeChat connection"
         },
         "mode": "inbox"
@@ -65,6 +65,7 @@
   },
   "permissions": {
     "network": true,
-    "sessions": true
+    "sessions": true,
+    "filesystem": "read"
   }
 }

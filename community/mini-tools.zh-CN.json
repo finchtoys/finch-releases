@@ -102,6 +102,6 @@
   {
     "id": "wechat-bot",
     "name": "微信 Bot",
-    "description": "通过微信 iLink 连接微信到 Finch，支持扫码登录、收件箱会话、主动消息与 Space 任务。"
+    "description": "通过微信 iLink 连接微信到 Finch，支持扫码登录、收件箱会话、主动消息、媒体收发与 Space 任务。"
   }
 ]
