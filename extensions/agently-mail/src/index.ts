@@ -233,7 +233,7 @@ export function activate(ctx: finch.ExtensionContext): void {
     title: 'Connect QQ Agent Mail',
     description: 'Connect or reauthorize QQ Agent Mail. Always call this tool instead of auth_login directly: it asks the user to confirm before the OAuth page opens.',
     inputSchema: { type: 'object', properties: {} },
-    risk: 'high',
+    risk: 'medium',
     async execute() {
       if (!ctx.capabilities.has('mcp.client')) {
         return { content: [{ type: 'text', text: 'MCP Client is unavailable. Enable the MCP Client extension first.' }], isError: true };
@@ -275,7 +275,7 @@ export function activate(ctx: finch.ExtensionContext): void {
       },
       required: ['to', 'subject', 'body'],
     },
-    risk: 'high',
+    risk: 'medium',
     async execute(rawInput) {
       if (!ctx.capabilities.has('mcp.client')) {
         return { content: [{ type: 'text', text: 'MCP Client is unavailable. Enable the MCP Client extension first.' }], isError: true };
