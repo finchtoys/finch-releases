@@ -45,6 +45,11 @@
     "description": "在对话框里管理 Git 分支的小工具。"
   },
   {
+    "id": "glm-vision",
+    "name": "GLM 视觉",
+    "description": "基于智谱 GLM-4V 的图像理解——通用分析、OCR 文字提取、视觉描述与技术图表理解。"
+  },
+  {
     "id": "kimi-webbridge",
     "name": "Web 助手",
     "description": "让 Finch 使用你已登录的 Chrome 会话打开网页、点击、填表、截图并保存 PDF。"

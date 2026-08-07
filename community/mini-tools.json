@@ -126,6 +126,20 @@
     "featured": true
   },
   {
+    "id": "glm-vision",
+    "version": "0.1.3",
+    "name": "GLM Vision",
+    "author": "emuio",
+    "description": "Image understanding powered by Zhipu GLM-4V — general analysis, OCR text extraction, visual description, and technical diagram understanding.",
+    "npm": "finch-glm-vision",
+    "extensionType": "community",
+    "categories": [
+      "research",
+      "creative"
+    ],
+    "repo": "npm:finch-glm-vision"
+  },
+  {
     "id": "kimi-webbridge",
     "version": "1.0.1",
     "name": "Web Assistant",
