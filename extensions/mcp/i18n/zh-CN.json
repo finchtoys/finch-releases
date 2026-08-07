@@ -21,6 +21,12 @@
   "form.edit.description": "请检查并更新配置。密钥字段留空则保持不变。",
   "form.edit.submit": "保存并重连",
 
+  "confirm.remove.title": "删除 MCP 服务「{name}」？",
+  "confirm.remove.message": "! 配置与已保存的鉴权信息会一并删除，无法撤销。\n\n服务会立即断开连接，重新使用需要再走一遍添加流程。",
+  "confirm.remove.confirm": "删除",
+  "confirm.remove.cancel": "取消",
+  "confirm.remove.cancelled": "用户取消了删除，MCP 服务「{name}」保持不变。",
+
   "field.name": "服务名称",
   "field.url": "接入地址",
   "field.command": "命令",

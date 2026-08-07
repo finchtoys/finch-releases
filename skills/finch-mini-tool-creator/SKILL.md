@@ -170,6 +170,7 @@ Finch discovers mini tools from two supported tiers, checked in this order:
 Notes:
 
 - The extension id and the directory name should match.
+- **The extension id is derived from `package.json#name` at install time, not from `finch.id`.** Unscoped names pass through unchanged (`finch-my-tool` → id `finch-my-tool`); scoped names join scope and name with `@` (`@yourscope/finch-my-tool` → id `yourscope@finch-my-tool`). This applies whenever `add`/`update`/the Toolcase "install extension" picker installs your package. Don't hand-pick or worry about `finch.id` colliding with someone else's — npm package names are already globally unique. See `reference/publish.md` §2 for full detail (including why `@` and not `-`).
 - Project-level installs are not supported.
 - Always install with the official CLI so the real path is used.
 
@@ -238,12 +239,15 @@ Recommended flow:
 4. Enable it in Finch.
 5. Check logs if activation fails.
 
-For long-running tools, verify progress behavior before publishing:
+For long-running tools, verify progress and timeout behavior before publishing:
 
 - Set `progressMode: 'indeterminate'` on a tool only when it should show an initial indeterminate bar before it can report progress. Do not set it on ordinary tools.
 - `exec.progress.report({ message: 'Working…' })` renders indeterminate progress.
 - `exec.progress.report({ message: 'Working…', percent: 35 })` renders determinate progress.
 - The tool still returns one final `ToolResult`; progress updates are not results.
+- A tool call is cut off after **2 minutes** unless the tool declares `timeoutMs`. Image/video generation, remote job polling, and other slow work must set it explicitly, e.g. `timeoutMs: 300000`. Finch clamps the value to 15 s – 10 min; a tool parameter such as `timeout_seconds` in `inputSchema` does NOT change the platform timeout — only `timeoutMs` on the tool definition does.
+- Prefer the **hybrid pattern** over blocking for the whole window: wait synchronously for a short period (60–100 s), and if the job is still running, return its task id and tell the model to query it later with a separate `status`/`check` action. Blocking the full timeout freezes the turn and leaves the user with no output.
+- When a call does time out, Finch tells the model the work may still be running in the background and to look up the existing task instead of re-submitting. Make that possible: give every long-running tool a way to list or query the task it just created, and keep the submit path idempotent where you can.
 
 ---
 

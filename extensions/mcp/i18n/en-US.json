@@ -21,6 +21,12 @@
   "form.edit.description": "Review and update the configuration. Leave secret fields blank to keep them unchanged.",
   "form.edit.submit": "Save & reconnect",
 
+  "confirm.remove.title": "Remove MCP server \"{name}\"?",
+  "confirm.remove.message": "! The configuration and any saved credentials are deleted. This cannot be undone.\n\nThe server disconnects immediately; using it again means going through setup from scratch.",
+  "confirm.remove.confirm": "Remove",
+  "confirm.remove.cancel": "Cancel",
+  "confirm.remove.cancelled": "User cancelled the removal. MCP server \"{name}\" is unchanged.",
+
   "field.name": "Server name",
   "field.url": "Endpoint URL",
   "field.command": "Command",

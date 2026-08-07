@@ -43,6 +43,35 @@ Optional `ToolDefinition` fields:
 - `exposure` — `startup` (default, included in every new session's tool list) or `dynamic` (injected only after runtime registration, useful for large on-demand sets such as MCP tools).
 - `owner` — override provenance when one mini tool registers a tool on behalf of another.
 - `callDisplay` — configure the inline summary shown next to the tool name in the timeline.
+- `progressMode` — `'indeterminate'` shows a progress bar immediately, before the first `exec.progress.report(...)`.
+- `timeoutMs` — max wall time for a single call, in milliseconds. Defaults to `120000` (2 min) and is clamped to 15 s – 10 min.
+
+### Long-running tools and `timeoutMs`
+
+Finch aborts a tool call after 2 minutes by default and hands the model a timeout error. Adding a `timeout_seconds` **parameter** to `inputSchema` changes nothing — the platform only reads `timeoutMs` on the tool definition:
+
+```ts
+ctx.tools.register({
+  name: 'my_tool_generate_image',
+  // ...
+  timeoutMs: 300000, // 5 minutes
+  progressMode: 'indeterminate',
+  async execute(input, exec) { /* ... */ },
+});
+```
+
+Even with a longer timeout, do not block for the whole window. The recommended shape for remote jobs:
+
+```ts
+const id = await submitJob(input);
+const done = await pollUntil(id, 100000, exec.signal);  // short synchronous wait
+if (done) return { content: [{ type: 'text', text: renderResult(done) }] };
+return {
+  content: [{ type: 'text', text: `Job ${id} is still running. Call my_tool_check_job with job_id="${id}" to get the result.` }],
+};
+```
+
+This returns fast work in one call, and degrades slow work into a task id the model can poll — instead of freezing the turn or, worse, timing out and letting the model submit the same job twice. When a call does time out, Finch tells the model the work may still be running and to query existing tasks rather than re-submitting, so always ship a companion status/list action.
 
 ## 3. Naming and description rules
 

@@ -1102,6 +1102,20 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     const name = String(input.name ?? '').trim();
     if (!name) return { content: [{ type: 'text', text: 'No server name provided.' }], isError: true };
 
+    // remove 是唯一没有后续 UI 的写操作：add/edit 阻塞在安全表单上，connect
+    // 要走浏览器授权，而这里会直接改 servers.json 并断连。工具声明为
+    // medium risk（行动模式下不再拦权限门），所以确认必须由这里自己承担。
+    const confirm = await ctx.ui.showConfirmDialog({
+      title: t('confirm.remove.title', { name }),
+      message: t('confirm.remove.message'),
+      confirmLabel: t('confirm.remove.confirm'),
+      cancelLabel: t('confirm.remove.cancel'),
+      variant: 'danger',
+    });
+    if (!confirm.confirmed) {
+      return { content: [{ type: 'text', text: t('confirm.remove.cancelled', { name }) }] };
+    }
+
     let removed = false;
     try {
       removed = removeServer(ctx.storagePath, name);
@@ -1206,7 +1220,10 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         },
         required: ['action'],
       },
-      risk: 'high',
+      // medium：行动模式下不再拦一道权限门。这里成立的前提是每个写操作都
+      // 自带确认 UI —— add/edit 阻塞在安全表单上，connect 要走浏览器授权，
+      // remove 弹确认表单（见 removeMcpServer）。list 是纯读。
+      risk: 'medium',
       async execute(input, exec): Promise<finch.ToolResult> {
         const action = String((input as { action?: string }).action ?? '').trim();
         const payload = (input ?? {}) as Record<string, unknown>;
@@ -1253,10 +1270,21 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         const results: finch.ToolSearchResult[] = [];
         for (const server of servers) {
           if (results.length >= limit) break;
-          // A server is broad-matched only by an explicit selector or its full
-          // configured name. A generic word like "search" must not activate all
-          // tools from a server merely because that word appears in its name.
-          const serverMatches = Boolean(matchingServer) || query.length === 0 || query === server.toLowerCase() || queryTerms.includes(server.toLowerCase());
+          // A server is broad-matched (full tool harvest, no per-tool query
+          // filtering) only when there is no query to filter by: an explicit
+          // `mcp:<server>` selector with an empty query means "browse this
+          // server's full capability set", and so does mentioning only the
+          // server's own name. A generic word like "search" must not activate
+          // all tools from a server merely because that word appears in its
+          // name — and an explicit server selector paired with a real query
+          // (e.g. `source:"mcp:tencent-docs"`, query:"get_content") must still
+          // filter by that query instead of always returning the same
+          // first-N tools regardless of what was asked for (finch-releases#23).
+          const serverMatches = query.length === 0
+            ? true
+            : Boolean(matchingServer)
+              ? false
+              : query === server.toLowerCase() || queryTerms.includes(server.toLowerCase());
           try {
             await connectIfNeeded(server, ctx.logger);
           } catch (err) {
