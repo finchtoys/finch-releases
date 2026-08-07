@@ -280,7 +280,7 @@
   },
   {
     "id": "wechat-bot",
-    "version": "0.5.14",
+    "version": "0.5.15",
     "name": "WeChat Bot",
     "author": "Finch Team",
     "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session, retained inbox history, and full media support (image/video/file).",
