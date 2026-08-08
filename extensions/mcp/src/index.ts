@@ -19,6 +19,8 @@ import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServer
 import { authorizeMcpOAuth, clearMcpOAuth, createMcpOAuthProvider, type McpOAuthConfig } from './oauth.js';
 
 type ManagedMcpServerConfig = McpServerConfig & {
+  /** Maps environment variable names to extension-scoped encrypted secret keys. */
+  secretRefs?: Record<string, string>;
   ownerExtensionId?: string;
   ownerExtensionName?: string;
   qualifiedName?: string;
@@ -359,13 +361,78 @@ function parseArgs(raw: string): string[] {
  */
 const AUTH_TOKEN_ENV = 'MCP_AUTH_TOKEN';
 
+function secretRefFor(serverName: string, envKey: string): string {
+  return `mcp.${sanitizeSegment(serverName)}.env.${sanitizeSegment(envKey)}`;
+}
+
+async function resolveServerSecrets(config: ManagedMcpServerConfig, ctx: finch.ExtensionContext): Promise<ManagedMcpServerConfig> {
+  const refs = config.secretRefs ?? {};
+  const entries = await Promise.all(Object.entries(refs).map(async ([envKey, secretKey]) => {
+    const value = await ctx.secrets.get(secretKey);
+    return value === undefined ? undefined : [envKey, value] as const;
+  }));
+  const secretEnv = Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry)));
+  return { ...config, env: { ...config.env, ...secretEnv } };
+}
+
+/** Migrate legacy plaintext env values before the config is rewritten without them. */
+async function sealServerSecrets(ctx: finch.ExtensionContext, server: ManagedMcpServerConfig): Promise<ManagedMcpServerConfig> {
+  const env = server.env ?? {};
+  if (!Object.keys(env).length) return server;
+  const secretRefs = { ...(server.secretRefs ?? {}) };
+  for (const [envKey, value] of Object.entries(env)) {
+    const ref = secretRefs[envKey] ?? secretRefFor(server.name, envKey);
+    await ctx.secrets.set(ref, value);
+    secretRefs[envKey] = ref;
+  }
+  return { ...server, env: undefined, secretRefs };
+}
+
+async function removeServerSecrets(
+  ctx: finch.ExtensionContext,
+  server: ManagedMcpServerConfig | undefined,
+  preservedRefs: ReadonlySet<string> = new Set(),
+): Promise<void> {
+  for (const ref of Object.values(server?.secretRefs ?? {})) {
+    if (!preservedRefs.has(ref)) await ctx.secrets.delete(ref);
+  }
+}
+
+async function migrateLegacySecrets(ctx: finch.ExtensionContext): Promise<void> {
+  const servers = readUserServers(ctx.storagePath);
+  let changed = false;
+  const migrated: ManagedMcpServerConfig[] = [];
+  for (const server of servers) {
+    const env = server.env ?? {};
+    if (!Object.keys(env).length) { migrated.push(server); continue; }
+    const secretRefs = { ...(server.secretRefs ?? {}) };
+    try {
+      for (const [envKey, value] of Object.entries(env)) {
+        const ref = secretRefs[envKey] ?? secretRefFor(server.name, envKey);
+        await ctx.secrets.set(ref, value);
+        secretRefs[envKey] = ref;
+      }
+      migrated.push({ ...server, env: undefined, secretRefs });
+      changed = true;
+    } catch (error) {
+      // Keep the untouched legacy entry on failure so no credential is lost.
+      ctx.logger.warn(`failed to migrate secrets for MCP server "${server.name}"`, error instanceof Error ? error.message : String(error));
+      migrated.push(server);
+    }
+  }
+  if (changed) {
+    mkdirSync(ctx.storagePath, { recursive: true });
+    writeFileSync(join(ctx.storagePath, 'servers.json'), JSON.stringify({ servers: migrated }, null, 2), 'utf-8');
+  }
+}
+
 /**
  * Inspect an existing httpStream config and report its auth header (the one
  * referencing `${MCP_AUTH_TOKEN}`) and whether a token is already stored. Used
  * to prefill the edit form. Defaults to the standard `Authorization` header.
  */
-function describeHttpAuth(config: McpHttpStreamServerConfig): { headerName: string; hasToken: boolean } {
-  const hasToken = Boolean(config.env?.[AUTH_TOKEN_ENV]);
+function describeHttpAuth(config: McpHttpStreamServerConfig & { secretRefs?: Record<string, string> }): { headerName: string; hasToken: boolean } {
+  const hasToken = Boolean(config.env?.[AUTH_TOKEN_ENV] ?? config.secretRefs?.[AUTH_TOKEN_ENV]);
   const entry = Object.entries(config.headers ?? {}).find(([, value]) => value.includes(`\${${AUTH_TOKEN_ENV}}`));
   return { headerName: entry?.[0] ?? 'Authorization', hasToken };
 }
@@ -687,7 +754,8 @@ async function connectIfNeeded(name: string, logger: finch.Logger, reconnectAtte
     const authProvider = isHttpConfig(config) && config.oauth
       ? await createMcpOAuthProvider(config.oauth, activeCtx!.storage)
       : undefined;
-    const client = createMcpClient(config, authProvider);
+    const resolvedConfig = await resolveServerSecrets(config, activeCtx!);
+    const client = createMcpClient(resolvedConfig, authProvider);
     try {
       await withTimeout(client.connect(CONNECT_TIMEOUT_MS), CONNECT_TIMEOUT_MS + 1_000, `MCP server "${name}" connect`);
       const tools = await withTimeout(client.listTools(LIST_TOOLS_TIMEOUT_MS), LIST_TOOLS_TIMEOUT_MS + 1_000, `MCP server "${name}" listTools`);
@@ -758,6 +826,10 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
   // extensions/mcp/i18n/<locale>.json. Tool-result text stays English on purpose —
   // it is model-facing guidance, not user UI.
   const t = (key: string, values?: Record<string, string | number | boolean>): string => ctx.i18n.t(key, values);
+
+  // Move legacy plaintext environment values into the encrypted extension store
+  // before loading configs. Failed entries remain untouched for retry.
+  await migrateLegacySecrets(ctx);
 
   // Load server configs and register them.
   // Connections are established lazily the first time a server is actually used
@@ -916,6 +988,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     }
 
     try {
+      server = await sealServerSecrets(ctx, server as ManagedMcpServerConfig);
       upsertServer(ctx.storagePath, server);
     } catch (err) {
       ctx.logger.error('failed to write servers.json', err);
@@ -968,7 +1041,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
         ? false
         : existingIsHttp;
     const useOAuth = isHttp && (args.oauth === true || (args.oauth === undefined && existingIsHttp && Boolean(existing.oauth)));
-    const existingEnv = existing.env ?? {};
+    const existingEnv = (await resolveServerSecrets(existing, ctx)).env ?? {};
     const secretKeys = (args.secretEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     const plainKeys = (args.plainEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     const existingAuth = existingIsHttp ? describeHttpAuth(existing as McpHttpStreamServerConfig) : { headerName: 'Authorization', hasToken: false };
@@ -1081,8 +1154,13 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     }
 
     try {
+      server = await sealServerSecrets(ctx, server as ManagedMcpServerConfig);
       if (nextName !== name) removeServer(ctx.storagePath, name);
       upsertServer(ctx.storagePath, server);
+      if (nextName !== name) {
+        const nextRefs = new Set(Object.values((server as ManagedMcpServerConfig).secretRefs ?? {}));
+        await removeServerSecrets(ctx, existing, nextRefs);
+      }
     } catch (err) {
       ctx.logger.error('failed to write servers.json', err);
       return { content: [{ type: 'text', text: `Failed to save server config: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
@@ -1117,8 +1195,10 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     }
 
     let removed = false;
+    const existing = readUserServers(ctx.storagePath).find((server) => server.name === name);
     try {
       removed = removeServer(ctx.storagePath, name);
+      if (removed) await removeServerSecrets(ctx, existing);
     } catch (err) {
       ctx.logger.error('failed to write servers.json', err);
       return { content: [{ type: 'text', text: `Failed to update server config: ${err instanceof Error ? err.message : String(err)}` }], isError: true };

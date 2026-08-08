@@ -23,7 +23,7 @@
     "README.zh-CN.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ../../scripts/bundle-extension.mjs .",
+    "build": "tsc -p tsconfig.json --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=bundle --external:finch --banner:js=\"import { createRequire as __finchCreateRequire } from 'node:module'; const require = __finchCreateRequire(import.meta.url);\" --outfile=dist/index.js",
     "prepack": "npm run build"
   },
   "finch": {
@@ -70,6 +70,9 @@
       "shell": true,
       "oauth": [
         "mcp"
+      ],
+      "secrets": [
+        "mcp.*"
       ]
     }
   },
@@ -77,6 +80,8 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1"
+    "@finchtoys/minitool-api": "^0.2.13",
+    "@types/node": "^26.1.1",
+    "esbuild": "^0.28.1"
   }
 }
