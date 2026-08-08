@@ -38,6 +38,13 @@ export class TaskManager {
     return out.sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
+  /** Drop a task whose backing Session no longer exists (deleted/reassigned elsewhere). */
+  async remove(sessionId: string): Promise<void> {
+    await this.ctx.storage.delete(`${TASK_PREFIX}${sessionId}`);
+    const index = (await this.ctx.storage.get<string[]>(TASK_INDEX_KEY)) ?? [];
+    await this.ctx.storage.set(TASK_INDEX_KEY, index.filter((id) => id !== sessionId));
+  }
+
   /** 把任务执行状态回馈到微信联系人。 */
   private async notifyResult(task: TaskRecord): Promise<void> {
     if (!task.notifyPeerId) return;

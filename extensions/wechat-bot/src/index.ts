@@ -94,30 +94,43 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     await ctx.storage.set(waitIndexKey(pending.peerId), codes.filter((code) => code !== pending.code));
   };
 
+  /** Safe wrapper: the session backing a pending wait may have been deleted,
+   * completed, or reassigned elsewhere (e.g. task removed after finishing).
+   * listWaits() throws in that case ("not owned by mini tool ..."); treat any
+   * such failure as "the session is gone", not as a transient error to retry. */
+  const listWaitsSafe = async (sessionId: string): Promise<finch.SessionWait[] | undefined> => {
+    try {
+      return await ctx.sessions.listWaits(sessionId);
+    } catch (error) {
+      ctx.logger.debug('session for pending wait is no longer accessible', { sessionId, error: String(error) });
+      return undefined;
+    }
+  };
+
   /**
-   * Remove mappings whose cards have already settled in Finch. Without this,
-   * old completed/failed tasks make every future natural-language answer look
-   * ambiguous and it falls through to the normal Session message queue.
+   * Remove mappings whose cards have already settled in Finch, or whose
+   * backing session no longer exists. Without this, stale/deleted tasks make
+   * every future natural-language answer look ambiguous, or worse, crash the
+   * inbound handler when listWaits() throws for a gone session.
    */
-  const getLivePendingWaits = async (peerId: string): Promise<PendingWaitRecord[]> => {
+  const getLivePendingWaits = async (peerId: string): Promise<{ pending: PendingWaitRecord; wait: finch.SessionWait }[]> => {
     const codes = (await ctx.storage.get<string[]>(waitIndexKey(peerId))) ?? [];
-    const live: PendingWaitRecord[] = [];
+    const live: { pending: PendingWaitRecord; wait: finch.SessionWait }[] = [];
     for (const code of codes) {
       const pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${code}`);
-      if (!pending || pending.peerId !== peerId) continue;
-      try {
-        const waits = await ctx.sessions.listWaits(pending.sessionId);
-        if (waits.some((wait) => wait.requestId === pending.requestId)) {
-          live.push(pending);
-        } else {
-          await ctx.storage.delete(`${WAIT_PREFIX}${pending.code}`);
-        }
-      } catch (error) {
-        ctx.logger.debug('could not validate pending wait', { code: pending.code, error: String(error) });
-        live.push(pending);
+      if (!pending || pending.peerId !== peerId) {
+        await ctx.storage.delete(`${WAIT_PREFIX}${code}`);
+        continue;
+      }
+      const waits = await listWaitsSafe(pending.sessionId);
+      const wait = waits?.find((candidate) => candidate.requestId === pending.requestId);
+      if (wait) {
+        live.push({ pending, wait });
+      } else {
+        await ctx.storage.delete(`${WAIT_PREFIX}${pending.code}`);
       }
     }
-    await ctx.storage.set(waitIndexKey(peerId), live.map((pending) => pending.code));
+    await ctx.storage.set(waitIndexKey(peerId), live.map((entry) => entry.pending.code));
     return live;
   };
 
@@ -253,36 +266,34 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const respondToPendingWait = async (peerId: string, contextToken: string | undefined, text: string): Promise<boolean> => {
     const match = text.trim().match(/^#([0-9a-f]{6})\s+([\s\S]+)$/i);
     let pending: PendingWaitRecord | undefined;
+    let wait: finch.SessionWait | undefined;
     let value: string;
     if (match) {
       pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${match[1].toLowerCase()}`);
       if (!pending || pending.peerId !== peerId) return false;
       value = match[2].trim();
+      const waits = await listWaitsSafe(pending.sessionId);
+      wait = waits?.find((candidate) => candidate.requestId === pending?.requestId);
+      if (!wait) {
+        await removePendingWait(pending);
+        await media.sendText(peerId, contextToken, waitText('expired'));
+        return true;
+      }
     } else {
       // Natural-language replies are safe only when exactly one real card is
       // outstanding for this WeChat contact. Stale mappings are pruned first.
       const candidates = await getLivePendingWaits(peerId);
       if (!candidates.length) return false;
       if (candidates.length > 1) {
-        const lines = await Promise.all(candidates.map(async (candidate) => {
-          const wait = (await ctx.sessions.listWaits(candidate.sessionId))
-            .find((entry) => entry.requestId === candidate.requestId);
-          const summary = wait ? summarizeWait(wait) : '';
-          return waitText('multiplePendingItem', { code: candidate.code, summary });
-        }));
+        const lines = candidates.map((candidate) =>
+          waitText('multiplePendingItem', { code: candidate.pending.code, summary: summarizeWait(candidate.wait) }));
         await media.sendText(peerId, contextToken, `${waitText('multiplePending')}\n${lines.join('\n')}`);
         return true;
       }
-      pending = candidates[0];
+      pending = candidates[0].pending;
+      wait = candidates[0].wait;
       value = text.trim();
       if (!value) return true;
-    }
-    const wait = (await ctx.sessions.listWaits(pending.sessionId))
-      .find((candidate) => candidate.requestId === pending.requestId);
-    if (!wait) {
-      await removePendingWait(pending);
-      await media.sendText(peerId, contextToken, waitText('expired'));
-      return true;
     }
     const parsed = responseForWait(wait, value);
     if (!parsed.response) {
@@ -737,7 +748,11 @@ action:
         // A waiting card owns the current turn. Sending a new Session message
         // here would only create a pending turn behind it and leave the card
         // unresolved. Treat this tool action as an answer first.
-        const waits = await ctx.sessions.listWaits(task.sessionId);
+        const waits = await listWaitsSafe(task.sessionId);
+        if (waits === undefined) {
+          await tasks.remove(taskId);
+          return { content: [{ type: 'text', text: `Task ${taskId} no longer exists (its Session was deleted or completed elsewhere); the task record was removed.` }], isError: true };
+        }
         if (waits.length > 0) {
           if (waits.length > 1) {
             return {
