@@ -63,6 +63,7 @@
   "permissions": {
     "network": true,
     "sessions": true,
+    "sessionInteractions": true,
     "filesystem": "read"
   }
 }

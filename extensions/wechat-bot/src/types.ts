@@ -39,6 +39,8 @@ export const TURN_MAP_PREFIX = 'turn:';
 export const CTOKEN_PREFIX = 'ctoken:';
 export const TASK_PREFIX = 'task:';
 export const TASK_INDEX_KEY = 'tasks:index';
+export const WAIT_PREFIX = 'wait:';
+export const WAIT_INDEX_PREFIX = 'wait-index:';
 
 export const RECONNECT_BACKOFF_MS = [1_000, 3_000, 6_000, 10_000, 15_000];
 export const QR_POLL_INTERVAL_MS = 1_500;
@@ -144,6 +146,16 @@ export interface UploadedMediaInfo {
 }
 
 /** Bot 派发到某个 Space 的任务会话记录。 */
+export interface PendingWaitRecord {
+  code: string;
+  peerId: string;
+  sessionId: string;
+  requestId: string;
+  kind: 'permission' | 'question' | 'form';
+  questionHeaders?: string[];
+  formFields?: { key: string; type: string }[];
+}
+
 export interface TaskRecord {
   sessionId: string;
   spaceId: string;

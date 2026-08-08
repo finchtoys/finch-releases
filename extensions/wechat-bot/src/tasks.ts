@@ -88,6 +88,15 @@ export class TaskManager {
       }
       return true;
     }
+    if (event.type === 'turn.wait_resolved') {
+      if (!task.lastTurnId || task.lastTurnId === event.turnId) {
+        task.status = 'running';
+        task.lastTurnId = event.turnId;
+        task.updatedAt = Date.now();
+        await this.save(task);
+      }
+      return true;
+    }
     await this.applyTerminal(task, event, true);
     return true;
   }

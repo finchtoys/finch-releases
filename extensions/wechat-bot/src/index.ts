@@ -4,8 +4,8 @@ import {
   CONTAINER_ID, wechatIcon,
   KEY_TOKEN, KEY_BASE_URL, KEY_OWNER_USER, KEY_CURSOR, KEY_ACTIVE_SESSION,
   LEGACY_PEER_MAP_PREFIX, SESSION_MAP_PREFIX, TURN_MAP_PREFIX, CTOKEN_PREFIX,
-  RECONNECT_BACKOFF_MS,
-  type BotState, type TaskRecord, type WeixinInboundMessage, type GetUpdatesResponse,
+  WAIT_PREFIX, WAIT_INDEX_PREFIX, RECONNECT_BACKOFF_MS,
+  type BotState, type TaskRecord, type PendingWaitRecord, type WeixinInboundMessage, type GetUpdatesResponse,
 } from './types';
 import { createBotState } from './types';
 import { sleep, randomHex } from './utils';
@@ -81,6 +81,151 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     return createWechatSession(ownerUserId, contextToken, nickname);
   };
 
+  // ── 等待状态中继 ────────────────────────────────────────────────────────────
+
+  const waitIndexKey = (peerId: string) => `${WAIT_INDEX_PREFIX}${peerId}`;
+
+  const removePendingWait = async (pending: PendingWaitRecord): Promise<void> => {
+    await ctx.storage.delete(`${WAIT_PREFIX}${pending.code}`);
+    const codes = (await ctx.storage.get<string[]>(waitIndexKey(pending.peerId))) ?? [];
+    await ctx.storage.set(waitIndexKey(pending.peerId), codes.filter((code) => code !== pending.code));
+  };
+
+  const renderWait = (code: string, wait: finch.SessionWait): string | undefined => {
+    if (wait.kind === 'permission') {
+      if (wait.destructive) {
+        return `⚠️ Finch 正在等待不可逆操作确认：${wait.toolTitle ?? wait.toolName}\n此操作只能在 Finch 桌面端确认，无法通过微信代答。`;
+      }
+      return [
+        `⏳ Finch 等待权限确认 #${code}`,
+        `操作：${wait.toolTitle ?? wait.toolName}`,
+        '回复“#' + code + ' 允许”或“#' + code + ' 拒绝”。',
+      ].join('\n');
+    }
+    if (wait.kind === 'question') {
+      const questions = wait.questions.map((question) => {
+        const options = question.options.map((option) => `  - ${option.label}${option.description ? `：${option.description}` : ''}`).join('\n');
+        return `【${question.header}】${question.question}${options ? `\n${options}` : ''}`;
+      }).join('\n');
+      const instruction = wait.questions.length === 1
+        ? `回复“#${code} 你的回答”。`
+        : `逐行回复“#${code} 字段=回答”，字段为各题的【header】。`;
+      return `⏳ Finch 等待回答 #${code}\n${questions}\n${instruction}`;
+    }
+    const sensitive = wait.form.fields.some((field) => field.secret || field.type === 'password');
+    if (sensitive) {
+      return `⚠️ Finch 正在等待表单「${wait.form.title}」，其中包含敏感字段，请在 Finch 桌面端填写。`;
+    }
+    const fields = wait.form.fields.filter((field) => field.type !== 'link');
+    if (!fields.length) return undefined;
+    const details = fields.map((field) => {
+      const options = field.options?.map((option) => `${option.value}（${option.label}）`).join('、');
+      return `【${field.key}】${field.label}${options ? `：${options}` : ''}`;
+    }).join('\n');
+    return `⏳ Finch 等待表单 #${code}\n${wait.form.title}\n${details}\n逐行回复“#${code} 字段=内容”，或回复“#${code} 取消”。`;
+  };
+
+  const relayWait = async (peerId: string, contextToken: string | undefined, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
+    if (event.wait.kind === 'permission' && event.wait.destructive) {
+      await media.sendText(peerId, contextToken, renderWait('', event.wait) ?? 'Finch 正在等待桌面端处理。');
+      return;
+    }
+    if (event.wait.kind === 'form' && event.wait.form.fields.some((field) => field.secret || field.type === 'password')) {
+      await media.sendText(peerId, contextToken, renderWait('', event.wait) ?? 'Finch 正在等待桌面端处理。');
+      return;
+    }
+    if (event.wait.kind === 'form' && !event.wait.form.fields.some((field) => field.type !== 'link')) return;
+
+    const existingCodes = (await ctx.storage.get<string[]>(waitIndexKey(peerId))) ?? [];
+    for (const code of existingCodes) {
+      const existing = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${code}`);
+      if (existing?.sessionId === event.sessionId && existing.requestId === event.requestId) return;
+    }
+
+    const code = randomHex(3);
+    const pending: PendingWaitRecord = {
+      code, peerId, sessionId: event.sessionId, requestId: event.requestId, kind: event.wait.kind,
+      ...(event.wait.kind === 'question' ? { questionHeaders: event.wait.questions.map((question) => question.header) } : {}),
+      ...(event.wait.kind === 'form' ? { formFields: event.wait.form.fields.filter((field) => field.type !== 'link').map((field) => ({ key: field.key, type: field.type })) } : {}),
+    };
+    await ctx.storage.set(`${WAIT_PREFIX}${code}`, pending);
+    await ctx.storage.set(waitIndexKey(peerId), [...existingCodes, code]);
+    await media.sendText(peerId, contextToken, renderWait(code, event.wait) ?? 'Finch 正在等待桌面端处理。');
+  };
+
+  const respondToPendingWait = async (peerId: string, contextToken: string | undefined, text: string): Promise<boolean> => {
+    const match = text.trim().match(/^#([0-9a-f]{6})\s+([\s\S]+)$/i);
+    if (!match) return false;
+    const pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${match[1].toLowerCase()}`);
+    if (!pending || pending.peerId !== peerId) return false;
+    const value = match[2].trim();
+    let response: finch.SessionWaitResponse | undefined;
+
+    if (pending.kind === 'permission') {
+      if (/^(允许|同意|allow|yes|y)$/i.test(value)) response = { kind: 'permission', allow: true };
+      if (/^(拒绝|取消|deny|no|n)$/i.test(value)) response = { kind: 'permission', allow: false };
+      if (!response) {
+        await media.sendText(peerId, contextToken, `请回复“#${pending.code} 允许”或“#${pending.code} 拒绝”。`);
+        return true;
+      }
+    } else if (pending.kind === 'question') {
+      const headers = pending.questionHeaders ?? [];
+      const answers: Record<string, string> = {};
+      if (headers.length === 1) {
+        answers[headers[0]] = value;
+      } else {
+        for (const line of value.split(/\n|；|;/)) {
+          const item = line.trim().match(/^([^=：:]+)[=：:]\s*(.+)$/);
+          if (item && headers.includes(item[1].trim())) answers[item[1].trim()] = item[2].trim();
+        }
+        if (headers.some((header) => !answers[header])) {
+          await media.sendText(peerId, contextToken, `请逐行填写全部字段：${headers.map((header) => `${header}=回答`).join('；')}`);
+          return true;
+        }
+      }
+      response = { kind: 'question', answers };
+    } else {
+      if (/^(取消|cancel)$/i.test(value)) {
+        response = { kind: 'form', submitted: false };
+      } else {
+        const values: Record<string, string | number | boolean | string[]> = {};
+        const fields = pending.formFields ?? [];
+        for (const line of value.split(/\n|；|;/)) {
+          const item = line.trim().match(/^([^=：:]+)[=：:]\s*(.+)$/);
+          if (!item) continue;
+          const field = fields.find((candidate) => candidate.key === item[1].trim());
+          if (!field) continue;
+          const raw = item[2].trim();
+          if (field.type === 'number') values[field.key] = Number(raw);
+          else if (field.type === 'boolean') values[field.key] = /^(true|是|yes|y|1)$/i.test(raw);
+          else if (field.type === 'multiselect') values[field.key] = raw.split(/[，,]/).map((entry) => entry.trim()).filter(Boolean);
+          else values[field.key] = raw;
+        }
+        if (!Object.keys(values).length) {
+          await media.sendText(peerId, contextToken, `请按“字段=内容”格式回复 #${pending.code}。`);
+          return true;
+        }
+        response = { kind: 'form', submitted: true, values };
+      }
+    }
+
+    const result = await ctx.sessions.respondToWait(pending.sessionId, pending.requestId, response);
+    if (result.state === 'accepted') {
+      await removePendingWait(pending);
+      await media.sendText(peerId, contextToken, `✅ 已提交 #${pending.code}。`);
+    } else if (result.state === 'stale') {
+      // 用户已在桌面端、超时或结束会话时，静默清理旧映射。
+      await removePendingWait(pending);
+    } else if (result.state === 'forbidden') {
+      await removePendingWait(pending);
+      await media.sendText(peerId, contextToken, `⚠️ #${pending.code} 无法通过微信处理：${result.reason}`);
+    } else {
+      await removePendingWait(pending);
+      await media.sendText(peerId, contextToken, `ℹ️ #${pending.code} 已失效。`);
+    }
+    return true;
+  };
+
   // ── 入站消息处理 ────────────────────────────────────────────────────────────
 
   const handleInbound = async (msg: WeixinInboundMessage) => {
@@ -107,6 +252,8 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     }
     if (!text && !attachments.length) return;
 
+    if (text && await respondToPendingWait(peerId, msg.context_token, text)) return;
+
     const sessionId = await ensureActiveWechatSession(peerId, msg.from_nickname, msg.context_token);
     const idempotencyKey = `wx:${peerId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const receipt = await ctx.sessions.send(sessionId, {
@@ -128,6 +275,23 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
   ctx.subscriptions.push(
     ctx.sessions.onDidReceiveEvent(async (event) => {
+      if (event.type === 'turn.waiting') {
+        const task = await tasks.get(event.sessionId);
+        if (task) {
+          await tasks.handleEvent(event);
+          if (task.notifyPeerId) {
+            const contextToken = await ctx.storage.get<string>(`${CTOKEN_PREFIX}${task.notifyPeerId}`);
+            await relayWait(task.notifyPeerId, contextToken, event).catch((error) => ctx.logger.error('relay task wait failed', error));
+          }
+          return;
+        }
+        const target = await ctx.storage.get<{ peerId: string; contextToken?: string }>(`${SESSION_MAP_PREFIX}${event.sessionId}`);
+        if (target?.peerId) {
+          await relayWait(target.peerId, target.contextToken, event).catch((error) => ctx.logger.error('relay session wait failed', error));
+        }
+        return;
+      }
+
       // Space 任务优先
       if (await tasks.handleEvent(event)) return;
 
@@ -446,7 +610,7 @@ action:
         taskId: { type: 'string', description: 'send/status: task id.' },
         message: { type: 'string', description: 'create/send: message to send.' },
         title: { type: 'string', description: 'create: optional task title.' },
-        notifyPeerId: { type: 'string', description: 'create: optional WeChat userId to notify when the task finishes.' },
+        notifyPeerId: { type: 'string', description: 'create: optional WeChat userId for result/wait notifications; defaults to the logged-in account.' },
         waitMs: { type: 'number', minimum: 0, maximum: 600000, description: 'status: optional wait time; returns immediately by default.' },
       },
       required: ['action'],
@@ -460,7 +624,8 @@ action:
       const taskId = typeof input.taskId === 'string' ? input.taskId.trim() : '';
       const message = typeof input.message === 'string' ? input.message.trim() : '';
       const title = typeof input.title === 'string' ? input.title.trim() : '';
-      const notifyPeerId = typeof input.notifyPeerId === 'string' ? input.notifyPeerId.trim() : '';
+      const requestedNotifyPeerId = typeof input.notifyPeerId === 'string' ? input.notifyPeerId.trim() : '';
+      const notifyPeerId = requestedNotifyPeerId || (await ctx.storage.get<string>(KEY_OWNER_USER)) || '';
       const waitMs = typeof input.waitMs === 'number' && Number.isFinite(input.waitMs) ? Math.max(0, input.waitMs) : 0;
 
       if (taskAction === 'send') {
