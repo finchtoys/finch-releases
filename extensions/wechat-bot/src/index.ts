@@ -269,7 +269,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
               : loggedIn
                 ? '已登录，等待重新连接'
                 : state.lastError ? '连接异常，请重新登录' : '未登录',
-        iconName: wechatIcon('activity'),
+        iconName: wechatIcon(loggedIn && state.messageRunning ? 'satellite-dish' : 'unplug'),
       }];
 
       items.push(
@@ -277,7 +277,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         {
           id: 'login',
           label: state.loginPhase === 'verify' ? '重新获取二维码' : state.loginRunning ? '再次显示二维码' : loggedIn ? '重新登录' : '登录微信',
-          iconName: wechatIcon('qr-code'),
+          iconName: wechatIcon('scan-qr-code'),
           hoverText: '直接打开微信扫码登录弹窗；已登录时会先清除旧连接。',
         },
       );
@@ -286,7 +286,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         if (!state.messageRunning) {
           items.push({
             id: 'reconnect', label: '重新连接',
-            iconName: wechatIcon('play'),
+            iconName: wechatIcon('scan-qr-code'),
             hoverText: '使用现有登录状态恢复接收微信消息。',
           });
         }

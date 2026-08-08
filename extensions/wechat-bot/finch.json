@@ -17,6 +17,8 @@
       "wechat": { "svg": "./icons/wechat.svg", "description": "WeChat icon (RiWechat2Line)" },
       "activity": { "svg": "./icons/activity.svg" },
       "play": { "svg": "./icons/play.svg" },
+      "satellite-dish": { "svg": "./icons/satellite-dish.svg" },
+      "unplug": { "svg": "./icons/unplug.svg" },
       "log-out": { "svg": "./icons/log-out.svg" },
       "qr-code": { "svg": "./icons/qr-code.svg" },
       "scan-qr-code": { "svg": "./icons/scan-qr-code.svg" }
