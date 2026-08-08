@@ -91,6 +91,82 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     await ctx.storage.set(waitIndexKey(pending.peerId), codes.filter((code) => code !== pending.code));
   };
 
+  /**
+   * Remove mappings whose cards have already settled in Finch. Without this,
+   * old completed/failed tasks make every future natural-language answer look
+   * ambiguous and it falls through to the normal Session message queue.
+   */
+  const getLivePendingWaits = async (peerId: string): Promise<PendingWaitRecord[]> => {
+    const codes = (await ctx.storage.get<string[]>(waitIndexKey(peerId))) ?? [];
+    const live: PendingWaitRecord[] = [];
+    for (const code of codes) {
+      const pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${code}`);
+      if (!pending || pending.peerId !== peerId) continue;
+      try {
+        const waits = await ctx.sessions.listWaits(pending.sessionId);
+        if (waits.some((wait) => wait.requestId === pending.requestId)) {
+          live.push(pending);
+        } else {
+          await ctx.storage.delete(`${WAIT_PREFIX}${pending.code}`);
+        }
+      } catch (error) {
+        ctx.logger.debug('could not validate pending wait', { code: pending.code, error: String(error) });
+        live.push(pending);
+      }
+    }
+    await ctx.storage.set(waitIndexKey(peerId), live.map((pending) => pending.code));
+    return live;
+  };
+
+  const cleanDelegatedAnswer = (value: string): string =>
+    value.trim().replace(/^用户回答\s*[：:]\s*/i, '').trim();
+
+  /** Parse one human reply against the actual live card, never as a new turn. */
+  const responseForWait = (
+    wait: finch.SessionWait,
+    rawValue: string,
+  ): { response?: finch.SessionWaitResponse; error?: string } => {
+    const value = cleanDelegatedAnswer(rawValue);
+    if (wait.kind === 'permission') {
+      if (/^(允许|同意|allow|yes|y)$/i.test(value)) return { response: { kind: 'permission', allow: true } };
+      if (/^(拒绝|取消|deny|no|n)$/i.test(value)) return { response: { kind: 'permission', allow: false } };
+      return { error: '请回复“允许”或“拒绝”。' };
+    }
+    if (wait.kind === 'question') {
+      const answers: Record<string, string> = {};
+      if (wait.questions.length === 1) {
+        answers[wait.questions[0].header] = value;
+      } else {
+        for (const line of value.split(/\n|；|;/)) {
+          const item = line.trim().match(/^([^=：:]+)[=：:]\s*(.+)$/);
+          if (item && wait.questions.some((question) => question.header === item[1].trim())) {
+            answers[item[1].trim()] = item[2].trim();
+          }
+        }
+        const missing = wait.questions.filter((question) => !answers[question.header]);
+        if (missing.length) {
+          return { error: `请逐行填写全部字段：${wait.questions.map((question) => `${question.header}=回答`).join('；')}` };
+        }
+      }
+      return { response: { kind: 'question', answers } };
+    }
+    if (/^(取消|cancel)$/i.test(value)) return { response: { kind: 'form', submitted: false } };
+    const values: Record<string, string | number | boolean | string[]> = {};
+    for (const line of value.split(/\n|；|;/)) {
+      const item = line.trim().match(/^([^=：:]+)[=：:]\s*(.+)$/);
+      if (!item) continue;
+      const field = wait.form.fields.find((candidate) => candidate.key === item[1].trim());
+      if (!field || field.type === 'link') continue;
+      const raw = item[2].trim();
+      if (field.type === 'number') values[field.key] = Number(raw);
+      else if (field.type === 'boolean') values[field.key] = /^(true|是|yes|y|1)$/i.test(raw);
+      else if (field.type === 'multiselect') values[field.key] = raw.split(/[，,]/).map((entry) => entry.trim()).filter(Boolean);
+      else values[field.key] = raw;
+    }
+    if (!Object.keys(values).length) return { error: '请按“字段=内容”格式回复。' };
+    return { response: { kind: 'form', submitted: true, values } };
+  };
+
   const renderWait = (code: string, wait: finch.SessionWait): string | undefined => {
     if (wait.kind === 'permission') {
       if (wait.destructive) {
@@ -155,10 +231,21 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
   const respondToPendingWait = async (peerId: string, contextToken: string | undefined, text: string): Promise<boolean> => {
     const match = text.trim().match(/^#([0-9a-f]{6})\s+([\s\S]+)$/i);
-    if (!match) return false;
-    const pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${match[1].toLowerCase()}`);
-    if (!pending || pending.peerId !== peerId) return false;
-    const value = match[2].trim();
+    let pending: PendingWaitRecord | undefined;
+    let value: string;
+    if (match) {
+      pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${match[1].toLowerCase()}`);
+      if (!pending || pending.peerId !== peerId) return false;
+      value = match[2].trim();
+    } else {
+      // Natural-language replies are safe only when exactly one real card is
+      // outstanding for this WeChat contact. Stale mappings are pruned first.
+      const candidates = await getLivePendingWaits(peerId);
+      if (candidates.length !== 1) return false;
+      pending = candidates[0];
+      value = text.trim();
+      if (!value) return true;
+    }
     let response: finch.SessionWaitResponse | undefined;
 
     if (pending.kind === 'permission') {
@@ -632,6 +719,37 @@ action:
         if (!taskId || !message) return { content: [{ type: 'text', text: 'send requires taskId and message.' }], isError: true };
         const task = await tasks.get(taskId);
         if (!task) return { content: [{ type: 'text', text: `Task not found: ${taskId}` }], isError: true };
+
+        // A waiting card owns the current turn. Sending a new Session message
+        // here would only create a pending turn behind it and leave the card
+        // unresolved. Treat this tool action as an answer first.
+        const waits = await ctx.sessions.listWaits(task.sessionId);
+        if (waits.length > 0) {
+          if (waits.length > 1) {
+            return {
+              content: [{ type: 'text', text: `Task ${taskId} has multiple pending questions. Answer from the WeChat prompt with its #code.` }],
+              isError: true,
+            };
+          }
+          const parsed = responseForWait(waits[0], message);
+          if (!parsed.response) {
+            return { content: [{ type: 'text', text: parsed.error ?? 'Invalid answer.' }], isError: true };
+          }
+          const result = await ctx.sessions.respondToWait(
+            task.sessionId,
+            waits[0].requestId,
+            parsed.response,
+          );
+          if (result.state === 'accepted') {
+            return { content: [{ type: 'text', text: `Answer submitted to waiting task ${taskId}; no new turn was created.` }] };
+          }
+          if (result.state === 'stale') {
+            return { content: [{ type: 'text', text: `The wait in task ${taskId} was already resolved by ${result.resolvedBy}.` }] };
+          }
+          const reason = result.state === 'forbidden' ? result.reason : 'The wait no longer exists.';
+          return { content: [{ type: 'text', text: `Could not answer task ${taskId}: ${reason}` }], isError: true };
+        }
+
         const receipt = await ctx.sessions.send(task.sessionId, {
           text: message,
           idempotencyKey: TaskManager.idempotencyKey(`wx-task:${taskId}`),

@@ -103,11 +103,26 @@ export class TaskManager {
 
   /** 等待当前任务 turn 的终态。 */
   async waitFor(task: TaskRecord, timeoutMs: number): Promise<TaskRecord> {
-    if ((task.status !== 'running' && task.status !== 'waiting') || !task.lastTurnId) return task;
+    // Waiting for a human is a useful result. Do not keep the caller's WeChat
+    // tool loop occupied until the target turn eventually becomes terminal.
+    if (task.status === 'waiting' || task.status !== 'running' || !task.lastTurnId) return task;
     try {
-      const result = await this.ctx.sessions.waitForTurn(task.sessionId, task.lastTurnId, { timeoutMs });
-      if (result.state === 'timeout') return task;
-      if (task.lastTurnId !== result.turnId) return task;
+      const outcome = await Promise.race([
+        this.ctx.sessions.waitForTurn(task.sessionId, task.lastTurnId, { timeoutMs })
+          .then((result) => ({ type: 'terminal' as const, result })),
+        this.ctx.sessions.waitForWait(task.sessionId, { timeoutMs })
+          .then((wait) => ({ type: 'wait' as const, wait })),
+      ]);
+      if (outcome.type === 'wait') {
+        if (!outcome.wait) return task;
+        task.status = 'waiting';
+        task.lastTurnId = outcome.wait.turnId ?? task.lastTurnId;
+        task.updatedAt = Date.now();
+        await this.save(task);
+        return task;
+      }
+      const result = outcome.result;
+      if (result.state === 'timeout' || task.lastTurnId !== result.turnId) return task;
       task.updatedAt = Date.now();
       if (result.state === 'completed') {
         task.status = 'completed';
