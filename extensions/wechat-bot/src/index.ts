@@ -17,6 +17,9 @@ import { TaskManager } from './tasks';
 export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const state = createBotState();
   const appInfo = await ctx.app.getInfo();
+  const assistantName = appInfo.assistantName || appInfo.name;
+  const waitText = (key: string, values?: finch.TranslationValues): string =>
+    ctx.i18n.t(`runtime.wait.${key}`, { assistantName, appName: appInfo.name, ...values });
 
   const iconNames = ['wechat', 'activity', 'play', 'satellite-dish', 'unplug', 'log-out', 'qr-code', 'scan-qr-code'];
   const icons = Object.fromEntries(await Promise.all(iconNames.map(async (id) => [id, {
@@ -130,14 +133,14 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     if (wait.kind === 'permission') {
       if (/^(允许|同意|allow|yes|y)(?:[，,：:\s].*)?$/i.test(value)) {
         if (wait.destructive) {
-          return { error: '不可逆操作不能通过微信批准。可回复“拒绝”，让任务跳过危险操作并继续。' };
+          return { error: waitText('destructive.approveBlocked') };
         }
         return { response: { kind: 'permission', allow: true } };
       }
       if (/^(拒绝|取消|deny|no|n)(?:[，,：:\s].*)?$/i.test(value)) return { response: { kind: 'permission', allow: false } };
       return { error: wait.destructive
-        ? '此操作只能通过微信拒绝。请回复“拒绝”，让任务跳过危险操作并继续。'
-        : '请回复“允许”或“拒绝”。' };
+        ? waitText('destructive.invalidReply')
+        : waitText('permission.invalidReply') };
     }
     if (wait.kind === 'question') {
       const answers: Record<string, string> = {};
@@ -152,7 +155,9 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         }
         const missing = wait.questions.filter((question) => !answers[question.header]);
         if (missing.length) {
-          return { error: `请逐行填写全部字段：${wait.questions.map((question) => `${question.header}=回答`).join('；')}` };
+          return { error: waitText('question.missingFields', {
+            fields: wait.questions.map((question) => `${question.header}=${waitText('question.answerPlaceholder')}`).join(waitText('separator.items')),
+          }) };
         }
       }
       return { response: { kind: 'question', answers } };
@@ -170,51 +175,53 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       else if (field.type === 'multiselect') values[field.key] = raw.split(/[，,]/).map((entry) => entry.trim()).filter(Boolean);
       else values[field.key] = raw;
     }
-    if (!Object.keys(values).length) return { error: '请按“字段=内容”格式回复。' };
+    if (!Object.keys(values).length) return { error: waitText('form.invalidReply') };
     return { response: { kind: 'form', submitted: true, values } };
   };
 
-  const renderWait = (code: string, wait: finch.SessionWait): string | undefined => {
+  const renderWait = (wait: finch.SessionWait): string | undefined => {
     if (wait.kind === 'permission') {
-      if (wait.destructive) {
-        return [
-          `⚠️ Finch 正在等待不可逆操作确认 #${code}`,
-          `操作：${wait.toolTitle ?? wait.toolName}`,
-          `微信只能拒绝，不能批准。回复“#${code} 拒绝”，任务会跳过危险操作并继续；如要批准，请回 Finch 桌面端处理。`,
-        ].join('\n');
-      }
-      return [
-        `⏳ Finch 等待权限确认 #${code}`,
-        `操作：${wait.toolTitle ?? wait.toolName}`,
-        '回复“#' + code + ' 允许”或“#' + code + ' 拒绝”。',
-      ].join('\n');
+      const operation = wait.toolTitle ?? wait.toolName;
+      return wait.destructive
+        ? [
+            waitText('destructive.title'),
+            waitText('operation', { operation }),
+            waitText('destructive.reply'),
+          ].join('\n')
+        : [
+            waitText('permission.title'),
+            waitText('operation', { operation }),
+            waitText('permission.reply'),
+          ].join('\n');
     }
     if (wait.kind === 'question') {
       const questions = wait.questions.map((question) => {
-        const options = question.options.map((option) => `  - ${option.label}${option.description ? `：${option.description}` : ''}`).join('\n');
-        return `【${question.header}】${question.question}${options ? `\n${options}` : ''}`;
+        const options = question.options.map((option) =>
+          `  - ${option.label}${option.description ? waitText('optionDescription', { description: option.description }) : ''}`,
+        ).join('\n');
+        return `${waitText('fieldLabel', { field: question.header })}${question.question}${options ? `\n${options}` : ''}`;
       }).join('\n');
       const instruction = wait.questions.length === 1
-        ? `回复“#${code} 你的回答”。`
-        : `逐行回复“#${code} 字段=回答”，字段为各题的【header】。`;
-      return `⏳ Finch 等待回答 #${code}\n${questions}\n${instruction}`;
+        ? waitText('question.singleReply')
+        : waitText('question.multiReply');
+      return `${waitText('question.title')}\n${questions}\n${instruction}`;
     }
     const sensitive = wait.form.fields.some((field) => field.secret || field.type === 'password');
     if (sensitive) {
-      return `⚠️ Finch 正在等待表单「${wait.form.title}」，其中包含敏感字段，请在 Finch 桌面端填写。`;
+      return waitText('form.sensitive', { title: wait.form.title });
     }
     const fields = wait.form.fields.filter((field) => field.type !== 'link');
     if (!fields.length) return undefined;
     const details = fields.map((field) => {
-      const options = field.options?.map((option) => `${option.value}（${option.label}）`).join('、');
-      return `【${field.key}】${field.label}${options ? `：${options}` : ''}`;
+      const options = field.options?.map((option) => `${option.value}${waitText('optionLabel', { label: option.label })}`).join(waitText('separator.options'));
+      return `${waitText('fieldLabel', { field: field.key })}${field.label}${options ? waitText('fieldOptions', { options }) : ''}`;
     }).join('\n');
-    return `⏳ Finch 等待表单 #${code}\n${wait.form.title}\n${details}\n逐行回复“#${code} 字段=内容”，或回复“#${code} 取消”。`;
+    return `${waitText('form.title')}\n${wait.form.title}\n${details}\n${waitText('form.reply')}`;
   };
 
   const relayWait = async (peerId: string, contextToken: string | undefined, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
     if (event.wait.kind === 'form' && event.wait.form.fields.some((field) => field.secret || field.type === 'password')) {
-      await media.sendText(peerId, contextToken, renderWait('', event.wait) ?? 'Finch 正在等待桌面端处理。');
+      await media.sendText(peerId, contextToken, renderWait(event.wait) ?? waitText('fallback'));
       return;
     }
     if (event.wait.kind === 'form' && !event.wait.form.fields.some((field) => field.type !== 'link')) return;
@@ -233,7 +240,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     };
     await ctx.storage.set(`${WAIT_PREFIX}${code}`, pending);
     await ctx.storage.set(waitIndexKey(peerId), [...existingCodes, code]);
-    await media.sendText(peerId, contextToken, renderWait(code, event.wait) ?? 'Finch 正在等待桌面端处理。');
+    await media.sendText(peerId, contextToken, renderWait(event.wait) ?? waitText('fallback'));
   };
 
   const respondToPendingWait = async (peerId: string, contextToken: string | undefined, text: string): Promise<boolean> => {
@@ -248,7 +255,11 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       // Natural-language replies are safe only when exactly one real card is
       // outstanding for this WeChat contact. Stale mappings are pruned first.
       const candidates = await getLivePendingWaits(peerId);
-      if (candidates.length !== 1) return false;
+      if (!candidates.length) return false;
+      if (candidates.length > 1) {
+        await media.sendText(peerId, contextToken, waitText('multiplePending'));
+        return true;
+      }
       pending = candidates[0];
       value = text.trim();
       if (!value) return true;
@@ -257,28 +268,29 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       .find((candidate) => candidate.requestId === pending.requestId);
     if (!wait) {
       await removePendingWait(pending);
-      await media.sendText(peerId, contextToken, `ℹ️ #${pending.code} 已失效。`);
+      await media.sendText(peerId, contextToken, waitText('expired'));
       return true;
     }
     const parsed = responseForWait(wait, value);
     if (!parsed.response) {
-      await media.sendText(peerId, contextToken, parsed.error ?? `无法解析 #${pending.code} 的回答。`);
+      await media.sendText(peerId, contextToken, parsed.error ?? waitText('parseFailed'));
       return true;
     }
 
     const result = await ctx.sessions.respondToWait(pending.sessionId, pending.requestId, parsed.response);
     if (result.state === 'accepted') {
       await removePendingWait(pending);
-      await media.sendText(peerId, contextToken, `✅ 已提交 #${pending.code}。`);
+      await media.sendText(peerId, contextToken, waitText('accepted'));
     } else if (result.state === 'stale') {
       // 用户已在桌面端、超时或结束会话时，静默清理旧映射。
       await removePendingWait(pending);
     } else if (result.state === 'forbidden') {
       await removePendingWait(pending);
-      await media.sendText(peerId, contextToken, `⚠️ #${pending.code} 无法通过微信处理：${result.reason}`);
+      ctx.logger.warn('wait response forbidden', { sessionId: pending.sessionId, requestId: pending.requestId, reason: result.reason });
+      await media.sendText(peerId, contextToken, waitText('forbidden'));
     } else {
       await removePendingWait(pending);
-      await media.sendText(peerId, contextToken, `ℹ️ #${pending.code} 已失效。`);
+      await media.sendText(peerId, contextToken, waitText('expired'));
     }
     return true;
   };

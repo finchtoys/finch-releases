@@ -24,5 +24,48 @@
         "description": "When off, inbound messages still reach the Session but replies are not pushed back to WeChat."
       }
     }
+  },
+  "runtime": {
+    "wait": {
+      "operation": "Action: {operation}",
+      "fieldLabel": "[{field}] ",
+      "fieldOptions": ": {options}",
+      "optionDescription": ": {description}",
+      "optionLabel": " ({label})",
+      "separator": {
+        "items": "; ",
+        "options": ", "
+      },
+      "permission": {
+        "title": "⏳ {assistantName} needs permission",
+        "reply": "Reply “Allow” or “Deny”.",
+        "invalidReply": "Please reply “Allow” or “Deny”."
+      },
+      "destructive": {
+        "title": "⚠️ {assistantName} requests an irreversible action",
+        "reply": "WeChat can only deny this action. Reply “Deny” to skip it and continue; approve it in the {appName} desktop app.",
+        "approveBlocked": "Irreversible actions cannot be approved through WeChat. Reply “Deny” to skip and continue.",
+        "invalidReply": "This action can only be denied through WeChat. Please reply “Deny”."
+      },
+      "question": {
+        "title": "💬 {assistantName} is waiting for your answer",
+        "singleReply": "Reply with your answer.",
+        "multiReply": "Reply one per line as “field=answer”.",
+        "answerPlaceholder": "answer",
+        "missingFields": "Please fill every field: {fields}"
+      },
+      "form": {
+        "title": "📝 {assistantName} is waiting for a form",
+        "reply": "Reply one per line as “field=value”, or reply “Cancel”.",
+        "invalidReply": "Please reply in “field=value” format.",
+        "sensitive": "⚠️ {assistantName} is waiting for the “{title}” form. It contains sensitive fields; complete it in the {appName} desktop app."
+      },
+      "fallback": "{assistantName} is waiting for you.",
+      "multiplePending": "Several items need attention. Handle one in the {appName} desktop app first.",
+      "accepted": "✅ Submitted.",
+      "expired": "ℹ️ This request has expired.",
+      "parseFailed": "That answer was not recognized. Please follow the prompt and try again.",
+      "forbidden": "⚠️ Irreversible actions cannot be approved through WeChat. Use the {appName} desktop app."
+    }
   }
 }

@@ -24,5 +24,48 @@
         "description": "关闭后只接收消息进入 Session，不自动把回复发回微信。"
       }
     }
+  },
+  "runtime": {
+    "wait": {
+      "operation": "操作：{operation}",
+      "fieldLabel": "【{field}】",
+      "fieldOptions": "：{options}",
+      "optionDescription": "：{description}",
+      "optionLabel": "（{label}）",
+      "separator": {
+        "items": "；",
+        "options": "、"
+      },
+      "permission": {
+        "title": "⏳ {assistantName} 需要权限",
+        "reply": "回复“允许”或“拒绝”。",
+        "invalidReply": "请回复“允许”或“拒绝”。"
+      },
+      "destructive": {
+        "title": "⚠️ {assistantName} 请求执行不可逆操作",
+        "reply": "微信仅支持拒绝。回复“拒绝”可跳过并继续；批准请在 {appName} 桌面端处理。",
+        "approveBlocked": "不可逆操作不能通过微信批准。回复“拒绝”可跳过并继续。",
+        "invalidReply": "此操作只能通过微信拒绝。请回复“拒绝”。"
+      },
+      "question": {
+        "title": "💬 {assistantName} 等待你的回答",
+        "singleReply": "直接回复你的回答。",
+        "multiReply": "逐行回复“字段=回答”。",
+        "answerPlaceholder": "回答",
+        "missingFields": "请逐行填写全部字段：{fields}"
+      },
+      "form": {
+        "title": "📝 {assistantName} 等待填写表单",
+        "reply": "逐行回复“字段=内容”，或回复“取消”。",
+        "invalidReply": "请按“字段=内容”格式回复。",
+        "sensitive": "⚠️ {assistantName} 等待填写表单“{title}”。其中包含敏感字段，请在 {appName} 桌面端填写。"
+      },
+      "fallback": "{assistantName} 正在等待你处理。",
+      "multiplePending": "当前有多个待处理事项，请先在 {appName} 桌面端处理其中一个。",
+      "accepted": "✅ 已提交。",
+      "expired": "ℹ️ 此等待已失效。",
+      "parseFailed": "无法识别这条回答，请按提示重试。",
+      "forbidden": "⚠️ 无法通过微信批准不可逆操作，请在 {appName} 桌面端处理。"
+    }
   }
 }
