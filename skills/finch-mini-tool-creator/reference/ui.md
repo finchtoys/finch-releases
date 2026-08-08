@@ -47,7 +47,7 @@ Use it when a confirm dialog is too limited and a full custom window would be ov
 ### 4.1 Collecting manual input: `fields` vs `requestForm`
 
 Both APIs render the exact same field grid — `MiniToolFormField[]` items of type
-`text` / `password` / `textarea` / `number` / `select` / `boolean` / `link`, with
+`text` / `password` / `textarea` / `number` / `select` / `multiselect` / `boolean` / `link`, with
 `required`, `secret`, `width` (`'full' | '1/2' | '1/3' | '2/3'`), `default`, and
 `options`. Pick between them based on **when** you need the input, not how to render it:
 
@@ -60,7 +60,8 @@ Both APIs render the exact same field grid — `MiniToolFormField[]` items of ty
 
 When `fields` is set on `showModalDialog`, the first `variant: 'primary'` action stays
 disabled until every `required` field is filled, and the resolved
-`ModalDialogResult.values` carries what the user typed (`Record<string, string | number | boolean>`).
+`ModalDialogResult.values` carries what the user typed
+(`Record<string, string | number | boolean | string[]>`).
 Treat `secret: true` fields the same way you'd treat any other user-entered secret —
 store them with `ctx.secrets`, never echo them back into a tool result or model-visible content.
 
@@ -78,6 +79,32 @@ const result = await ctx.ui.showModalDialog({
 if (result.action === 'save') {
   await ctx.secrets.set('apiKey', String(result.values?.apiKey ?? ''));
 }
+```
+
+A `multiselect` field renders the same trigger as `select`, but its popup carries a
+check column and stays open while the user toggles items. Its value is always a
+`string[]` — `[]` when nothing is checked, and `required: true` means "at least one".
+Selected values come back in the order the options were declared, not click order.
+The trigger shows the joined labels and collapses to a count past three selections.
+
+```ts
+fields: [
+  {
+    key: 'scopes',
+    label: 'Scopes',
+    type: 'multiselect',
+    required: true,
+    default: ['read'],
+    options: [
+      { value: 'read', label: 'Read' },
+      { value: 'write', label: 'Write' },
+      { value: 'admin', label: 'Admin' },
+    ],
+  },
+]
+
+// result.values?.scopes → string[]
+const scopes = (result.values?.scopes as string[] | undefined) ?? [];
 ```
 
 See `reference/tools.md` for `exec.ui.requestForm()` usage from inside a tool's `execute()`.

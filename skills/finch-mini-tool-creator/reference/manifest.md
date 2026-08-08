@@ -109,6 +109,18 @@ Example:
 - Keep new mini tools on a default string-based manifest and move locale text into `i18n/<locale>.json`.
 - Use `displayName` only for backward compatibility.
 
+## 3.1 Secret permissions
+
+Declare every encrypted key accessed through `ctx.secrets`. Use an exact key, or only a suffix wildcard prefix such as `mcp.*`; bare `*` is rejected. `ctx.storage` is plaintext and must not hold credentials.
+
+```json
+{
+  "permissions": {
+    "secrets": ["OPENAI_API_KEY", "mcp.*"]
+  }
+}
+```
+
 ## 4. Contributions
 
 ### Tools
@@ -125,6 +137,20 @@ Each item declares the static slot data:
 - `tooltip`
 
 The dynamic behavior comes from `ctx.composerActions.register(id, provider)`.
+
+### Settings menu
+
+Use `contributes.settingsMenu` to reserve the mini tool's single settings button. It renders in every session container header this mini tool owns **and** in the Toolcase (card, left of the enable toggle, plus the detail page action row).
+
+```json
+{
+  "contributes": {
+    "settingsMenu": { "icon": "settings", "tooltip": "Account and connection settings" }
+  }
+}
+```
+
+`icon` falls back to `sliders-horizontal`, `tooltip` to "Settings". Fill the rows at runtime with `ctx.settingsMenu.register({ getMenu, execute })`; see `session.md` §1.1. The legacy per-container `sessionContainers[].settingsMenu` is deprecated and only renders in that container's header.
 
 ### Icons
 
@@ -214,13 +240,16 @@ Permissions are opt-in. Request only what the mini tool truly needs.
 | `shell` | `boolean` | Shell command execution. |
 | `secrets` | `string[]` | Named secrets the mini tool may read via `ctx.secrets`. |
 | `oauth` | `string[]` | OAuth provider ids allowed through `ctx.oauth`. |
-| `sessions` | `boolean` | Create owner-scoped Sessions and exchange messages via `ctx.sessions`. |
+| `sessions` | `boolean` | Create owner-scoped Sessions and exchange messages via `ctx.sessions`. Also covers reading pending waits (`listWaits` / `waitForWait`). |
+| `sessionInteractions` | `boolean` | Answer permission / question / form cards in your own Sessions via `ctx.sessions.respondToWait()`. A program may reject a destructive permission card, but only a human in Finch may approve it. |
 
 Start with the least privileged setting. OAuth access is brokered and stored per mini tool; see `oauth.md`. Session permissions require a matching `contributes.sessionContainers` declaration; see `session.md`.
 
 ## 6. Settings
 
-Use `finch.settings` to declare user-configurable options that Finch renders natively in the Toolcase detail page. The mini tool reads them via `ctx.settings.get(key)` (read-only); Finch persists the values and reloads the mini tool after the user saves.
+Use `finch.settings` to declare user-configurable options that Finch renders natively. The mini tool reads them via `ctx.settings.get(key)` (read-only); Finch persists the values and reloads the mini tool after the user saves.
+
+The schema is surfaced through the shared settings button (see `session.md` §1.1): it appears as a built-in **Settings** row at the end of `contributes.settingsMenu`, and when no `contributes.settingsMenu` exists the button opens the form directly. The button shows both in session container headers and in the Toolcase (card + detail page), and stays usable while the mini tool is disabled.
 
 ```json
 {
@@ -231,6 +260,7 @@ Use `finch.settings` to declare user-configurable options that Finch renders nat
         { "key": "maxItems", "type": "number", "label": "Max items", "default": 10 },
         { "key": "includeDrafts", "type": "boolean", "label": "Include drafts", "default": false },
         { "key": "region", "type": "select", "label": "Region", "options": [{ "value": "us", "label": "US" }, { "value": "eu", "label": "EU" }], "default": "us" },
+        { "key": "scopes", "type": "multiselect", "label": "Scopes", "options": [{ "value": "read", "label": "Read" }, { "value": "write", "label": "Write" }], "default": ["read"] },
         {
           "key": "rules",
           "type": "list",
@@ -246,7 +276,11 @@ Use `finch.settings` to declare user-configurable options that Finch renders nat
 }
 ```
 
-All `label` and `description` fields support `LocalizedString`. Field types: `string`, `number`, `boolean`, `select`, `list`. A `string` may be marked `secret: true` for a password input, or `multiline: true` for a textarea. `list` rows are built from scalar item fields only — nested lists are not supported.
+All `label` and `description` fields support `LocalizedString`. Field types: `string`, `number`, `boolean`, `select`, `multiselect`, `list`. A `string` may be marked `secret: true` for a masked input with a reveal toggle, or `multiline: true` for a textarea. `list` rows are built from scalar item fields only — neither lists nor multiselects nest inside a row.
+
+How each type renders: `boolean` → toggle switch with the label inline; `select` → Finch's dropdown; `multiselect` → the same dropdown with a check column, staying open across toggles and showing a count past three selections; `string`/`number` → single-line input (textarea when `multiline`); `list` → repeatable bordered rows with add/remove. A `multiselect` value is always stored as `string[]`, ordered by option declaration; its `default` is the initially checked values and `placeholder` is the empty-state trigger text.
+
+A field with no saved value falls back to its declared `default` in the UI — but `ctx.settings.get(key)` still returns `undefined` until the user saves, so keep the same fallback in code (`ctx.settings.get('maxItems') ?? 10`). Fields are stacked full width; the dialog scrolls past ~60% viewport height, so a long schema is fine. Opening the settings dialog focuses the first single-line field, and pressing Enter there saves — keep the most-edited field first.
 
 ## 7. Capabilities
 

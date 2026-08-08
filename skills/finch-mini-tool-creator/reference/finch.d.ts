@@ -373,9 +373,26 @@ declare module 'finch' {
 
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
-    /** Register an optional, container-owned settings menu. */
     readonly sessionContainers: {
+      /**
+       * @deprecated 旧版容器级设置菜单，只会出现在该容器的会话页头部。
+       * 新小工具请改用 `ctx.settingsMenu.register()`——它同时出现在容器页头部
+       * 和小工具箱卡片上。已发布的小工具无需改造，仍按原样工作。
+       */
       registerSettingsMenu(containerId: string, provider: SessionContainerSettingsMenuProvider): Disposable & {
+        /** Re-fetch the visible menu after login or other background state changes. */
+        notifyUpdate(): void;
+      };
+    };
+
+    /**
+     * 小工具唯一的统一设置菜单。需要在 manifest 里声明
+     * `contributes.settingsMenu`，注册后会同时出现在：
+     * 1）该小工具会话容器页头部；2）小工具箱卡片（开关左侧）与详情页操作行。
+     * manifest 顶层 `settings` 表单会作为内置项自动追加到菜单末尾。
+     */
+    readonly settingsMenu: {
+      register(provider: SettingsMenuProvider): Disposable & {
         /** Re-fetch the visible menu after login or other background state changes. */
         notifyUpdate(): void;
       };
@@ -564,7 +581,27 @@ declare module 'finch' {
     | { readonly sequence: number; readonly type: 'assistant.message'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly text: string; readonly createdAt: string }
     | { readonly sequence: number; readonly type: 'turn.completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly createdAt: string }
     | { readonly sequence: number; readonly type: 'turn.failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly createdAt: string }
-    | { readonly sequence: number; readonly type: 'turn.waiting'; readonly sessionId: string; readonly turnId: string; readonly reason: 'permission' | 'question' | 'form'; readonly createdAt: string };
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.waiting';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly reason: SessionWaitKind;
+        /** 用于调用 respondToWait() 应答该等待，等同于卡片 id。 */
+        readonly requestId: string;
+        /** 完整的等待内容快照。 */
+        readonly wait: SessionWait;
+        readonly createdAt: string;
+      }
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.wait_resolved';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly requestId: string;
+        readonly resolvedBy: SessionWaitResolver;
+        readonly createdAt: string;
+      };
 
   export type SessionBridgeEvent =
     | SessionDurableEvent
@@ -592,6 +629,84 @@ declare module 'finch' {
     | { readonly state: 'failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly failedAt: string }
     | { readonly state: 'timeout'; readonly sessionId: string; readonly turnId: string };
 
+  // ── Session 等待（权限 / 提问 / 表单）─────────────────────────
+
+  export type SessionWaitKind = 'permission' | 'question' | 'form';
+
+  /** 谁结算了这次等待。 */
+  export type SessionWaitResolver = 'user' | 'minitool' | 'timeout' | 'system';
+
+  export interface SessionWaitBase {
+    readonly sessionId: string;
+    readonly turnId?: string;
+    /** 传给 respondToWait() 的 id，等同于交互卡片 id（toolUseId）。 */
+    readonly requestId: string;
+    readonly kind: SessionWaitKind;
+    readonly createdAt: string;
+    /** 仅当等待会自行取消时出现（带 timeoutMs 的表单卡）。 */
+    readonly expiresAt?: string;
+  }
+
+  export interface SessionPermissionWait extends SessionWaitBase {
+    readonly kind: 'permission';
+    readonly toolName: string;
+    readonly toolInput: unknown;
+    readonly toolTitle?: string;
+    /** 发起授权请求的工具来源。 */
+    readonly toolSource?: { readonly type: 'builtin' | 'minitool'; readonly id?: string; readonly name?: string };
+    /** 高风险工具或危险命令，不允许沉淀为长期规则。 */
+    readonly dangerous?: boolean;
+    /**
+     * 不可逆操作。小工具可拒绝这类等待，让任务安全继续，但不能批准；
+     * 批准时 respondToWait() 返回 `forbidden`，只有真人可以批准。
+     */
+    readonly destructive?: boolean;
+  }
+
+  export interface SessionQuestionWait extends SessionWaitBase {
+    readonly kind: 'question';
+    readonly questions: ReadonlyArray<{
+      readonly question: string;
+      readonly header: string;
+      readonly multiSelect: boolean;
+      readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
+    }>;
+  }
+
+  export interface SessionFormWait extends SessionWaitBase {
+    readonly kind: 'form';
+    /** 打开该表单的小工具。 */
+    readonly extensionId?: string;
+    readonly form: {
+      readonly title: string;
+      readonly description?: string;
+      readonly submitLabel?: string;
+      readonly cancelLabel?: string;
+      readonly fields: ExtensionFormField[];
+    };
+  }
+
+  export type SessionWait = SessionPermissionWait | SessionQuestionWait | SessionFormWait;
+
+  export type SessionWaitResponse =
+    | { readonly kind: 'permission'; readonly allow: boolean }
+    /** key 为每个问题的 `header`。 */
+    | { readonly kind: 'question'; readonly answers: Record<string, string> }
+    | { readonly kind: 'form'; readonly submitted: boolean; readonly values?: Record<string, string | number | boolean | string[]> };
+
+  export type SessionWaitRespondResult =
+    | { readonly state: 'accepted'; readonly requestId: string }
+    /** 已被真人、超时或会话结束抢先结算。 */
+    | { readonly state: 'stale'; readonly requestId: string; readonly resolvedBy: SessionWaitResolver }
+    | { readonly state: 'not_found'; readonly requestId: string }
+    /** 被策略拦截——例如尝试批准 destructive 权限卡。 */
+    | { readonly state: 'forbidden'; readonly requestId: string; readonly reason: string };
+
+  export interface SessionWaitPollOptions {
+    /** 默认 60 秒，限制为 1–600 秒。 */
+    readonly timeoutMs?: number;
+  }
+
   export interface Sessions {
     create(options: SessionCreateOptions): Promise<MinitoolSessionDescriptor>;
     get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
@@ -601,6 +716,12 @@ declare module 'finch' {
     waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
     listEvents(options: SessionEventQuery): Promise<SessionEventPage>;
+    /** 当前阻塞该 Session 的未结算等待。需要 permissions.sessions。 */
+    listWaits(sessionId: string): Promise<SessionWait[]>;
+    /** 以程序方式应答等待。需要 permissions.sessionInteractions。 */
+    respondToWait(sessionId: string, requestId: string, response: SessionWaitResponse): Promise<SessionWaitRespondResult>;
+    /** Session 一旦出现待处理等待就返回，无需轮询。 */
+    waitForWait(sessionId: string, options?: SessionWaitPollOptions): Promise<SessionWait | undefined>;
   }
 
   /** 当前激活 Space 或默认 Workspace 的信息。 */
@@ -627,12 +748,13 @@ declare module 'finch' {
     /** 表单值映射中的唯一 key。 */
     readonly key: string;
     readonly label: string;
-    readonly type: 'text' | 'password' | 'textarea' | 'number' | 'select' | 'boolean' | 'link';
+    readonly type: 'text' | 'password' | 'textarea' | 'number' | 'select' | 'multiselect' | 'boolean' | 'link';
     readonly placeholder?: string;
     readonly description?: string;
     readonly required?: boolean;
-    readonly default?: string | number | boolean;
-    /** `select` 字段的可选项。 */
+    /** `multiselect` 的默认值是初始勾选的选项值数组。 */
+    readonly default?: string | number | boolean | readonly string[];
+    /** `select` / `multiselect` 字段的可选项。 */
     readonly options?: ReadonlyArray<{ readonly value: string; readonly label: string }>;
     /**
      * 标记敏感字段。UI 会渲染密码框，且插件作者**绝不可**把它的值写回模型可见的 ToolResult。
@@ -692,7 +814,8 @@ declare module 'finch' {
   export interface ExtensionFormResult {
     /** 用户取消、超时、或 session 未提交即结束时为 false。 */
     readonly submitted: boolean;
-    readonly values: Record<string, string | number | boolean>;
+    /** `multiselect` 字段回传 `string[]`（未勾选时为空数组）。 */
+    readonly values: Record<string, string | number | boolean | string[]>;
     /**
      * 非提交结算的原因；submitted 为 true 时不存在。
      * `'background'` 表示会话运行在后台、没有桌面端用户可应答，表单从未展示——
@@ -1159,6 +1282,41 @@ declare module 'finch' {
     execute(ctx: SessionContainerSettingsMenuContext, itemId: string): Promise<void>;
   }
 
+  /** 统一设置菜单当前渲染的位置。 */
+  export type SettingsMenuSurface = 'container' | 'toolcase';
+
+  /** 小工具统一设置菜单的运行时上下文。 */
+  export interface SettingsMenuContext {
+    readonly cwd: string | undefined;
+    readonly minitoolId: string;
+    /** `container`：会话容器页头部；`toolcase`：小工具箱卡片/详情页。 */
+    readonly surface: SettingsMenuSurface;
+    /** 仅当 `surface === 'container'` 时存在。 */
+    readonly containerId?: string;
+  }
+
+  /**
+   * 每个小工具最多注册一个统一设置菜单。
+   *
+   * @example
+   * ctx.settingsMenu.register({
+   *   async getMenu() {
+   *     const account = await readAccount();
+   *     return [
+   *       { id: 'account', label: account ? `已登录：${account}` : '未登录', disabled: true },
+   *       { id: 'login', label: account ? '重新登录' : '登录', iconName: 'LogIn' },
+   *     ];
+   *   },
+   *   async execute(_ctx, itemId) {
+   *     if (itemId === 'login') await login();
+   *   },
+   * });
+   */
+  export interface SettingsMenuProvider {
+    getMenu(ctx: SettingsMenuContext): Promise<ComposerActionMenuItem[]>;
+    execute(ctx: SettingsMenuContext, itemId: string): Promise<void>;
+  }
+
   export interface ComposerActionProvider {
     /**
      * 返回按钮徽标。
@@ -1366,8 +1524,8 @@ declare module 'finch' {
 
   export interface ModalDialogResult {
     readonly action: string | 'dismissed';
-    /** 仅当 `ModalDialogOptions.fields` 被设置时才存在。 */
-    readonly values?: Readonly<Record<string, string | number | boolean>>;
+    /** 仅当 `ModalDialogOptions.fields` 被设置时才存在。`multiselect` 字段为 `string[]`。 */
+    readonly values?: Readonly<Record<string, string | number | boolean | string[]>>;
   }
 
   /**
@@ -1751,17 +1909,21 @@ declare module 'finch' {
   // ════════════════════════════════════════════════════════════════════════════
 
   /**
-   * 对 manifest `permissions.secrets` 中声明的密钥的只读访问。
+   * 对 manifest `permissions.secrets` 中声明的密钥进行加密、扩展隔离的访问。
    *
-   * 密钥由 Finch 安全存储（Keychain / Secret Service），插件只能读取，无法写入。
-   * 如需允许用户在 Finch 设置界面填写密钥，在 manifest 的 `permissions.secrets` 里声明 key 名。
+   * Finch 只在系统安全存储可用时读写；不会回退为明文。权限支持精确 key
+   * 或末尾 `.*` 前缀（如 `mcp.*`），不接受裸 `*`。
    *
    * @example
    * // package.json → finch.permissions.secrets: ["OPENAI_API_KEY"]
+   * await ctx.secrets.set('OPENAI_API_KEY', keyFromSecureForm);
    * const key = await ctx.secrets.get('OPENAI_API_KEY');
+   * await ctx.secrets.delete('OPENAI_API_KEY');
    */
   export interface Secrets {
     get(key: string): Promise<string | undefined>;
+    set(key: string, value: string): Promise<void>;
+    delete(key: string): Promise<void>;
   }
 
   /** OAuth 2.0 公共客户端配置，支持 Authorization Code + PKCE 与 Device Flow。 */
@@ -2059,8 +2221,10 @@ declare module 'finch' {
     /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
     /**
-     * 此容器唯一的可选设置菜单入口；运行时通过 ctx.sessionContainers.registerSettingsMenu() 填充。
-     * `inbox` 与 `assistant` 两种模式都支持，且共用同一套按钮渲染：
+     * @deprecated 旧版容器级设置菜单入口，只显示在该容器的会话页头部；运行时通过
+     * `ctx.sessionContainers.registerSettingsMenu()` 填充。新小工具请改用顶层
+     * `contributes.settingsMenu` + `ctx.settingsMenu.register()`，它会同时出现在
+     * 容器页头部和小工具箱里。
      * `icon` 遵循标准 IconRef（内置图标 id 或 `ext:<packId>/<iconId>` 自定义 SVG），
      * 省略时回退为 `sliders-horizontal`——注意这与容器自身 `icon` 的回退值 `bot` 不同。
      * `tooltip` 省略时回退为小工具名称。
@@ -2131,6 +2295,14 @@ declare module 'finch' {
       readonly tools?: boolean;
       /** 贡献的 Composer 工具栏按钮（静态声明）。 */
       readonly composerActions?: ComposerActionDeclaration[];
+      /**
+       * 小工具唯一的统一设置菜单入口（静态声明），运行时通过
+       * `ctx.settingsMenu.register()` 填充内容。声明后按钮会同时出现在该小工具的
+       * 会话容器页头部，以及小工具箱卡片（开关左侧）与详情页操作行。
+       * `icon` 省略时回退为 `sliders-horizontal`，`tooltip` 省略时回退为「设置」。
+       * 文案可在 `i18n/<locale>.json` 里用 `contributes.settingsMenu.tooltip` 覆盖。
+       */
+      readonly settingsMenu?: { readonly icon?: IconRef; readonly tooltip?: LocalizedString; };
       /**
        * 运行时图标包命名空间声明。实际 SVG 在代码里通过 `ctx.icons.register(packId, icons)` 注册。
        * @example
@@ -2240,6 +2412,12 @@ declare module 'finch' {
     readonly oauth?: string[];
     /** 是否允许创建并收发当前小工具自己拥有的 Session。 */
     readonly sessions?: boolean;
+    /**
+     * 是否允许代替用户应答自己 Session 里的等待（权限卡 / 提问卡 / 表单卡）。
+     * 独立于 `sessions`：读取等待只需 `sessions`，应答才需要本权限。
+     * destructive 权限卡可由程序拒绝以安全继续，但永远只能由真人批准。
+     */
+    readonly sessionInteractions?: boolean;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
