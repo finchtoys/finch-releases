@@ -128,9 +128,16 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   ): { response?: finch.SessionWaitResponse; error?: string } => {
     const value = cleanDelegatedAnswer(rawValue);
     if (wait.kind === 'permission') {
-      if (/^(允许|同意|allow|yes|y)$/i.test(value)) return { response: { kind: 'permission', allow: true } };
-      if (/^(拒绝|取消|deny|no|n)$/i.test(value)) return { response: { kind: 'permission', allow: false } };
-      return { error: '请回复“允许”或“拒绝”。' };
+      if (/^(允许|同意|allow|yes|y)(?:[，,：:\s].*)?$/i.test(value)) {
+        if (wait.destructive) {
+          return { error: '不可逆操作不能通过微信批准。可回复“拒绝”，让任务跳过危险操作并继续。' };
+        }
+        return { response: { kind: 'permission', allow: true } };
+      }
+      if (/^(拒绝|取消|deny|no|n)(?:[，,：:\s].*)?$/i.test(value)) return { response: { kind: 'permission', allow: false } };
+      return { error: wait.destructive
+        ? '此操作只能通过微信拒绝。请回复“拒绝”，让任务跳过危险操作并继续。'
+        : '请回复“允许”或“拒绝”。' };
     }
     if (wait.kind === 'question') {
       const answers: Record<string, string> = {};
@@ -170,7 +177,11 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const renderWait = (code: string, wait: finch.SessionWait): string | undefined => {
     if (wait.kind === 'permission') {
       if (wait.destructive) {
-        return `⚠️ Finch 正在等待不可逆操作确认：${wait.toolTitle ?? wait.toolName}\n此操作只能在 Finch 桌面端确认，无法通过微信代答。`;
+        return [
+          `⚠️ Finch 正在等待不可逆操作确认 #${code}`,
+          `操作：${wait.toolTitle ?? wait.toolName}`,
+          `微信只能拒绝，不能批准。回复“#${code} 拒绝”，任务会跳过危险操作并继续；如要批准，请回 Finch 桌面端处理。`,
+        ].join('\n');
       }
       return [
         `⏳ Finch 等待权限确认 #${code}`,
@@ -202,10 +213,6 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   };
 
   const relayWait = async (peerId: string, contextToken: string | undefined, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
-    if (event.wait.kind === 'permission' && event.wait.destructive) {
-      await media.sendText(peerId, contextToken, renderWait('', event.wait) ?? 'Finch 正在等待桌面端处理。');
-      return;
-    }
     if (event.wait.kind === 'form' && event.wait.form.fields.some((field) => field.secret || field.type === 'password')) {
       await media.sendText(peerId, contextToken, renderWait('', event.wait) ?? 'Finch 正在等待桌面端处理。');
       return;
@@ -246,57 +253,20 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       value = text.trim();
       if (!value) return true;
     }
-    let response: finch.SessionWaitResponse | undefined;
-
-    if (pending.kind === 'permission') {
-      if (/^(允许|同意|allow|yes|y)$/i.test(value)) response = { kind: 'permission', allow: true };
-      if (/^(拒绝|取消|deny|no|n)$/i.test(value)) response = { kind: 'permission', allow: false };
-      if (!response) {
-        await media.sendText(peerId, contextToken, `请回复“#${pending.code} 允许”或“#${pending.code} 拒绝”。`);
-        return true;
-      }
-    } else if (pending.kind === 'question') {
-      const headers = pending.questionHeaders ?? [];
-      const answers: Record<string, string> = {};
-      if (headers.length === 1) {
-        answers[headers[0]] = value;
-      } else {
-        for (const line of value.split(/\n|；|;/)) {
-          const item = line.trim().match(/^([^=：:]+)[=：:]\s*(.+)$/);
-          if (item && headers.includes(item[1].trim())) answers[item[1].trim()] = item[2].trim();
-        }
-        if (headers.some((header) => !answers[header])) {
-          await media.sendText(peerId, contextToken, `请逐行填写全部字段：${headers.map((header) => `${header}=回答`).join('；')}`);
-          return true;
-        }
-      }
-      response = { kind: 'question', answers };
-    } else {
-      if (/^(取消|cancel)$/i.test(value)) {
-        response = { kind: 'form', submitted: false };
-      } else {
-        const values: Record<string, string | number | boolean | string[]> = {};
-        const fields = pending.formFields ?? [];
-        for (const line of value.split(/\n|；|;/)) {
-          const item = line.trim().match(/^([^=：:]+)[=：:]\s*(.+)$/);
-          if (!item) continue;
-          const field = fields.find((candidate) => candidate.key === item[1].trim());
-          if (!field) continue;
-          const raw = item[2].trim();
-          if (field.type === 'number') values[field.key] = Number(raw);
-          else if (field.type === 'boolean') values[field.key] = /^(true|是|yes|y|1)$/i.test(raw);
-          else if (field.type === 'multiselect') values[field.key] = raw.split(/[，,]/).map((entry) => entry.trim()).filter(Boolean);
-          else values[field.key] = raw;
-        }
-        if (!Object.keys(values).length) {
-          await media.sendText(peerId, contextToken, `请按“字段=内容”格式回复 #${pending.code}。`);
-          return true;
-        }
-        response = { kind: 'form', submitted: true, values };
-      }
+    const wait = (await ctx.sessions.listWaits(pending.sessionId))
+      .find((candidate) => candidate.requestId === pending.requestId);
+    if (!wait) {
+      await removePendingWait(pending);
+      await media.sendText(peerId, contextToken, `ℹ️ #${pending.code} 已失效。`);
+      return true;
+    }
+    const parsed = responseForWait(wait, value);
+    if (!parsed.response) {
+      await media.sendText(peerId, contextToken, parsed.error ?? `无法解析 #${pending.code} 的回答。`);
+      return true;
     }
 
-    const result = await ctx.sessions.respondToWait(pending.sessionId, pending.requestId, response);
+    const result = await ctx.sessions.respondToWait(pending.sessionId, pending.requestId, parsed.response);
     if (result.state === 'accepted') {
       await removePendingWait(pending);
       await media.sendText(peerId, contextToken, `✅ 已提交 #${pending.code}。`);
