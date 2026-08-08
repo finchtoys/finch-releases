@@ -496,6 +496,7 @@ action:
         const session = await ctx.sessions.create({
           space: { spaceId },
           ...(title ? { title } : {}),
+          activity: 'background',
           permissionMode: 'acceptCalls',
         });
         const now = Date.now();
