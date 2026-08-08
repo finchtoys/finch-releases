@@ -5,8 +5,8 @@ import type * as finch from 'finch';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const CONTAINER_ID = 'wechat';
-/** 图标引用：平台自动补全 ext: 前缀的扩展 id，只需 ext:<iconId>。 */
-export const wechatIcon = (id: string): string => `ext:${id}`;
+/** 微信图标包：使用完整 pack 引用，避免菜单图标解析回退。 */
+export const wechatIcon = (id: string): string => `ext:wechat/${id}`;
 
 /** iLink 二维码请求固定入口（微信官方）。 */
 export const ILINK_BASE_URL = 'https://ilinkai.weixin.qq.com';

@@ -17,6 +17,12 @@ import { TaskManager } from './tasks';
 export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const state = createBotState();
 
+  const iconNames = ['wechat', 'activity', 'play', 'satellite-dish', 'unplug', 'log-out', 'qr-code', 'scan-qr-code'];
+  const icons = Object.fromEntries(await Promise.all(iconNames.map(async (id) => [id, {
+    svg: await readFile(new URL(`../icons/${id}.svg`, import.meta.url), 'utf8'),
+  }] as const)));
+  ctx.subscriptions.push(ctx.icons.register('wechat', icons));
+
   const toast = (title: string, description?: string, variant: finch.ToastVariant = 'info') => {
     void ctx.ui.showToast({ title, description, variant, position: 'TR' });
   };

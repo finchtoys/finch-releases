@@ -13,6 +13,9 @@
   ],
   "contributes": {
     "tools": true,
+    "iconPacks": [
+      { "id": "wechat", "label": "WeChat Icons" }
+    ],
     "icons": {
       "wechat": { "svg": "./icons/wechat.svg", "description": "WeChat icon (RiWechat2Line)" },
       "activity": { "svg": "./icons/activity.svg" },
