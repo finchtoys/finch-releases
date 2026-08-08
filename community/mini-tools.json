@@ -69,6 +69,19 @@
     "featured": false
   },
   {
+    "id": "codex-imagegen",
+    "version": "0.3.1",
+    "name": "Codex ImageGen",
+    "author": "emuio",
+    "description": "Generate, edit, and composite images in Finch through the locally installed, OAuth-authenticated Codex CLI and its built-in image_gen tool, with async jobs and up to five ordered reference images — no OPENAI_API_KEY required.",
+    "npm": "finch-codex-imagegen",
+    "repo": "npm:finch-codex-imagegen",
+    "extensionType": "community",
+    "categories": [
+      "creative"
+    ]
+  },
+  {
     "id": "ego-browser",
     "version": "0.1.4",
     "name": "Ego Browser",
