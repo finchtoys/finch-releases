@@ -16,6 +16,7 @@ import { TaskManager } from './tasks';
 
 export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const state = createBotState();
+  const appInfo = await ctx.app.getInfo();
 
   const iconNames = ['wechat', 'activity', 'play', 'satellite-dish', 'unplug', 'log-out', 'qr-code', 'scan-qr-code'];
   const icons = Object.fromEntries(await Promise.all(iconNames.map(async (id) => [id, {
@@ -28,13 +29,12 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   };
 
   const readConfig = (): BotConfig => ({
-    botAgent: (ctx.settings.get<string>('botAgent') ?? 'Finch/0.1').trim() || 'Finch/0.1',
     autoReply: ctx.settings.get<boolean>('autoReply') ?? true,
   });
 
   // ── 组装模块 ────────────────────────────────────────────────────────────────
 
-  const ilink = new IlinkClient(ctx, readConfig);
+  const ilink = new IlinkClient(ctx, appInfo.userAgent);
   const media = new MediaManager(ctx, ilink);
 
   // 前向声明：消息循环启动函数（auth 和 menu 都要调）
@@ -546,9 +546,8 @@ action:
   // 启动时若已登录，自动恢复接收。
   if (await ilink.isLoggedIn()) startMessageLoop();
 
-  const info = await ctx.app.getInfo();
   ctx.logger.info('WeChat Bot activated', {
-    app: info.versionDisplay,
+    app: appInfo.versionDisplay,
     loggedIn: await ilink.isLoggedIn(),
   });
 }

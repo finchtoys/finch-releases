@@ -19,10 +19,6 @@
   },
   "settings": {
     "fields": {
-      "botAgent": {
-        "label": "Bot 标识",
-        "description": "UA 风格的自报标识，仅用于微信后端日志归因。默认 Finch/0.1。"
-      },
       "autoReply": {
         "label": "自动回复",
         "description": "关闭后只接收消息进入 Session，不自动把回复发回微信。"

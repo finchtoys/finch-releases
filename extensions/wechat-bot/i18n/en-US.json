@@ -19,10 +19,6 @@
   },
   "settings": {
     "fields": {
-      "botAgent": {
-        "label": "Bot Agent",
-        "description": "UA-style self-declared identifier used only for backend log attribution."
-      },
       "autoReply": {
         "label": "Auto reply",
         "description": "When off, inbound messages still reach the Session but replies are not pushed back to WeChat."

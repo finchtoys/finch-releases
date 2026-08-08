@@ -52,14 +52,6 @@
   "settings": {
     "fields": [
       {
-        "key": "botAgent",
-        "type": "string",
-        "label": "Bot Agent",
-        "description": "UA-style self-declared identifier used only for backend log attribution.",
-        "placeholder": "Finch/0.1",
-        "default": "Finch/0.1"
-      },
-      {
         "key": "autoReply",
         "type": "boolean",
         "label": "Auto reply",

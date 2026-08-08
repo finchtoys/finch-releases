@@ -5,7 +5,7 @@ import {
 } from './types';
 import { randomWechatUin } from './utils';
 
-export type BotConfig = { botAgent: string; autoReply: boolean };
+export type BotConfig = { autoReply: boolean };
 
 /**
  * iLink HTTP 客户端：封装了鉴权 header、base_info 和通用 POST/GET。
@@ -14,7 +14,7 @@ export type BotConfig = { botAgent: string; autoReply: boolean };
 export class IlinkClient {
   constructor(
     private ctx: finch.MiniToolContext,
-    private readConfig: () => BotConfig,
+    private appUserAgent: string,
   ) {}
 
   async getToken(): Promise<string | undefined> {
@@ -33,7 +33,7 @@ export class IlinkClient {
   buildBaseInfo() {
     return {
       channel_version: ILINK_CHANNEL_VERSION,
-      bot_agent: this.readConfig().botAgent,
+      bot_agent: this.appUserAgent,
     };
   }
 
