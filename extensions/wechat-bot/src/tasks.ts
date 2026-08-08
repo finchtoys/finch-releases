@@ -28,12 +28,14 @@ export class TaskManager {
     }
   }
 
-  async list(): Promise<TaskRecord[]> {
+  async list(filter?: { spaceId?: string }): Promise<TaskRecord[]> {
     const index = (await this.ctx.storage.get<string[]>(TASK_INDEX_KEY)) ?? [];
     const out: TaskRecord[] = [];
     for (const id of index) {
       const t = await this.get(id);
-      if (t) out.push(t);
+      if (!t) continue;
+      if (filter?.spaceId && t.spaceId !== filter.spaceId) continue;
+      out.push(t);
     }
     return out.sort((a, b) => b.updatedAt - a.updatedAt);
   }
@@ -154,6 +156,22 @@ export class TaskManager {
       task.lastError ? `Error: ${task.lastError}` : '',
       task.lastOutput ? `Latest output:\n${task.lastOutput}` : '',
     ].filter(Boolean).join('\n');
+  }
+
+  /** One line per task, no output text — used for index listings so token cost stays flat. */
+  static formatTaskSummary(task: TaskRecord): string {
+    const ago = TaskManager.formatRelativeTime(task.updatedAt);
+    return `${task.title || 'Untitled task'} · ${task.status} · taskId: ${task.sessionId} · spaceId: ${task.spaceId} · updated ${ago}`;
+  }
+
+  private static formatRelativeTime(ts: number): string {
+    const diffMs = Date.now() - ts;
+    const minutes = Math.floor(diffMs / 60_000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   }
 
   /** 生成唯一 idempotencyKey 的辅助。 */

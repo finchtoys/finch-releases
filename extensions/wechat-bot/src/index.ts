@@ -713,17 +713,18 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 action:
   create — create a task in a Space (requires spaceId and message; title and notifyPeerId are optional)
   send   — send another message to an existing task (requires taskId and message)
-  status — inspect one task or list all tasks (taskId and waitMs are optional)`,
+  status — inspect one task, or list a compact one-line-per-task index (no output text) that can be
+           filtered by spaceId; pass taskId to drill into that task's full detail (including output/error)`,
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['create', 'send', 'status'], description: 'Task operation to perform.' },
-        spaceId: { type: 'string', description: 'create: target Space id.' },
-        taskId: { type: 'string', description: 'send/status: task id.' },
+        spaceId: { type: 'string', description: 'create: target Space id. status (without taskId): optional filter to only list tasks in this Space.' },
+        taskId: { type: 'string', description: 'send/status: task id. For status, provide this to get one task\'s full detail instead of the index.' },
         message: { type: 'string', description: 'create/send: message to send.' },
         title: { type: 'string', description: 'create: optional task title.' },
         notifyPeerId: { type: 'string', description: 'create: optional WeChat userId for result/wait notifications; defaults to the logged-in account.' },
-        waitMs: { type: 'number', minimum: 0, maximum: 600000, description: 'status: optional wait time; returns immediately by default.' },
+        waitMs: { type: 'number', minimum: 0, maximum: 600000, description: 'status with taskId: optional wait time; returns immediately by default.' },
       },
       required: ['action'],
     },
@@ -798,8 +799,15 @@ action:
           const task = waitMs > 0 ? await tasks.waitFor(stored, waitMs) : stored;
           return { content: [{ type: 'text', text: TaskManager.formatTask(task) }] };
         }
-        const allTasks = await tasks.list();
-        return { content: [{ type: 'text', text: allTasks.length ? allTasks.map(TaskManager.formatTask).join('\n\n') : 'There are no Space tasks.' }] };
+        // No taskId: return a compact index only (no output text), optionally
+        // scoped to one Space. Pass taskId in a follow-up call for full detail.
+        const scoped = await tasks.list(spaceId ? { spaceId } : undefined);
+        if (!scoped.length) {
+          return { content: [{ type: 'text', text: spaceId ? `There are no Space tasks in ${spaceId}.` : 'There are no Space tasks.' }] };
+        }
+        const header = spaceId ? `${scoped.length} task(s) in Space ${spaceId}:` : `${scoped.length} task(s) across all Spaces:`;
+        const lines = scoped.map(TaskManager.formatTaskSummary);
+        return { content: [{ type: 'text', text: [header, ...lines, '', 'Pass taskId for full detail, or spaceId to filter.'].join('\n') }] };
       }
 
       if (taskAction !== 'create') return { content: [{ type: 'text', text: 'action must be create, send, or status.' }], isError: true };
