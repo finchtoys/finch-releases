@@ -61,7 +61,8 @@
         "sensitive": "⚠️ {assistantName} 等待填写表单“{title}”。其中包含敏感字段，请在 {appName} 桌面端填写。"
       },
       "fallback": "{assistantName} 正在等待你处理。",
-      "multiplePending": "当前有多个待处理事项，请先在 {appName} 桌面端处理其中一个。",
+      "multiplePending": "当前有多个待处理事项，回复“#编号 内容”指定其中一个：",
+      "multiplePendingItem": "#{code}：{summary}",
       "accepted": "✅ 已提交。",
       "expired": "ℹ️ 此等待已失效。",
       "parseFailed": "无法识别这条回答，请按提示重试。",

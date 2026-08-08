@@ -219,6 +219,13 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     return `${waitText('form.title')}\n${wait.form.title}\n${details}\n${waitText('form.reply')}`;
   };
 
+  /** One-line summary used when listing several pending waits to choose from. */
+  const summarizeWait = (wait: finch.SessionWait): string => {
+    if (wait.kind === 'permission') return wait.toolTitle ?? wait.toolName;
+    if (wait.kind === 'question') return wait.questions[0]?.question ?? wait.questions[0]?.header ?? '';
+    return wait.form.title;
+  };
+
   const relayWait = async (peerId: string, contextToken: string | undefined, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
     if (event.wait.kind === 'form' && event.wait.form.fields.some((field) => field.secret || field.type === 'password')) {
       await media.sendText(peerId, contextToken, renderWait(event.wait) ?? waitText('fallback'));
@@ -257,7 +264,13 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       const candidates = await getLivePendingWaits(peerId);
       if (!candidates.length) return false;
       if (candidates.length > 1) {
-        await media.sendText(peerId, contextToken, waitText('multiplePending'));
+        const lines = await Promise.all(candidates.map(async (candidate) => {
+          const wait = (await ctx.sessions.listWaits(candidate.sessionId))
+            .find((entry) => entry.requestId === candidate.requestId);
+          const summary = wait ? summarizeWait(wait) : '';
+          return waitText('multiplePendingItem', { code: candidate.code, summary });
+        }));
+        await media.sendText(peerId, contextToken, `${waitText('multiplePending')}\n${lines.join('\n')}`);
         return true;
       }
       pending = candidates[0];
@@ -357,6 +370,25 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         const target = await ctx.storage.get<{ peerId: string; contextToken?: string }>(`${SESSION_MAP_PREFIX}${event.sessionId}`);
         if (target?.peerId) {
           await relayWait(target.peerId, target.contextToken, event).catch((error) => ctx.logger.error('relay session wait failed', error));
+        }
+        return;
+      }
+
+      if (event.type === 'turn.wait_resolved') {
+        const task = await tasks.get(event.sessionId);
+        await tasks.handleEvent(event);
+        const peerId = task?.notifyPeerId
+          ?? (await ctx.storage.get<{ peerId: string }>(`${SESSION_MAP_PREFIX}${event.sessionId}`))?.peerId;
+        if (peerId) {
+          // 已在其他渠道（桌面端/超时）结算，立即清理映射，避免误判为多个待处理事项。
+          const codes = (await ctx.storage.get<string[]>(waitIndexKey(peerId))) ?? [];
+          for (const code of codes) {
+            const pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${code}`);
+            if (pending?.sessionId === event.sessionId && pending.requestId === event.requestId) {
+              await removePendingWait(pending);
+              break;
+            }
+          }
         }
         return;
       }

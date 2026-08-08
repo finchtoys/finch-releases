@@ -61,7 +61,8 @@
         "sensitive": "⚠️ {assistantName} is waiting for the “{title}” form. It contains sensitive fields; complete it in the {appName} desktop app."
       },
       "fallback": "{assistantName} is waiting for you.",
-      "multiplePending": "Several items need attention. Handle one in the {appName} desktop app first.",
+      "multiplePending": "Several items need attention. Reply “#code your answer” to pick one:",
+      "multiplePendingItem": "#{code}: {summary}",
       "accepted": "✅ Submitted.",
       "expired": "ℹ️ This request has expired.",
       "parseFailed": "That answer was not recognized. Please follow the prompt and try again.",
