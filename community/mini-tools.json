@@ -82,6 +82,19 @@
     ]
   },
   {
+    "id": "cross-session",
+    "version": "0.4.1",
+    "name": "Cross-session Messaging",
+    "author": "JoeHe",
+    "description": "Route delegated tasks between Finch Spaces through mini-tool-managed Agent Sessions.",
+    "repo": "joehe71/cross-session",
+    "npm": "@joehe71/cross-session",
+    "extensionType": "community",
+    "categories": [
+      "developer"
+    ]
+  },
+  {
     "id": "ego-browser",
     "version": "0.1.4",
     "name": "Ego Browser",
