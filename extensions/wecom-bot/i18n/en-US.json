@@ -1,0 +1,84 @@
+{
+  "name": "WeCom Bot",
+  "description": "Connect a WeCom (企业微信) intelligent bot to Finch through the official long-connection API. DM & group @chat, retained inbox history, wait-card relaying, proactive messaging, and Space task dispatch.",
+  "sessionContainers": {
+    "wecom": {
+      "title": "WeCom Inbox",
+      "description": "WeCom conversations handled by Finch",
+      "settingsMenu": {
+        "tooltip": "Manage WeCom connection"
+      }
+    }
+  },
+  "agentProfiles": {
+    "wecom-assistant": {
+      "name": "WeCom Message Steward",
+      "description": "A concise steward for WeCom messages in a workplace context",
+      "prompt": "You are the user's WeCom message steward. Handle messages received through WeCom (企业微信) and keep replies conversational, concise, and mobile-friendly. This is a workplace channel: address the sender naturally, prefer one or two short sentences or brief paragraphs, and avoid large Markdown tables and long code blocks. In group chats, multiple colleagues share the same conversation; when needed, mention who you are answering. Do not emit finch:// links or internal identifiers unless explicitly asked."
+    }
+  },
+  "settings": {
+    "fields": {
+      "botId": {
+        "label": "Bot ID",
+        "description": "WeCom intelligent bot ID (Admin Console → 管理工具 → 智能机器人 → API mode)."
+      },
+      "secret": {
+        "label": "Bot Secret",
+        "description": "WeCom intelligent bot long-connection Secret (stored locally only)."
+      },
+      "botName": {
+        "label": "Bot Name",
+        "description": "Optional. The bot display name in WeCom, used to strip the @mention prefix in group chats."
+      },
+      "autoReply": {
+        "label": "Auto reply",
+        "description": "When off, inbound messages still reach the Session but replies are not pushed back to WeCom."
+      }
+    }
+  },
+  "runtime": {
+    "wait": {
+      "operation": "Operation: {operation}",
+      "fieldLabel": "[{field}]",
+      "fieldOptions": ": {options}",
+      "optionDescription": ": {description}",
+      "optionLabel": " ({label})",
+      "separator": {
+        "items": "; ",
+        "options": ", "
+      },
+      "permission": {
+        "title": "⏳ {assistantName} needs permission",
+        "reply": "Reply “allow” or “deny”.",
+        "invalidReply": "Please reply “allow” or “deny”."
+      },
+      "destructive": {
+        "title": "⚠️ {assistantName} requests an irreversible action",
+        "reply": "WeCom can only deny. Reply “deny” to skip and continue; approve in the {appName} desktop app.",
+        "approveBlocked": "Irreversible actions cannot be approved from WeCom. Reply “deny” to skip and continue.",
+        "invalidReply": "This action can only be denied from WeCom. Reply “deny”."
+      },
+      "question": {
+        "title": "💬 {assistantName} is waiting for your answer",
+        "singleReply": "Reply directly with your answer.",
+        "multiReply": "Reply with one “field=answer” per line.",
+        "answerPlaceholder": "answer",
+        "missingFields": "Please fill in all fields, one per line: {fields}"
+      },
+      "form": {
+        "title": "📝 {assistantName} is waiting for a form",
+        "reply": "Reply with one “field=content” per line, or “cancel”.",
+        "invalidReply": "Please reply in “field=content” format.",
+        "sensitive": "⚠️ {assistantName} is waiting for form “{title}”, which contains sensitive fields. Please fill it in the {appName} desktop app."
+      },
+      "fallback": "{assistantName} is waiting for you.",
+      "multiplePending": "There are multiple pending items; reply “#code content” to pick one:",
+      "multiplePendingItem": "#{code}: {summary}",
+      "accepted": "✅ Submitted.",
+      "expired": "ℹ️ This wait is no longer valid.",
+      "parseFailed": "Could not parse this reply. Please retry as prompted.",
+      "forbidden": "⚠️ Irreversible actions cannot be approved from WeCom. Please handle it in the {appName} desktop app."
+    }
+  }
+}

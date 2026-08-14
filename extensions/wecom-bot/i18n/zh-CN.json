@@ -1,0 +1,84 @@
+{
+  "name": "企微 Bot",
+  "description": "通过官方长连接接入企业微信智能机器人，在企微里与 Finch 对话。支持单聊与群聊 @、历史会话收件箱、等待卡片应答、主动推送与 Space 任务派发。",
+  "sessionContainers": {
+    "wecom": {
+      "title": "企微收件箱",
+      "description": "由 Finch 处理的企业微信对话",
+      "settingsMenu": {
+        "tooltip": "管理企微连接"
+      }
+    }
+  },
+  "agentProfiles": {
+    "wecom-assistant": {
+      "name": "企微消息管家",
+      "description": "负责处理企微消息的简洁管家",
+      "prompt": "你是用户的企微消息管家，负责处理通过企业微信收到的消息。这是职场渠道：回复自然、简短、适配手机阅读，优先一两句话或短段落，避免大段 Markdown 表格和超长代码块。群聊里多位同事共享同一会话，需要时可点明你在回复谁。除非用户明确要求，否则不要输出 finch:// 链接或内部标识。"
+    }
+  },
+  "settings": {
+    "fields": {
+      "botId": {
+        "label": "Bot ID",
+        "description": "企微智能机器人 ID（管理后台 → 管理工具 → 智能机器人 → API 模式）。"
+      },
+      "secret": {
+        "label": "Bot Secret",
+        "description": "企微智能机器人长连接密钥（仅保存在本地）。"
+      },
+      "botName": {
+        "label": "机器人名称",
+        "description": "可选。企微中的机器人显示名，用于群聊时剥离 @机器人 前缀。"
+      },
+      "autoReply": {
+        "label": "自动回复",
+        "description": "关闭后只接收消息进入 Session，不自动把回复发回企微。"
+      }
+    }
+  },
+  "runtime": {
+    "wait": {
+      "operation": "操作：{operation}",
+      "fieldLabel": "【{field}】",
+      "fieldOptions": "：{options}",
+      "optionDescription": "：{description}",
+      "optionLabel": "（{label}）",
+      "separator": {
+        "items": "；",
+        "options": "、"
+      },
+      "permission": {
+        "title": "⏳ {assistantName} 需要权限",
+        "reply": "回复“允许”或“拒绝”。",
+        "invalidReply": "请回复“允许”或“拒绝”。"
+      },
+      "destructive": {
+        "title": "⚠️ {assistantName} 请求执行不可逆操作",
+        "reply": "企微仅支持拒绝。回复“拒绝”可跳过并继续；批准请在 {appName} 桌面端处理。",
+        "approveBlocked": "不可逆操作不能通过企微批准。回复“拒绝”可跳过并继续。",
+        "invalidReply": "此操作只能通过企微拒绝。请回复“拒绝”。"
+      },
+      "question": {
+        "title": "💬 {assistantName} 等待你的回答",
+        "singleReply": "直接回复你的回答。",
+        "multiReply": "逐行回复“字段=回答”。",
+        "answerPlaceholder": "回答",
+        "missingFields": "请逐行填写全部字段：{fields}"
+      },
+      "form": {
+        "title": "📝 {assistantName} 等待填写表单",
+        "reply": "逐行回复“字段=内容”，或回复“取消”。",
+        "invalidReply": "请按“字段=内容”格式回复。",
+        "sensitive": "⚠️ {assistantName} 等待填写表单“{title}”。其中包含敏感字段，请在 {appName} 桌面端填写。"
+      },
+      "fallback": "{assistantName} 正在等待你处理。",
+      "multiplePending": "当前有多个待处理事项，回复“#编号 内容”指定其中一个：",
+      "multiplePendingItem": "#{code}：{summary}",
+      "accepted": "✅ 已提交。",
+      "expired": "ℹ️ 此等待已失效。",
+      "parseFailed": "无法识别这条回答，请按提示重试。",
+      "forbidden": "⚠️ 无法通过企微批准不可逆操作，请在 {appName} 桌面端处理。"
+    }
+  }
+}

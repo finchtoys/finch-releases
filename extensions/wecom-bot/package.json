@@ -1,0 +1,41 @@
+{
+  "name": "finch-wecom-bot",
+  "version": "0.1.0",
+  "description": "Connect WeCom (企业微信) intelligent bot to Finch through the official aibot-node-sdk long-connection, with inbox sessions, streaming-ready replies, proactive messaging, and Space tasks.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/wecom-bot"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=es2022 --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist/index.js",
+    "test": "node scripts/smoke.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build && npm test"
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "0.2.11",
+    "@types/node": "^26.1.1",
+    "esbuild": "0.28.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@wecom/aibot-node-sdk": "^1.0.7"
+  },
+  "files": [
+    "dist/",
+    "finch.json",
+    "i18n/",
+    "icons/",
+    "icon.png",
+    "README.md"
+  ]
+}
