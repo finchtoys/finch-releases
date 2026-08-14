@@ -1,107 +1,55 @@
-import type * as finch from 'finch';
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 常量
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 会话容器 id。 */
 export const CONTAINER_ID = 'wecom';
-/** 企微图标包：使用完整 pack 引用，避免菜单图标解析回退。 */
-export const wecomIcon = (id: string): string => `ext:wecom/${id}`;
 
-/** 单聊 / 群聊的会话类型（企微协议值）。 */
-export type WeComChatType = 'single' | 'group';
+/** 凭证在 Finch 系统安全存储（ctx.secrets）中的键。 */
+export const BOT_ID_SECRET = 'wecom.botId';
+export const BOT_SECRET_SECRET = 'wecom.secret';
 
-// 存储键（对齐 wechat-bot 的前缀风格，独立命名空间避免冲突）
-export const KEY_ACTIVE_SESSION = 'wecom:activeSessionId';
-export const SESSION_MAP_PREFIX = 'wecom:session:';
-export const TURN_MAP_PREFIX = 'wecom:turn:';
-export const TASK_PREFIX = 'wecom:task:';
-export const TASK_INDEX_KEY = 'wecom:tasks:index';
-export const WAIT_PREFIX = 'wecom:wait:';
-export const WAIT_INDEX_PREFIX = 'wecom:wait-index:';
-export const MSG_DEDUP_PREFIX = 'wecom:msg:';
+// 存储键前缀
+export const SESSION_PREFIX = 'session:';          // session:<base64url(peerKey)> → sessionId
+export const PEER_PREFIX = 'peer:';                // peer:<sessionId> → WeComPeer；peer:known:<base64url(peerKey)> → WeComPeer
+export const TURN_PREFIX = 'turn:';                // turn:<turnId> → { peer, streamId }（进程重启后回退为主动推送）
+export const SEEN_INDEX_KEY = 'seen:index';        // 去重索引（FIFO）
+export const SEEN_PREFIX = 'seen:';                // seen:<base64url(msgid)> → true
+export const MAX_SEEN_MESSAGES = 500;
 
-/** 等待卡片 #code 短码长度（字节）。 */
-export const WAIT_CODE_BYTES = 3;
-/** 入站 msgid 去重窗口（毫秒），企微可能因网络原因重复回调。 */
-export const MSG_DEDUP_WINDOW_MS = 10 * 60 * 1000;
+// 提示文案
+export const PROCESSING_TEXT = '正在处理，请稍候…';
+export const BUSY_TEXT = '当前消息较多，请稍后再试。';
+export const WELCOME_TEXT = '你好，我是 Finch 企业微信助手。直接发送消息即可开始。';
 
-/** 连接重试退避（与 wechat-bot 对齐）。 */
-export const RECONNECT_BACKOFF_MS = [1_000, 3_000, 6_000, 10_000, 15_000];
+/** 企微单条回复内容上限（字节）；超过则截断。 */
+export const MAX_REPLY_BYTES = 20_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 消息 / 会话映射类型
+// 类型
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 会话映射：一个企微 peer（单聊 userid 或群聊 chatid）对应一个 Finch Session。 */
-export interface WeComPeerRecord {
-  /** 单聊：发送者 userid；群聊：chatid。 */
-  peerKey: string;
-  /** 会话类型。 */
-  kind: WeComChatType;
-  /** 群聊时区分发言人；单聊时等于 peerKey。 */
+/** 一个企微对端：单聊成员或群聊。 */
+export interface WeComPeer {
+  /** 规范 key：`single:<userid>` 或 `group:<chatid>`。 */
+  key: string;
+  /** 会话目标：单聊为 userid，群聊为 chatid。 */
+  chatId: string;
+  chatType: 'single' | 'group';
+  /** 最近一次消息发送者 userid。 */
   userId: string;
 }
 
-/** 群聊入站消息需要携带发言人来区隔上下文。 */
-export interface WeComInbound {
-  /** 企微消息唯一 id（排重）。 */
-  msgid: string;
-  /** 会话类型。 */
-  chattype: WeComChatType;
-  /** 群聊 id（仅群聊）。 */
-  chatid?: string;
-  /** 发送者 userid。 */
-  userid: string;
-  /** 文本内容（text / mixed.text / voice 转文本拼接）。 */
-  text: string;
-  /** 媒体附件（图片/文件/视频，已下载解密为 base64）。 */
-  attachments: finch.SessionMessageAttachment[];
-  /** 原始消息体（用于 reply 透传 req_id 等）。 */
-  raw: unknown;
-}
-
-/** 等待状态中继记录（对齐 wechat-bot 的 PendingWaitRecord）。 */
-export interface PendingWaitRecord {
-  code: string;
-  peerKey: string;
-  sessionId: string;
-  requestId: string;
-  kind: 'permission' | 'question' | 'form';
-  questionHeaders?: string[];
-  formFields?: { key: string; type: string }[];
-}
-
-/** 派发到 Space 的任务会话记录（对齐 wechat-bot 的 TaskRecord）。 */
-export interface TaskRecord {
-  sessionId: string;
-  spaceId: string;
-  title?: string;
-  notifyPeerKey?: string;
-  notifyKind?: WeComChatType;
-  status: 'running' | 'waiting' | 'completed' | 'failed';
-  lastTurnId?: string;
-  lastOutput?: string;
-  lastError?: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-/** 共享运行时状态。 */
-export interface BotState {
+/** 桥接运行时状态（设置菜单展示用）。 */
+export interface WeComRuntimeState {
+  client: unknown;
   connecting: boolean;
-  connected: boolean;
+  authenticated: boolean;
   lastError: string | undefined;
-  deliveredCount: number;
-  settingsMenu: (finch.Disposable & { notifyUpdate(): void }) | undefined;
+  receivedCount: number;
+  menu: (DisposableLike & { notifyUpdate(): void }) | undefined;
 }
 
-export function createBotState(): BotState {
-  return {
-    connecting: false,
-    connected: false,
-    lastError: undefined,
-    deliveredCount: 0,
-    settingsMenu: undefined,
-  };
+export interface DisposableLike {
+  dispose(): void;
 }

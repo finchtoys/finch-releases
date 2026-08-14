@@ -1,0 +1,7 @@
+{
+  "$comment": "finch-wecom-bot 配置示例。实际配置在 Finch 扩展设置面板中填写（或按 Finch mini tool 设置规范注入），无需手工编辑此文件。",
+  "botId": "AIBOTID_xxxxxxxxxxxxxxxx",
+  "secret": "your-long-connection-secret-from-wecom-admin",
+  "botName": "Finch",
+  "autoReply": true
+}

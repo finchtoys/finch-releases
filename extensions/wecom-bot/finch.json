@@ -1,30 +1,23 @@
 {
   "manifestVersion": 1,
-  "id": "finch-wecom-bot",
-  "name": "WeCom Bot",
-  "description": "Connect one WeCom (企业微信) intelligent bot to Finch through the official long-connection API. Supports DM & group chat (@bot), inbox sessions, wait-card relaying, proactive messaging, and Space task dispatch.",
+  "id": "finch-wecom-box",
+  "name": "WeCom Box",
+  "description": "Connect a WeCom intelligent bot to Finch through the official WebSocket long connection.",
   "main": "dist/index.js",
-  "activationEvents": [
-    "onStartup"
-  ],
+  "activationEvents": ["onStartup"],
   "miniToolType": "official",
-  "categories": [
-    "productivity"
-  ],
+  "categories": ["productivity"],
   "contributes": {
     "tools": true,
     "iconPacks": [
-      { "id": "wecom", "label": "WeCom Icons" }
+      { "id": "wecom-box", "label": "WeCom Box Icons" }
     ],
     "icons": {
-      "wecom": { "svg": "./icons/wecom.svg", "description": "WeCom icon" },
-      "activity": { "svg": "./icons/activity.svg" },
-      "play": { "svg": "./icons/play.svg" },
-      "satellite-dish": { "svg": "./icons/satellite-dish.svg" },
-      "unplug": { "svg": "./icons/unplug.svg" },
-      "log-out": { "svg": "./icons/log-out.svg" },
-      "plug": { "svg": "./icons/plug.svg" },
-      "settings": { "svg": "./icons/settings.svg" }
+      "wecom": { "svg": "./icons/wecom.svg", "description": "WeCom icon" }
+    },
+    "settingsMenu": {
+      "icon": "settings",
+      "tooltip": "Manage WeCom connection"
     },
     "sessionContainers": [
       {
@@ -33,10 +26,6 @@
         "title": "WeCom Inbox",
         "description": "WeCom conversations handled by Finch",
         "agentProfile": "wecom-assistant",
-        "settingsMenu": {
-          "icon": "ext:settings",
-          "tooltip": "Manage WeCom connection"
-        },
         "mode": "inbox"
       }
     ],
@@ -44,39 +33,25 @@
       {
         "id": "wecom-assistant",
         "name": "WeCom Message Steward",
-        "description": "A concise steward for handling WeCom messages in a workplace context",
-        "prompt": "You are the user's WeCom message steward. Handle messages received through WeCom (企业微信) and keep replies conversational, concise, and mobile-friendly. This is a workplace channel: address the sender naturally, prefer one or two short sentences or brief paragraphs, and avoid large Markdown tables and long code blocks. In group chats, multiple colleagues share the same conversation; when needed, mention who you are answering. Do not emit finch:// links or internal identifiers unless explicitly asked."
+        "description": "A concise steward for enterprise conversations",
+        "prompt": "Handle messages received through WeCom. Keep replies concise, professional, conversational, and mobile-friendly. Avoid large Markdown tables and long code blocks unless explicitly requested. Never expose Finch internal identifiers unless the user asks for them."
       }
     ]
   },
   "settings": {
     "fields": [
       {
-        "key": "botId",
-        "type": "string",
-        "label": "Bot ID",
-        "description": "WeCom intelligent bot ID (企业管理后台 → 管理工具 → 智能机器人 → API 模式 → Bot ID).",
-        "default": ""
-      },
-      {
-        "key": "secret",
-        "type": "string",
-        "label": "Bot Secret",
-        "description": "WeCom intelligent bot long-connection Secret (keep private; stored locally only).",
-        "default": ""
-      },
-      {
         "key": "botName",
-        "type": "string",
-        "label": "Bot Name",
-        "description": "Optional. The bot display name in WeCom, used to strip the @mention prefix in group chats (e.g. Finch).",
+        "type": "text",
+        "label": "Bot name",
+        "description": "Optional WeCom display name used to strip the @mention prefix in group chats.",
         "default": ""
       },
       {
         "key": "autoReply",
         "type": "boolean",
         "label": "Auto reply",
-        "description": "When off, inbound messages still reach the Session but replies are not pushed back to WeCom.",
+        "description": "Push Finch replies back to WeCom automatically.",
         "default": true
       }
     ]
@@ -85,6 +60,7 @@
     "network": true,
     "sessions": true,
     "sessionInteractions": true,
-    "filesystem": "read"
+    "filesystem": "read",
+    "secrets": ["wecom.botId", "wecom.secret"]
   }
 }

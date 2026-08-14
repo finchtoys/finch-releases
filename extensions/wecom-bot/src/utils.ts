@@ -1,83 +1,95 @@
-import type * as finch from 'finch';
+import type { WsFrame } from '@wecom/aibot-node-sdk';
+import type { WeComPeer } from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 通用工具函数
+// 通用工具函数（对齐 WeCom Box 更新版实现）
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 可取消的 sleep：每 250ms 检查一次取消标志。 */
-export function sleep(ms: number, cancelled: () => boolean): Promise<void> {
-  return new Promise((resolve) => {
-    const step = 250;
-    let elapsed = 0;
-    const tick = () => {
-      if (cancelled() || elapsed >= ms) {
-        resolve();
-        return;
-      }
-      elapsed += step;
-      setTimeout(tick, Math.min(step, ms - elapsed));
-    };
-    setTimeout(tick, Math.min(step, ms));
-  });
-}
-
-/** n 字节的随机十六进制串。 */
-export const randomHex = (bytes: number): string =>
-  Array.from({ length: bytes }, () =>
-    Math.floor(Math.random() * 256).toString(16).padStart(2, '0'),
-  ).join('');
-
-/** 从文件名猜 MIME。 */
-export const guessMime = (name: string): string => {
-  const ext = name.toLowerCase().split('.').pop() ?? '';
-  const map: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp',
-    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', json: 'application/json',
-    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    zip: 'application/zip', mp4: 'video/mp4', mp3: 'audio/mpeg', wav: 'audio/wav',
-  };
-  return map[ext] ?? 'application/octet-stream';
-};
-
-export const attachmentKindFor = (mime: string): finch.SessionMessageAttachmentKind =>
-  mime.startsWith('image/') ? 'image' : mime === 'application/pdf' ? 'pdf' : mime.startsWith('text/') ? 'text' : 'file';
-
-/** 正则转义（用于按机器人名精确匹配 @前缀）。 */
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * 剥离群聊消息开头的 @机器人 前缀。
- *
- * - 提供 botName 时按 `@名字` 字面量前缀精确剥离（兼容有/无空格场景，
- *   如 "@Finch 帮我" 与 "@Finch帮我"）；剥离后为空（纯 @ 消息）时保留原文。
- * - 未提供 botName 时做保守的通用剥离：只剥第一个 token，
- *   且要求 token 后是空格/标点/结尾（防止吞掉正文）。
+ * - 提供 botName 时按 `@名字` 字面量前缀精确剥离（兼容有/无空格）；
+ *   剥离后为空（纯 @ 消息）时保留原文。
+ * - 未提供时做保守的通用剥离：token 后需是空格/标点/结尾；剥离后为空则保留原文。
  */
 export function stripBotMention(text: string, botName?: string): string {
-  let t = text.trim();
-  if (!t.startsWith('@')) return t;
-  if (botName) {
-    const exact = new RegExp(`^@${escapeRegExp(botName)}`);
-    const exactMatch = t.match(exact);
-    if (exactMatch) {
-      const rest = t.slice(exactMatch[0].length).trim();
-      return rest || t;
+  const value = text.trim();
+  if (!value.startsWith('@')) return value;
+  const name = botName?.trim();
+  if (name) {
+    const match = value.match(new RegExp(`^@${escapeRegExp(name)}`));
+    if (match) {
+      const rest = value.slice(match[0].length).trim();
+      return rest || value;
     }
   }
-  const mentionRe = /^@([^\s@，,。:：]{1,32})(?=[\s，,。:：]|$)/;
-  const match = t.match(mentionRe);
-  if (!match) return t;
-  return t.slice(match[0].length).trim();
+  const generic = value.match(/^@([^\s@，,。:：]{1,32})(?=[\s，,。:：]|$)/);
+  if (!generic) return value;
+  return value.slice(generic[0].length).trim() || value;
 }
 
-/** 把会话标题里的冒号等不友好字符清理掉。 */
-export function sanitizeTitle(label: string): string {
-  return label.replace(/[\\/:*?"<>|]/g, '-').slice(0, 40);
+/** 根据文件名推断企微媒体类型（file/image/voice/video）。 */
+export function mediaTypeFor(fileName: string): 'file' | 'image' | 'voice' | 'video' {
+  const ext = fileName.toLowerCase().split('.').pop() ?? '';
+  if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return 'image';
+  if (ext === 'mp4') return 'video';
+  if (ext === 'amr') return 'voice';
+  return 'file';
 }
 
-/** 生成唯一 idempotencyKey 的辅助。 */
-export function idempotencyKey(prefix: string): string {
-  return `${prefix}:${Date.now()}-${randomHex(4)}`;
+/** 存储键安全编码（base64url）。 */
+export function safeKey(value: string): string {
+  return Buffer.from(value).toString('base64url');
+}
+
+/** 从企微消息帧解析对端；无法解析（缺 userid / 群聊缺 chatid）时返回 undefined。 */
+export function peerFromMessage(message: WsFrame['body'] & { from?: { userid?: string } }): WeComPeer | undefined {
+  const userId = message?.from?.userid?.trim();
+  if (!userId) return undefined;
+  if (message.chattype === 'group') {
+    const chatId = message.chatid?.trim();
+    if (!chatId) return undefined;
+    return { key: `group:${chatId}`, chatId, chatType: 'group', userId };
+  }
+  return { key: `single:${userId}`, chatId: userId, chatType: 'single', userId };
+}
+
+/** 按媒体 kind 与文件名推断 MIME。 */
+export function mimeFor(kind: 'image' | 'video' | 'voice' | 'file', fileName?: string): string {
+  const ext = (fileName ?? '').toLowerCase().split('.').pop();
+  if (kind === 'image') {
+    if (ext === 'png') return 'image/png';
+    if (ext === 'gif') return 'image/gif';
+    if (ext === 'webp') return 'image/webp';
+    return 'image/jpeg';
+  }
+  if (kind === 'video') return 'video/mp4';
+  if (kind === 'voice') return 'audio/amr';
+  if (ext === 'pdf') return 'application/pdf';
+  if (ext === 'txt' || ext === 'md') return 'text/plain';
+  return 'application/octet-stream';
+}
+
+/** MIME → Finch 附件 kind。 */
+export function attachmentKind(mimeType: string): 'image' | 'pdf' | 'text' | 'file' {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType.startsWith('text/')) return 'text';
+  return 'file';
+}
+
+/** 超长内容按 UTF-8 字节截断（企微单条回复上限），并附加截断标记。 */
+export function truncateUtf8(text: string, maxBytes = 20_000): string {
+  if (Buffer.byteLength(text) <= maxBytes) return text;
+  let out = text;
+  while (out && Buffer.byteLength(`${out}\n\n（内容已截断）`) > maxBytes) {
+    out = out.slice(0, Math.floor(out.length * 0.9));
+  }
+  return `${out}\n\n（内容已截断）`;
+}
+
+/** 错误归一化为字符串。 */
+export function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
