@@ -136,12 +136,13 @@ For compatibility, when a mini tool has exactly one legacy container menu and no
 
 ---
 
-## 2. Container vs Space placement
+## 2. Container vs Space vs plain chat placement
 
 When you create a Session you choose where it lives:
 
-- **Container placement** (default for mini tools): the Session appears inside your mini tool's own container. Use `containerId` matching one of your declared `sessionContainers`.
-- **Space placement**: the Session appears in a normal Space conversation list, as if the user created it, but it is still owned by your mini tool. Use `space: { spaceId: '...' }` and omit `containerId`.
+- **Container placement**: the Session appears inside your mini tool's own container. Use `containerId` matching one of your declared `sessionContainers`.
+- **Space placement**: the Session appears in a normal Space conversation list, as if the user created it, but it is still owned by your mini tool. Use `space: { spaceId: '...' }` and omit `containerId`. Call `ctx.spaces.list()` first to discover available Space ids/names (see §2.1) — do not guess Space ids.
+- **Plain chat placement** (default when you pass neither): omit both `containerId` and `space`. The Session appears in the normal chat list with no container and no Space, using the global default cwd/model — exactly like a user-created "New Chat" — while remaining owned by your mini tool.
 
 ```ts
 // Inside the mini tool's own container
@@ -149,9 +150,28 @@ const s1 = await ctx.sessions.create({ containerId: 'inbox' });
 
 // Inside a normal Space, owned by this mini tool
 const s2 = await ctx.sessions.create({ space: { spaceId: 'space-123' } });
+
+// Plain conversation, no container and no Space
+const s3 = await ctx.sessions.create({ title: 'Quick note' });
 ```
 
 You cannot mix `containerId` and `space` in the same `create()` call.
+
+### 2.1 Discovering Spaces with `ctx.spaces.list()`
+
+`ctx.spaces` is a read-only Space directory gated by the same `permissions.sessions` as `ctx.sessions`. Use it to resolve a `spaceId`/name ahead of a Space-placed `create()` call, without needing to already be running inside that Space:
+
+```ts
+const spaces = await ctx.spaces.list();
+// [{ id: 'space-123', name: 'Marketing', alias: 'mkt', directoryPath: '/Users/me/marketing' }, ...]
+
+const target = spaces.find((s) => s.name === 'Marketing');
+if (target) {
+  await ctx.sessions.create({ space: { spaceId: target.id } });
+}
+```
+
+The same data is available to a static `appPanel` page (no backend tool call needed) via the JS Bridge: `await window.finch.spaces.list()`.
 
 ---
 
@@ -177,7 +197,7 @@ console.log(session.sessionId);
 
 | Option | Type | Notes |
 |---|---|---|
-| `containerId` | `string` | Required for container placement. Must match a declared `sessionContainers` id. |
+| `containerId` | `string` | Required for container placement. Must match a declared `sessionContainers` id. Mutually exclusive with `space`. Omit both `containerId` and `space` for plain chat placement. |
 | `space` | `{ spaceId: string }` | Required for Space placement. Mutually exclusive with `containerId`. |
 | `title` | `string` | Optional initial title. |
 | `profileId` | `string` | **Deprecated and ignored.** The Agent profile comes from the container's `agentProfile` declaration and is applied automatically. Passing it never fails session creation — Finch logs a deprecation warning and ignores the value. Declare the profile on the container instead. |
@@ -479,7 +499,8 @@ When the queue is full, `send()` returns a `rejected` receipt with `retryAfterMs
 - Keep `initialMessage` short. Large first messages count against the same text and attachment limits as `send()`.
 - Do not poll `listEvents()` in a tight loop. Use `onDidReceiveEvent()` for live updates, `waitForTurn()` when one operation needs one exact terminal result, and `listEvents()` only for history/recovery.
 - Use `agentProfiles` for fixed personas instead of trying to pass arbitrary system prompts at runtime, and bind them on the container via `sessionContainers[].agentProfile` rather than per `create()` call. Declaring a profile without pointing a container at it means no Session ever uses it. Profile prompts are supplements, not overrides.
-- If you need a Space-placed Session, ask the user for the Space or obtain it from a tool call's `spaceId`; do not guess Space ids.
+- If you need a Space-placed Session, resolve `spaceId` with `ctx.spaces.list()` (or obtain it from a tool call's `spaceId`); do not guess Space ids.
+- Prefer plain chat placement (omit both `containerId` and `space`) for one-off conversations that do not need to live inside your own container or a specific Space.
 
 ---
 

@@ -28,6 +28,9 @@ Declare the server in `finch.json` to register presentation metadata. The `name`
   "requires": {
     "capabilities": ["mcp.client"]
   },
+  "permissions": {
+    "secrets": ["my-server.api-key"]
+  },
   "contributes": {
     "mcpServers": [
       {
@@ -77,15 +80,17 @@ For servers that need no user-supplied credentials, you can include transport di
 Call `mcp.client#registerServer()` in `activate()` to provide the transport. The bridge picks up `toolMeta`/`toolDisplay` from the matching static contribution automatically.
 
 ```ts
-export function activate(ctx: finch.ExtensionContext): void {
+const SECRET_KEY = 'my-server.api-key';
+
+export function activate(ctx: finch.MiniToolContext): void {
   // Re-register on every activation — runtime servers are in-memory only.
-  void readSetup(ctx).then((setup) => {
-    if (!setup) return; // not configured yet
-    return registerWhenReady(ctx, setup);
+  void ctx.secrets.get(SECRET_KEY).then((apiKey) => {
+    if (!apiKey) return; // not configured yet
+    return registerWhenReady(ctx, apiKey);
   });
 }
 
-async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<void> {
+async function registerWhenReady(ctx: finch.MiniToolContext, apiKey: string): Promise<void> {
   // mcp.client may activate after this extension — poll briefly.
   for (let i = 0; i < 20; i++) {
     if (ctx.capabilities.has('mcp.client')) break;
@@ -100,9 +105,9 @@ async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup
     name: 'my-server',             // should match contributes.mcpServers[].name
     command: 'npx',
     args: ['-y', 'my-mcp-server'],
-    env: { API_KEY: setup.apiKey },
-    ownerExtensionId: ctx.extension.id,
-    ownerExtensionName: ctx.extension.displayName,
+    env: { API_KEY: apiKey },
+    ownerExtensionId: ctx.minitool.id,
+    ownerExtensionName: ctx.minitool.displayName,
   });
 }
 
@@ -120,7 +125,7 @@ export function deactivate(): void {
 
 ## 4. Setup tool pattern
 
-For secret-dependent servers, provide a `setup_*` tool that collects credentials via a secure form, stores them with `ctx.storage`, then calls `registerServer()`:
+For secret-dependent servers, provide a `setup_*` tool that collects credentials via a secure form, stores them with the system-backed `ctx.secrets`, then calls `registerServer()`. A field marked `secret: true` is only protected at the form/model boundary; persistence is secure only after `ctx.secrets.set()` succeeds:
 
 ```ts
 ctx.subscriptions.push(ctx.tools.register({
@@ -139,7 +144,7 @@ ctx.subscriptions.push(ctx.tools.register({
     if (!result.submitted) return { content: [{ type: 'text', text: 'Cancelled.' }] };
 
     const apiKey = String(result.values.apiKey ?? '').trim();
-    await ctx.storage.set('setup', { apiKey });
+    await ctx.secrets.set(SECRET_KEY, apiKey);
 
     const mcp = ctx.capabilities.get('mcp.client');
     await mcp.registerServer({
@@ -147,14 +152,30 @@ ctx.subscriptions.push(ctx.tools.register({
       command: 'npx',
       args: ['-y', 'my-mcp-server'],
       env: { API_KEY: apiKey },
-      ownerExtensionId: ctx.extension.id,
-      ownerExtensionName: ctx.extension.displayName,
+      ownerExtensionId: ctx.minitool.id,
+      ownerExtensionName: ctx.minitool.displayName,
     });
 
     return { content: [{ type: 'text', text: 'Configured. MCP tools will appear shortly.' }] };
   },
 }));
 ```
+
+### Migrating an old plaintext setup
+
+If an earlier release stored a credential in `ctx.storage`, migrate in this order: read the old value, write it to `ctx.secrets`, then delete the plaintext field only after the secure write succeeds.
+
+```ts
+async function migrateLegacyApiKey(ctx: finch.MiniToolContext): Promise<void> {
+  const legacy = await ctx.storage.get<{ apiKey?: string }>('setup');
+  const apiKey = legacy?.apiKey?.trim();
+  if (!apiKey) return;
+  await ctx.secrets.set(SECRET_KEY, apiKey);
+  await ctx.storage.delete('setup');
+}
+```
+
+Do not delete first, do not log the value, and do not fall back to `ctx.storage` if secure storage is unavailable.
 
 ---
 
@@ -191,8 +212,8 @@ await mcp.registerServer({
     clientUri: 'https://example.com',
     // scopes: ['...'],      // optional; discovery metadata is used when omitted
   },
-  ownerExtensionId: ctx.extension.id,
-  ownerExtensionName: ctx.extension.displayName,
+  ownerExtensionId: ctx.minitool.id,
+  ownerExtensionName: ctx.minitool.displayName,
 });
 ```
 
@@ -277,7 +298,7 @@ When a contributed MCP server does not connect:
 1. Check that the mini tool is enabled
 2. Check that MCP Client is enabled
 3. Verify `name` in `contributes.mcpServers` matches the `name` passed to `registerServer()`
-4. Check that `setup_*` was called and the API key is stored in `ctx.storage`
+4. Check that `setup_*` was called, its key is declared in `permissions.secrets`, and the API key is available through `ctx.secrets`
 5. For OAuth MCP, confirm the endpoint exposes RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata
 6. Confirm the authorization server exposes a `registration_endpoint` unless a static/URL-based client id is used
 7. Check the extension logs for discovery, registration, callback, token, or MCP handshake errors

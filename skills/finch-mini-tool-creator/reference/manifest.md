@@ -238,7 +238,7 @@ Permissions are opt-in. Request only what the mini tool truly needs.
 | `filesystem` | `none` / `read` / `readwrite` | Local file access. Default to `none` or `read`. |
 | `network` | `boolean` | Outbound network requests. |
 | `shell` | `boolean` | Shell command execution. |
-| `secrets` | `string[]` | Named secrets the mini tool may read via `ctx.secrets`. |
+| `secrets` | `string[]` | Exact names or trailing-wildcard prefixes the mini tool may access via `ctx.secrets.get/set/delete`. |
 | `oauth` | `string[]` | OAuth provider ids allowed through `ctx.oauth`. |
 | `sessions` | `boolean` | Create owner-scoped Sessions and exchange messages via `ctx.sessions`. Also covers reading pending waits (`listWaits` / `waitForWait`). |
 | `sessionInteractions` | `boolean` | Answer permission / question / form cards in your own Sessions via `ctx.sessions.respondToWait()`. A program may reject a destructive permission card, but only a human in Finch may approve it. |
@@ -303,6 +303,7 @@ See `capabilities.md` for usage rules.
 - `privacyPolicyUrl` / `termsOfServiceUrl` — links shown in the Toolcase detail view.
 - `promptGuides` — cards on the detail page that pre-fill the Home Composer.
 - `toolMeta.name` — short tool-bar name override for the mini tool.
+- `miniToolType` — mini tool type / source marker (`official` / `community` / `local`), used by the Toolbox and community listing. The old `extensionType` is deprecated — use `miniToolType` in new mini tools.
 - `autoEnable` — only for bundled official mini tools; default `true`. Set to `false` when the tool requires user configuration before it can work (e.g. MCP Client).
 - `activationEvents` — currently only `onStartup` is supported; lazy activation events are not yet implemented.
 

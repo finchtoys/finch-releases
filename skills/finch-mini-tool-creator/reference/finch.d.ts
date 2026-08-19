@@ -1,5 +1,5 @@
 /*!
- * Finch Extension API
+ * Finch Mini Tool API
  *
  * Use this published type package as the `finch` module alias in `tsconfig.json`.
  * Runtime APIs still come through `ctx`:
@@ -28,7 +28,7 @@ declare module 'finch' {
 
   /**
    * 代表一个可以被注销的资源句柄。
-   * 与 VS Code 保持一致：用 `ExtensionContext.subscriptions.push(d)` 统一管理生命周期。
+   * 与 VS Code 保持一致：用 `MiniToolContext.subscriptions.push(d)` 统一管理生命周期。
    *
    * @example
    * const d = finch.tools.register({ ... });
@@ -114,7 +114,7 @@ declare module 'finch' {
    * - `ctx.tools` — Agent 工具注册
    * - `ctx.composerActions` — Composer 工具栏按钮
    * - `ctx.storage` — 私有 KV 存储
-   * - `ctx.secrets` — 只读密钥
+   * - `ctx.secrets` — 系统加密密钥读写
    * - `ctx.oauth` — 隔离的 OAuth 连接与授权请求
    * - `ctx.logger` — 带前缀日志
    * - `ctx.app` — Finch App 基本信息（只读）
@@ -129,22 +129,23 @@ declare module 'finch' {
    *   );
    *   ctx.logger.info('activated');
    * }
-   *
-   * @deprecated Use {@link MiniToolContext} for new mini tools.
    */
-  export interface ExtensionContext {
+  export interface MiniToolContext {
     /**
      * 推入此数组的 Disposable 将在插件停用时自动 `dispose()`。
      * 无需手动管理生命周期。
      */
     readonly subscriptions: { dispose(): unknown }[];
 
-    /** 插件元信息（只读）。
-     *  @deprecated 请改用 `ctx.minitool`。 */
-    readonly extension: ExtensionInfo;
-
     /** 当前 mini tool 自身元信息（只读）。 */
     readonly minitool: MiniToolInfo;
+
+    /**
+     * @deprecated 用 `ctx.minitool` 代替。旧版扩展 API（Extension 更名为 MiniTool 之前）
+     * 遗留的兼容别名，指向与 `ctx.minitool` 完全相同的对象，仅为已发布的旧版插件
+     * 包（如 `ctx.extension.id`）保留运行时兼容，不要在新代码中使用。
+     */
+    readonly extension: MiniToolInfo;
 
     /**
      * 插件私有持久化存储目录的绝对路径。
@@ -226,22 +227,47 @@ declare module 'finch' {
      */
     readonly commands: undefined;
 
+    /** Finch 内置 Browser Panel。每次调用在当前 Panel scope 新建一个 Browser Tab。 */
+    readonly browser: {
+      open(url: string): Promise<void>;
+    };
+
     /**
      * UI 扩展能力。
-     * `showToast()` 可用于展示轻量、非阻塞通知；Webview Panel 仍为预留 API。
+     * `showToast()` 可用于展示轻量、非阻塞通知；Webview Panel 已实现。
      * @example
      * ctx.ui.showToast({ title: 'Saved', variant: 'success', position: 'TC' });
      */
     readonly ui: {
       /**
-       * 创建一个内嵌 Webview Panel。
-       * @deprecated 当前版本未实现。请改用 `createCanvasWindow` 或原生 Toast/Dialog。
+       * 在当前 Panel scope 的 Finch 原生文件预览中打开一个本地文件。路径必须为
+       * 绝对路径；文件内容不会传入 mini tool，而是继续由 Finch 的预览管线读取与渲染。
+       * 支持 Markdown、代码和其它可预览文本文件。
+       *
+       * @example
+       * await ctx.ui.openFilePreview('/workspace/README.md');
        */
-      createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
+      openFilePreview(path: string): Promise<void>;
+      /**
+       * 打开 `contributes.appPanel` 声明的唯一 Panel App。
+       * 声明决定页面来源、标题、图标与工具栏；此调用只决定 single/multiple
+       * 实例策略。Panel 可绑定 Session、Home 或其他当前 Panel scope。
+       */
+      createPanel(options?: AppPanelOptions): AppPanel;
+      /**
+       * 监听当前 mini tool 声明的 Panel App 实例。Launcher、ComposerAction、
+       * Delivery 等所有打开路径都会触发；订阅时也会补发当前仍存活的实例。
+       *
+       * 用户直接打开的 `contributes.appView` 应用级页面同样会触发这个
+       * 监听器（它自己并不调用 `createPanel()`），这是后端唯一能拿到其
+       * `AppPanel` 句柄（进而 `postMessage()`/`onDidReceiveMessage()`）的
+       * 方式；用 `panel.view === 'appView'` 判断是否是 appView 页面。
+       */
+      onDidOpenPanel(listener: (panel: AppPanel) => unknown): Disposable;
       /**
        * 创建一个透明、无边框、可拖到任意位置、可置顶的**浮动 Canvas 窗口**。
        *
-       * 与 `createWebviewPanel`（内嵌 Panel）正交：Canvas 窗口是独立顶层窗，适合桌宠、
+       * 与 `createPanel`（内嵌 Panel）正交：Canvas 窗口是独立顶层窗，适合桌宠、
        * 悬浮工具、桌面小游戏等。开发者**不写 HTML**，只提供一段 canvas 脚本（`entry`），
        * 脚本内调用 `finch.canvas.define({ init, frame, ... })` 注册生命周期。Finch 提供
        * 统一外壳，负责透明窗壳、devicePixelRatio 缩放、rAF 循环、事件分发与双向通信。
@@ -265,6 +291,25 @@ declare module 'finch' {
        * @deprecated 请改用 `notify`，语义更清晰。
        */
       showMessage(message: string, type?: 'info' | 'warning' | 'error'): void;
+      /**
+       * 当前 Session 右侧 Work Sidebar「交付」区的这一行——一条跟随 Session 走
+       * 的扁平记录，与对话时间线完全无关：没有历史、没有解释，只是一行「标题
+       * + 说明」。平台约束每个小工具在一个 Session 里**只能有一行**：重复
+       * `set()` 总是原地覆盖同一行，没有 entryId 概念，不能叠加出多行。点击
+       * 该行会打开这个小工具通过 `contributes.appPanel` 声明的 Panel App。
+       *
+       * @example
+       * await ctx.ui.delivery.set({
+       *   title: '帕亚的改动',
+       *   detail: '{+969}\\g {-354}\\r',
+       * });
+       * // ...
+       * await ctx.ui.delivery.remove();
+       */
+      readonly delivery: {
+        set(options: DeliverySetOptions): Promise<void>;
+        remove(): Promise<void>;
+      };
     };
 
     /**
@@ -307,13 +352,6 @@ declare module 'finch' {
     readonly icons: Icons;
 
     /**
-     * 扩展 contribution 快照。读取已启用扩展的原始 manifest contributions。
-     * Host 只按 extension point 名称透传原始值，具体语义由消费扩展自行定义。
-     * @deprecated 请改用 `ctx.minitools` 下的同名方法。
-     */
-    readonly extensions: Extensions;
-
-    /**
      * 读取已启用 mini tool 的 manifest contribution 快照。
      * Host 只按 extension point 名称透传原始值，具体语义由消费扩展自行定义。
      */
@@ -343,7 +381,7 @@ declare module 'finch' {
      * @example
      * ctx.i18n.t('toast.done', { name: 'GitHub' });
      */
-    readonly i18n: ExtensionI18n;
+    readonly i18n: MiniToolI18n;
 
     // ── 服务 ──────────────────────────────────────────────────────────────────
 
@@ -359,7 +397,7 @@ declare module 'finch' {
     /** 带插件 id 前缀的日志。 */
     readonly logger: Logger;
 
-    /** 对 manifest `permissions.secrets` 声明的密钥的只读访问。 */
+    /** 对 manifest `permissions.secrets` 声明的密钥进行系统加密读写。 */
     readonly secrets: Secrets;
 
     /** OAuth Broker：凭证按小工具隔离，原始 token 不会暴露。 */
@@ -373,6 +411,12 @@ declare module 'finch' {
 
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
+    /**
+     * 只读 Space 目录。需要 permissions.sessions（与 `ctx.sessions` 共用同一
+     * 权限门），主要用途是在创建 Session 前发现 `spaceId` 传给
+     * `sessions.create({ space })`。
+     */
+    readonly spaces: Spaces;
     readonly sessionContainers: {
       /**
        * @deprecated 旧版容器级设置菜单，只会出现在该容器的会话页头部。
@@ -433,9 +477,8 @@ declare module 'finch' {
 
   /**
    * 插件自身元信息。
-   * @deprecated Use {@link MiniToolInfo} for new mini tools.
    */
-  export interface ExtensionInfo {
+  export interface MiniToolInfo {
     /** 插件全局唯一 id，来自 manifest `finch.id`。 */
     readonly id: string;
     readonly displayName: string;
@@ -471,11 +514,14 @@ declare module 'finch' {
     /**
      * `minitool` 会话位于本工具声明的容器内。`space` 会话被创建到某个具体
      * Space，出现在该 Space 的普通会话列表中，但仍归本 mini tool 所有（因此
-     * 仍能收到 turn 事件并回复微信等外部平台）。
+     * 仍能收到 turn 事件并回复微信等外部平台）。`chat` 会话是既无容器也无
+     * Space 的普通对话——出现在普通会话列表中，效果等同于用户点「新对话」，
+     * 但仍归本 mini tool 所有。
      */
     readonly placement:
       | { readonly type: 'minitool'; readonly minitoolId: string; readonly containerId: string }
-      | { readonly type: 'space'; readonly spaceId: string };
+      | { readonly type: 'space'; readonly spaceId: string }
+      | { readonly type: 'chat' };
     readonly activity: MinitoolSessionActivity;
     readonly profileId?: string;
     /**
@@ -511,16 +557,18 @@ declare module 'finch' {
 
   export interface SessionCreateOptions {
     /**
-     * 会话所在容器，普通小工具会话必填，且须在 manifest
-     * contributes.sessionContainers 中声明。若用户为该容器选择了默认模型，
-     * Finch 会自动用于新会话；否则回退全局默认。若改为把会话创建到具体
-     * Space，则省略此项并设置 `space`。
+     * 会话所在容器，须在 manifest contributes.sessionContainers 中声明。若
+     * 用户为该容器选择了默认模型，Finch 会自动用于新会话；否则回退全局默认。
+     * 与 `space` 互斥。`containerId` 和 `space` 都不传时，创建一个既无容器也
+     * 无 Space 的普通对话（`chat` placement），使用全局默认 cwd/模型——效果
+     * 等同于用户点「新对话」，但会话仍归本 mini tool 所有。
      */
     readonly containerId?: string;
     /**
      * 把会话创建到某个具体 Space，而非小工具容器。会话会出现在该 Space 的
      * 普通会话列表中（交互式，非隐藏于容器），同时仍归本 mini tool 所有。
-     * 与 `containerId` 互斥。
+     * 与 `containerId` 互斥。可先用 `ctx.spaces.list()` 获取可用 Space 的
+     * id/name 列表。
      */
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
@@ -547,6 +595,26 @@ declare module 'finch' {
   export interface SessionListOptions {
     readonly containerId?: string;
     readonly includeArchived?: boolean;
+  }
+
+  /**
+   * 用户已创建的某个 Space 的只读摘要。用于在调用
+   * `sessions.create({ space: { spaceId } })` 之前发现可用的 Space id/name，
+   * 无需本工具正运行在该 Space 内。
+   */
+  export interface SpaceSummary {
+    readonly id: string;
+    /** 展示名称（用户自定义或默认名）。 */
+    readonly name: string;
+    /** 用户设置的短别名（如有）。 */
+    readonly alias?: string;
+    /** 该 Space 绑定的目录（如有）。 */
+    readonly directoryPath?: string;
+  }
+
+  export interface Spaces {
+    /** 列出用户创建的所有 Space，按最近打开时间排序。 */
+    list(): Promise<SpaceSummary[]>;
   }
 
   export interface SessionSendOptions {
@@ -682,7 +750,7 @@ declare module 'finch' {
       readonly description?: string;
       readonly submitLabel?: string;
       readonly cancelLabel?: string;
-      readonly fields: ExtensionFormField[];
+      readonly fields: MiniToolFormField[];
     };
   }
 
@@ -742,9 +810,8 @@ declare module 'finch' {
   /**
    * 插件自定义表单中的单个字段。`ctx.ui.requestForm()`（等候区表单卡片，绑定 tool
    * 执行上下文）与 `ModalDialogOptions.fields`（独立弹窗，无需 tool 执行上下文）共用同一套字段定义。
-   * @deprecated Use {@link MiniToolFormField} for new mini tools.
    */
-  export interface ExtensionFormField {
+  export interface MiniToolFormField {
     /** 表单值映射中的唯一 key。 */
     readonly key: string;
     readonly label: string;
@@ -792,14 +859,13 @@ declare module 'finch' {
 
   /**
    * `ctx.ui.requestForm` 的表单描述 —— 用户在工具调用期间填写。
-   * @deprecated Use {@link MiniToolFormSpec} for new mini tools.
    */
-  export interface ExtensionFormSpec {
+  export interface MiniToolFormSpec {
     readonly title: string;
     readonly description?: string;
     readonly submitLabel?: string;
     readonly cancelLabel?: string;
-    readonly fields: ExtensionFormField[];
+    readonly fields: MiniToolFormField[];
     /**
      * 可选自动取消超时（毫秒）。超时未提交则 resolve 为
      * `{ submitted: false, reason: 'timeout' }`。省略则一直等待用户提交/取消或 session 结束。
@@ -809,9 +875,8 @@ declare module 'finch' {
 
   /**
    * 用户提交或取消表单后返回给插件的结果。
-   * @deprecated Use {@link MiniToolFormResult} for new mini tools.
    */
-  export interface ExtensionFormResult {
+  export interface MiniToolFormResult {
     /** 用户取消、超时、或 session 未提交即结束时为 false。 */
     readonly submitted: boolean;
     /** `multiselect` 字段回传 `string[]`（未勾选时为空数组）。 */
@@ -849,7 +914,7 @@ declare module 'finch' {
      * 在等候区弹出一个插件自定义表单，用户提交后 resolve 为填写的值。
      * 敏感字段由用户直接输入；返回给模型的内容（如果有）由插件自行决定。
      */
-    requestForm(spec: ExtensionFormSpec): Promise<ExtensionFormResult>;
+    requestForm(spec: MiniToolFormSpec): Promise<MiniToolFormResult>;
   }
 
   /**
@@ -877,7 +942,12 @@ declare module 'finch' {
   /** 工具向模型返回的内容块。 */
   export type ToolContent =
     | { readonly type: 'text'; readonly text: string }
-    | { readonly type: 'image'; readonly data: string; readonly mimeType: string };
+    | {
+        readonly type: 'image';
+        /** 裸 base64 图片数据；不要包含 `data:image/...;base64,` 前缀。 */
+        readonly data: string;
+        readonly mimeType: string;
+      };
 
   /** 工具执行结果。 */
   export interface ToolResult {
@@ -1467,6 +1537,23 @@ declare module 'finch' {
     readonly action: 'action' | 'dismissed';
   }
 
+  /** 可安全跨进程传递与持久化的 JSON 值。 */
+  export type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
+
+  export interface DeliverySetOptions {
+    readonly title: string;
+    /**
+     * 行右侧的说明文字（如 `+969 -354`）。支持和 `ConfirmDialogOptions.message`
+     * 相同的行内 token 子集：`` `code` `` 与 `{text}\g/\r/\y/\m/\a/\b/\i`
+     * 颜色/粗细/样式标记（g=绿 r=红 y=黄 m=灰 a=强调色 b=粗体 i=斜体）。
+     * 仅支持单行——不支持 `>`/`!` 前缀，也不支持图片。
+     */
+    readonly detail?: string;
+    readonly icon?: string;
+    /** 点击此 Delivery 行打开 Panel App 时带入的上下文。 */
+    readonly payload?: JsonValue;
+  }
+
   export type DialogButtonVariant = 'primary' | 'secondary' | 'danger';
 
   export interface ConfirmDialogOptions {
@@ -1499,7 +1586,7 @@ declare module 'finch' {
      * 可选输入字段，复用 `ctx.ui.requestForm()` 同一套字段栅格
      * （text/password/textarea/number/select/boolean/link）。
      * 与 `requestForm` 不同，这个弹窗**不依赖正在运行的 tool call**——可以在
-     * `ExtensionContext.ui` 的任意时机调用（ComposerAction 处理函数、设置菜单、
+     * `MiniToolContext.ui` 的任意时机调用（ComposerAction 处理函数、设置菜单、
      * activate() 里等），因此适合让小工具在没有 Agent 回合的情况下手动收集文本/token 输入。
      * 声明 `fields` 后，主按钮（第一个 `variant: 'primary'` 的 action）在必填项未填完时禁用；
      * 提交后 `ModalDialogResult.values` 携带填写的值。
@@ -1536,43 +1623,271 @@ declare module 'finch' {
     close(action?: string): Promise<void>;
   }
 
+  /** 工具栏 `menu` 项下拉菜单里的一行。 */
+  export interface AppPanelMenuItem {
+    readonly id: string;
+    readonly label: string;
+    readonly icon?: IconRef;
+    readonly disabled?: boolean;
+    readonly separator?: boolean;
+  }
+
   /**
-   * Webview Panel 选项。
+   * 面板自身工具栏的一项——固定渲染在标签栏下方一整行（只要该面板处于激活
+   * 状态），不藏进下拉菜单里，效果类似内置浏览器面板自带的地址/操作栏。
+   * 可自由混排普通按钮、会展开下拉菜单的 `menu` 按钮、纯分隔线，以及把后续
+   * 项推到行尾的弹性空白：
+   *
+   * ```ts
+   * toolbar: [
+   *   { id: 'reload', icon: 'rotate-cw', tooltip: '重新加载' },
+   *   { type: 'separator' },
+   *   { id: 'share', label: '分享', icon: 'share-2' },
+   *   { type: 'spacer' },
+   *   { type: 'menu', id: 'more', icon: 'ellipsis', items: [
+   *     { id: 'clear-log', label: '清空日志' },
+   *     { id: 'sep', label: '', separator: true },
+   *     { id: 'about', label: '关于', icon: 'sparkles' },
+   *   ] },
+   * ]
+   * ```
    */
-  export interface WebviewPanelOptions {
-    /** Panel 标题。 */
-    title: string;
-    /** Panel 图标 Lucide 名（可选）。 */
-    iconName?: string;
+  export type AppPanelToolbarItem =
+    | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean }
+    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly items: readonly AppPanelMenuItem[] }
+    | { readonly type: 'separator' }
+    | { readonly type: 'spacer' };
+
+  /**
+   * AppPanel 页面收到的 Finch 主题 CSS 变量（`--finch-*`）——在完整
+   * FinchUI 组件库落地之前，先只提供已解析好的主题色/圆角/阴影/字体 token，
+   * 让扩展作者可以直接写 `color: var(--finch-text-primary)` 之类的纯 CSS 来
+   * 适配当前皮肤（含浅色/深色与用户自定义皮肤），不需要任何 Bridge 消息或
+   * JS 代码。平台在页面 `dom-ready` 时以及宿主主题变化时自动重新注入，无需
+   * 扩展代码处理。也可用 `getComputedStyle(document.documentElement)
+   * .getPropertyValue('--finch-theme-mode')`（值为 `'light'` 或 `'dark'`）
+   * 做纯 CSS 变量之外的 JS 分支判断。生效范围：打包 `extension`/内联 `html`
+   * 页面总是注入；`url` 页面仅当满足与 Bridge 相同的 localhost + allowlist
+   * 条件时才注入，公网页面永不注入。
+   */
+  export type AppPanelThemeVar =
+    | "--finch-bg-root" | "--finch-bg-main" | "--finch-bg-elevated" | "--finch-bg-hover" | "--finch-bg-active"
+    | "--finch-text-primary" | "--finch-text-secondary" | "--finch-text-tertiary"
+    | "--finch-accent" | "--finch-accent-hover" | "--finch-accent-dim"
+    | "--finch-border" | "--finch-border-subtle" | "--finch-border-strong"
+    | "--finch-positive" | "--finch-warning" | "--finch-danger" | "--finch-info"
+    | "--finch-radius-sm" | "--finch-radius-md" | "--finch-radius-lg" | "--finch-radius-full"
+    | "--finch-shadow-sm" | "--finch-shadow-md"
+    | "--finch-font-body" | "--finch-font-mono"
+    | "--finch-theme-mode";
+
+  /**
+   * `createPanel` 成功创建面板后，平台会自动向已注入 Bridge 的页面
+   * postMessage 一条保留消息，页面可在 `window.finch.onMessage` 里按
+   * `msg.type === 'finch:env'` 识别，无需扩展代码手动下发即可拿到运行环境。
+   * `finch:` 前缀为平台保留，业务消息请避免使用同名 `type`。
+   */
+  export interface AppPanelEnvMessage {
+    readonly type: 'finch:env';
     /**
-     * 初始 HTML 内容（完整 `<html>...</html>`）。
-     * 通过 `window.acquireFinchApi()` 与主进程通信。
+     * 面板归属的工作区目录；非 Session scope（如 Home）可能为空字符串。
+     * `view === 'appView'` 时固定反映默认工作区目录，与当前激活的 Space
+     * 无关（见 `view` 字段说明）。
      */
-    html: string;
-    /** Panel 保持可见时是否持续渲染（默认 false，切换后内容保留但不渲染）。 */
-    retainContextWhenHidden?: boolean;
+    readonly cwd: string;
+    /** 面板归属的真实 Agent Session id；非 Session scope（如 Home/AppView）为空字符串。 */
+    readonly sessionId: string;
+    /**
+     * 面板所在的路由类型：`'session'`（有真实 Agent Session，`sessionId` 非空）、
+     * `'home'`（无 Session，但仍有一个 Home Composer 草稿可以写入 —— 例如通过
+     * `composer:addContexts` 插入的批注会落到当前 Space 的 Home 输入框）、
+     * `'container'`（既无 Session 也无 Composer 草稿，例如小工具的收件箱容器
+     * 视图）、`'appView'`（`contributes.appView` 声明的应用级左侧栏全屏页面，
+     * 同样既无 Session 也无 Composer 草稿，且不跟随任何 Space —— `spaceId`/
+     * `spaceName` 固定为空字符串，`cwd` 固定是默认工作区目录）。历史/无法识别
+     * 的 scope 为空字符串，页面应按 `sessionId` 是否非空兜底判断，不要假设一
+     * 定拿到本字段。
+     */
+    readonly view: 'home' | 'session' | 'container' | 'appView' | '';
+    /**
+     * 面板所在 scope 当前归属的 Space id；未绑定 Space（如自由 Home/自由
+     * Session，或 `view === 'appView'`）时为空字符串。Mini Tool 后端代码通过
+     * `ctx` 拿到的 `WorkspaceInfo.spaceId` 是同一个值，这里把它同步暴露给页
+     * 面本身，避免页面为了拿 Space 信息还要专门 `postMessage` 一次工具调用。
+     */
+    readonly spaceId: string;
+    /** `spaceId` 对应的展示名称（已本地化/用户自定义），与 `spaceId` 同时为空或同时非空。 */
+    readonly spaceName: string;
+    /**
+     * 当前 Finch App 语言（`ctx.app.getInfo().locale` 的同一个值），页面可据此
+     * 本地渲染文案而不必再发一次工具调用去问后端。目前仅 `view === 'appView'`
+     * 时下发；Panel App tab 暂缺，计划后续补齐（见 `docs/minitool-full-view.md`）。
+     */
+    readonly locale?: AppLocale;
+    /** 本次打开带入的上下文；页面重建后仍从当前 Session 的 Panel Tab 恢复。 */
+    readonly payload?: JsonValue;
   }
 
-  /** Webview Panel 句柄，用于双向通信。 */
-  export interface WebviewPanel {
-    readonly title: string;
-    /** 当 Panel 收到来自 webview 的消息时触发。 */
-    readonly onDidReceiveMessage: Event<unknown>;
-    /** 向 webview 发送消息（webview 内通过 `window.addEventListener('message')` 接收）。 */
+  /**
+   * 用户点击 manifest toolbar 按钮或下拉菜单项时，平台会向页面自身
+   * postMessage 一条保留消息。页面在 `window.finch.onMessage` 中按
+   * `msg.type === 'finch:menu'` 识别并处理。
+   */
+  export interface AppPanelMenuMessage {
+    readonly type: 'finch:menu';
+    /** 被点击项的 id：工具栏按钮/menu 按钮本身的 id，或其下拉菜单里某一行的 `AppPanelMenuItem.id`。 */
+    readonly itemId: string;
+  }
+
+  export interface AppPanelOptions {
+    /** 覆盖 `appPanel.instanceMode`；不传则使用 manifest 声明。 */
+    readonly instanceMode?: 'single' | 'multiple';
+    /** 跟随当前 Session Panel Tab 保存的打开上下文。 */
+    readonly payload?: JsonValue;
+  }
+
+  export interface AppPanel {
+    readonly id: string;
+    /**
+     * 打开/持有该 Panel scope 的真实 Agent Session id；非 Session scope
+     * （Home、session container）为 undefined。后端代码（例如
+     * `ctx.ui.onDidOpenPanel` 监听器）可以直接用它判断是哪个 Session 打开了
+     * 这个面板，不必等待页面侧的 `finch:env` 消息。
+     */
+    readonly sessionId?: string;
+    /**
+     * 与页面侧 `finch:env.view` 一致的分类：`'session' | 'home' | 'container'`，
+     * 另有 `'appView'` —— 表示这个句柄来自用户直接打开的 `contributes.appView`
+     * 应用级页面（而非通过 `createPanel()` 创建），没有自己的 Session/Home/
+     * Container scope。
+     */
+    readonly view?: 'home' | 'session' | 'container' | 'appView';
+    /** 该 scope 当前绑定的 Space（如有），与页面侧 `finch:env.spaceId` 一致。 */
+    readonly spaceId?: string;
+    /** `spaceId` 对应的展示名称，与 `spaceId` 同时为 undefined 或同时有值。 */
+    readonly spaceName?: string;
+    /** 当前 Panel 实例的打开上下文；single 实例再次打开时会更新。 */
+    readonly payload?: JsonValue;
+    readonly visible: boolean;
+    reveal(): Promise<void>;
     postMessage(message: unknown): Promise<void>;
-    /** 更新 HTML 内容。 */
-    setHtml(html: string): void;
-    /** 关闭 Panel。 */
+    onDidReceiveMessage(listener: (message: unknown) => unknown): Disposable;
+    onDidChangeVisibility(listener: (visible: boolean) => unknown): Disposable;
+    onDidDispose(listener: () => unknown): Disposable;
     dispose(): void;
-    /** Panel 被用户关闭时触发。 */
-    readonly onDidDispose: Event<void>;
   }
 
-  // `ctx.ui.createWebviewPanel` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
-  // "尚未实现" 错误。`ctx.ui.showToast` 会显示原生 Toast；`ctx.ui.showMessage` 映射为 Toast。全局 namespace 不再暴露。
+  export interface FileRangeAnnotation {
+    readonly startLine: number;
+    readonly startColumn?: number;
+    readonly endLine?: number;
+    readonly endColumn?: number;
+  }
+
+  export type ComposerContextDraft =
+    | { readonly type: 'file-range'; readonly path: string; readonly ranges: readonly FileRangeAnnotation[]; readonly note?: string; readonly displayName?: string }
+    | { readonly type: 'image-region'; readonly name: string; readonly mimeType: string; readonly content: string; readonly regions: ReadonlyArray<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly note?: string }>; readonly note?: string; readonly displayName?: string }
+    | {
+        /**
+         * Adds a "user annotation" chip token to the Composer instead of a bare
+         * attachment — hovering the chip reveals the image/note. The heavy
+         * payload (image bytes, long note text) still ends up in the sent
+         * message's `attachments[]`; the token itself only carries ids.
+         */
+        readonly type: 'annotation';
+        /** Composer chip text. Defaults to a generic "user annotation" label when omitted. */
+        readonly label?: string;
+        /** File this annotation points at (absolute path, must stay inside the active workspace). */
+        readonly path?: string;
+        readonly ranges?: readonly FileRangeAnnotation[];
+        /** User-entered comment attached to this annotation. */
+        readonly note?: string;
+        /** Tool/program-authored prompt shown in the hover card and sent to the model instead of / alongside `note`. */
+        readonly promptText?: string;
+        /**
+         * Tool/program-authored hint sent to the model but *not* rendered in
+         * the hover card body (unlike `note`/`promptText`) — use it for
+         * machine-oriented instructions (e.g. "call tool X with id=Y to
+         * resolve the exact location") that would otherwise clutter what the
+         * user sees. It still ends up in the raw message text a technically
+         * curious user could inspect (conversation export, dev tools) — this
+         * is intentional, not a covert/hidden channel. Do not abuse this for
+         * anything the user would object to if they saw it.
+         */
+        readonly reminder?: string;
+        /** Optional image evidence (base64, no data URL prefix) attached to the annotation. */
+        readonly image?: { readonly name: string; readonly mimeType: string; readonly content: string };
+        /** Optional local image path instead of inline base64. Resolved by Main. */
+        readonly imagePath?: string;
+      };
+
+  /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
+  export interface WebviewBridgeApi {
+    postMessage(message: unknown): void;
+    onMessage(listener: (message: unknown) => void): () => void;
+    /**
+     * Attaches contexts into the Composer draft this panel's scope owns.
+     * Works on `'session'` scope (writes into that Session's draft) and
+     * `'home'` scope (writes into the current Space's Home Composer draft —
+     * see `AppPanelEnvMessage.view`). Rejects on `'container'` scope or
+     * any legacy/unrecognized scope, since neither has a Composer draft to
+     * attach into.
+     */
+    readonly composer: { addContexts(contexts: readonly ComposerContextDraft[]): Promise<{ added: number }> };
+    readonly capture: { capturePage(options?: { mode?: 'viewport' | 'selection'; rect?: { x: number; y: number; width: number; height: number } }): Promise<{ name: string; mimeType: 'image/png'; content: string }> };
+    /** Controls the current Panel tab from inside its page. */
+    readonly panel: {
+      setTitle(title: string): Promise<void>;
+      setIcon(icon?: IconRef): Promise<void>;
+    };
+    /**
+     * Native Finch toast / confirm dialog, callable directly from the page —
+     * the same trusted UI `ctx.ui.showToast()` / `ctx.ui.showConfirmDialog()`
+     * render on the extension backend side. Never falls back to a browser-native
+     * `confirm()`/`alert()`; both calls require a real page
+     * user gesture, same as `composer.addContexts()` / `capture.capturePage()`.
+     *
+     * @example
+     * document.getElementById('delete-btn').addEventListener('click', async () => {
+     *   const { confirmed } = await window.finch.ui.confirm({
+     *     title: 'Delete this item?',
+     *     message: 'This cannot be undone.',
+     *     variant: 'danger',
+     *   });
+     *   if (!confirmed) return;
+     *   await doDelete();
+     *   await window.finch.ui.toast({ title: 'Deleted', variant: 'success' });
+     * });
+     */
+    readonly ui: {
+      toast(options: ToastOptions): Promise<ToastResult>;
+      confirm(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
+    };
+    /**
+     * 只读 Space 目录，页面可直接调用而无需经过本工具后端再转发一次
+     * 消息。与 `ctx.spaces.list()` 是同一份数据，供纯静态 `appPanel`
+     * 页面（无后端 tool 调用能力）使用。
+     */
+    readonly spaces: {
+      list(): Promise<SpaceSummary[]>;
+    };
+  }
 
   /** 公开的 macOS 置顶层级，仅支持常规与浮动窗口。 */
   export type AlwaysOnTopLevel = 'normal' | 'floating';
+
+  /** CanvasWindow 的显式生命周期；`disposed` 是不可逆终态。 */
+  export type CanvasWindowState = 'creating' | 'ready' | 'visible' | 'hidden' | 'disposing' | 'disposed';
+
+  /** 在一次主进程控制中提交的窗口模式更新。 */
+  export interface CanvasWindowUpdate {
+    bounds?: { x?: number; y?: number; width?: number; height?: number };
+    alwaysOnTop?: boolean;
+    alwaysOnTopLevel?: AlwaysOnTopLevel;
+    alwaysOnTopRelativeLevel?: number;
+    clickThrough?: boolean;
+    visible?: boolean;
+  }
 
   /**
    * Canvas 窗口选项。开发者只提供 `entry`（一段 canvas 脚本路径），不写 HTML。
@@ -1605,6 +1920,10 @@ declare module 'finch' {
     hiddenInMissionControl?: boolean;
     /** 在所有桌面 Space（含全屏空间）显示，切换桌面时窗口跟随，默认 false。仅 macOS，其他平台忽略。 */
     visibleOnAllWorkspaces?: boolean;
+    /** 业务绘制帧率上限，默认 30。 */
+    frameRate?: 15 | 30 | 60;
+    /** Canvas backing store 的最大 DPR，默认 2，范围 1～4。 */
+    maxDevicePixelRatio?: number;
     /** macOS 原生窗口置顶层级。其他平台忽略。 */
     alwaysOnTopLevel?: AlwaysOnTopLevel;
     /** 相对置顶层级。仅 macOS 且指定 `alwaysOnTopLevel` 时生效。 */
@@ -1622,10 +1941,13 @@ declare module 'finch' {
    * // pet-canvas.js —— 运行在 Finch canvas 外壳里，不写 HTML
    * finch.canvas.define({
    *   init({ canvas, ctx2d, width, height, dpr, finch, initialData }) {},
-   *   frame(dt) {},                 // 可选：外壳驱动 requestAnimationFrame
+   *   frame(dt) {},                 // 可选：连续动画，受 frameRate 限制
+   *   render(ctx2d) {},             // 可选：按需绘制；与 frame 二选一
    *   resize(width, height) {},
-   *   onPointer(e) {},              // { type:'move'|'down'|'up', x, y, button }
+   *   onPointer(e) {},              // { type:'move'|'down'|'up'|'cancel', pointerId, x, y, screenX, screenY, button, buttons, pointerType }
    *   onMessage(msg) {},            // 来自 Host 段 postMessage
+   *   suspend(reason) {},           // hidden/system/sleep 时暂停
+   *   resume(reason) {},            // visible/system/wake 时恢复；首帧 dt 已重置
    *   dispose() {},
    * });
    * ```
@@ -1633,17 +1955,37 @@ declare module 'finch' {
    * 外壳注入的 `finch` 桥（Canvas 段可调用）：
    * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v, level?, relativeLevel?)` /
    * `finch.window.setPosition(x,y)` / `finch.window.getDisplays()` / `finch.window.setClickThrough(v)` /
-   * `finch.window.close()`。
+   * `finch.window.close()`；按需绘制可调用 `finch.canvas.invalidate()`。
    */
+  export interface CanvasWindowMotion {
+    kind: 'linear' | 'spring';
+    to: { x: number; y: number };
+    /** 默认 linear=300ms、spring=600ms，范围 16～60000ms。 */
+    durationMs?: number;
+    velocity?: { x: number; y: number };
+    bounds?: 'display-work-area' | 'all-displays';
+    /** Main 侧原生移动频率，默认 30。 */
+    frameRate?: 30 | 60;
+  }
+
   export interface CanvasWindow {
     /** 窗口唯一 id。 */
     readonly id: string;
+    /** shell 加载、define 注册及 init 成功后 resolve；创建取消或失败时 reject。 */
+    readonly ready: Promise<void>;
+    readonly state: CanvasWindowState;
+    readonly visible: boolean;
     show(): void;
     hide(): void;
     setAlwaysOnTop(value: boolean, level?: AlwaysOnTopLevel, relativeLevel?: number): void;
     setPosition(x: number, y: number): void;
     setSize(width: number, height: number): void;
     setClickThrough(value: boolean): void;
+    /** 原子更新单个窗口；bounds 在原生层只调用一次 setBounds。 */
+    update(options: CanvasWindowUpdate): Promise<void>;
+    /** Main 侧执行持续移动，新 motion 会覆盖旧 motion。 */
+    startMotion(motion: CanvasWindowMotion): void;
+    stopMotion(): void;
     /** Host 段 → Canvas 段：脚本内 `onMessage(msg)` 接收。 */
     postMessage(message: unknown): Promise<void>;
     /** Canvas 段 → Host 段：脚本内 `finch.postMessage()` 触发。 */
@@ -1652,7 +1994,11 @@ declare module 'finch' {
     readonly onDidMove: Event<{ x: number; y: number }>;
     /** 窗口尺寸变化时触发。 */
     readonly onDidResize: Event<{ width: number; height: number }>;
-    /** 销毁窗口。 */
+    /** 实际可见性变化时触发。 */
+    readonly onDidChangeVisibility: Event<boolean>;
+    /** 生命周期状态变化时触发。 */
+    readonly onDidChangeState: Event<CanvasWindowState>;
+    /** 销毁窗口。重复调用安全。 */
     dispose(): void;
     /** 窗口被关闭 / 销毁时触发。 */
     readonly onDidDispose: Event<void>;
@@ -1709,8 +2055,8 @@ declare module 'finch' {
     getVersion(name: string): Promise<string | undefined>;
   }
 
-  /** @deprecated Use {@link MiniToolContribution} for new mini tools. */
-  export interface ExtensionContribution<T = unknown> {
+  /** 插件贡献的一条 manifest contribution 原始记录。 */
+  export interface MiniToolContribution<T = unknown> {
     extensionId: string;
     extensionName: string;
     extensionPath: string;
@@ -1719,23 +2065,15 @@ declare module 'finch' {
   }
 
   // ════════════════════════════════════════════════════════════════════════════
-  // § 6.2  Extensions — 读取其它扩展贡献
+  // § 6.2  MiniToolContributions — 读取其它 mini tool 贡献
   // ════════════════════════════════════════════════════════════════════════════
-
-  /**
-   * `ctx.extensions` 的接口：读取已启用扩展的原始 manifest contributions。
-   * @deprecated Use {@link MiniToolContributions} instead.
-   */
-  export interface Extensions {
-    listContributions<T = unknown>(point: string): ExtensionContribution<T>[];
-  }
 
   /**
    * 读取已启用 mini tool 的 manifest contribution 快照。
    * Host 只按 extension point 名称透传原始值，具体语义由消费扩展自行定义。
    */
   export interface MiniToolContributions {
-    listContributions<T = unknown>(point: string): ExtensionContribution<T>[];
+    listContributions<T = unknown>(point: string): MiniToolContribution<T>[];
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -1842,17 +2180,16 @@ declare module 'finch' {
   // § 6.6  I18n — 扩展运行时多语言
   // ════════════════════════════════════════════════════════════════════════════
 
-  export type AppLocale = 'zh-CN' | 'en-US';
+  export type AppLocale = 'zh-CN' | 'zh-HK' | 'en-US';
   export type LocalePreference = 'system' | AppLocale;
   export type TranslationValue = string | number | boolean | null | undefined;
   export type TranslationValues = Record<string, TranslationValue>;
 
   /**
-   * 扩展运行时 i18n。读取扩展自己的 `i18n/<locale>.json`。
-   * @deprecated Use {@link MiniToolI18n} for new mini tools.
+   * Mini tool 运行时 i18n。读取小工具自己的 `i18n/<locale>.json`。
    */
-  export interface ExtensionI18n {
-    /** 当前解析后的 app 语言，例如 `zh-CN` 或 `en-US`。 */
+  export interface MiniToolI18n {
+    /** 当前解析后的 app 语言，例如 `zh-CN`、`zh-HK` 或 `en-US`。 */
     readonly locale: AppLocale;
     /** 按 key 翻译，支持 `{placeholder}` 参数替换；缺失 key 返回 key 本身。 */
     t(key: string, values?: TranslationValues): string;
@@ -1911,8 +2248,8 @@ declare module 'finch' {
   /**
    * 对 manifest `permissions.secrets` 中声明的密钥进行加密、扩展隔离的访问。
    *
-   * Finch 只在系统安全存储可用时读写；不会回退为明文。权限支持精确 key
-   * 或末尾 `.*` 前缀（如 `mcp.*`），不接受裸 `*`。
+   * 插件可读取、写入和删除已授权的 key。Finch 只在系统安全存储可用时读写；
+   * 不会回退为明文。权限支持精确 key 或末尾 `.*` 前缀（如 `mcp.*`），不接受裸 `*`。
    *
    * @example
    * // package.json → finch.permissions.secrets: ["OPENAI_API_KEY"]
@@ -1978,7 +2315,7 @@ declare module 'finch' {
     /** Manifest permissions.oauth 中声明的权限 id。 */
     providerId: string;
     providerName: string;
-    /** 可选的可信 Provider 图标 URL，例如 finch-ext-icon://<extensionId>/icon.png。 */
+    /** 可选的可信 Provider 图标 URL，例如 finch-ext-icon://<scope>/<package>/icon.png。 */
     providerIcon?: string;
     /** 已包含 state 与 redirect_uri 的完整 HTTPS 授权 URL。 */
     authorizationUrl: string;
@@ -2040,13 +2377,13 @@ declare module 'finch' {
     readonly default?: string;
     readonly 'en-US'?: string;
     readonly 'zh-CN'?: string;
+    readonly 'zh-HK'?: string;
   };
 
   /**
    * 扩展详情页展示的 prompt 引导语。点击后会填入 HomeView Composer。
-   * @deprecated Use {@link MiniToolPromptGuide} for new mini tools.
    */
-  export interface ExtensionPromptGuide {
+  export interface MiniToolPromptGuide {
     readonly id?: string;
     readonly title: LocalizedString;
     readonly prompt: LocalizedString;
@@ -2058,9 +2395,8 @@ declare module 'finch' {
 
   /**
    * 扩展能力声明，用于官方扩展与社区扩展之间解耦。
-   * @deprecated Use {@link MiniToolCapabilitySpec} for new mini tools.
    */
-  export interface ExtensionCapabilitySpec {
+  export interface MiniToolCapabilitySpec {
     readonly capabilities?: readonly string[];
   }
 
@@ -2079,7 +2415,7 @@ declare module 'finch' {
     /**
      * OAuth 授权弹窗中的 Provider logo：**本插件包内**的相对 PNG 路径（如 `icon.png`）。
      * 在这里声明，等于授权 MCP Client 在代持授权流程时展示本插件的 logo；
-     * Finch 会解析为 `finch-ext-icon://<本插件 id>/<path>` 并校验文件确实存在。
+     * scoped 包会解析为 `finch-ext-icon://<scope>/<package>/<path>`，并校验文件确实存在。
      * 记得把该文件加进 `package.json#files`。
      */
     readonly providerIcon?: string;
@@ -2161,49 +2497,7 @@ declare module 'finch' {
         readonly url?: never;
       });
 
-  /**
-   * `package.json → finch` 字段的完整类型定义。
-   * 可在编写 package.json 时用于 JSON Schema 提示。
-   *
-   * @example
-   * // package.json
-   * {
-   *   "finch": {
-   *     "manifestVersion": 1,
-   *     "minVersion": "1.6.0",
-   *     "id": "my-extension",
-   *     "name": "My Extension",
-   *     "description": "Does something useful.",
-   *     "systemPrompt": "When the user asks about X, prefer this extension's tools.",
-   *     "promptGuides": [
-   *       { "id": "start", "title": "Start", "prompt": "/my_skill Help me ..." }
-   *     ],
-   *     "main": "dist/index.js",
-   *     "activationEvents": ["onStartup"],
-   *     "contributes": {
-   *       "tools": true,
-   *       "composerActions": [
-   *         { "id": "my-btn", "icon": "Star", "tooltip": "My Button" }
-   *       ]
-   *     },
-   *     "permissions": {
-   *       "filesystem": "read",
-   *       "network": false,
-   *       "shell": false,
-   *       "secrets": ["MY_API_KEY"]
-   *     }
-   *   }
-   * }
-   *
-   * // i18n/zh-CN.json
-   * {
-   *   "name": "我的扩展",
-   *   "description": "做一些有用的事。",
-   *   "systemPrompt": "当用户询问 X 时，优先使用这个扩展的工具。"
-   * }
-   *
-   * @deprecated Use {@link MiniToolManifest} for new mini tools.
-   */
+  /** 一个 owner-scoped session 容器声明，供 `ctx.sessions.create()` 使用。 */
   export interface SessionContainerContribution {
     /** 当前小工具内稳定且唯一的容器 id。 */
     readonly id: string;
@@ -2264,7 +2558,128 @@ declare module 'finch' {
     }[];
   }
 
-  export interface ExtensionManifest {
+  /** Panel App 内容来源。`local` 由 Finch 静态服务托管；`url` 不注入 Bridge。 */
+  export type AppPanelEntrySource =
+    | { readonly type: 'local'; readonly path: string }
+    | { readonly type: 'url'; readonly url: string };
+
+  /**
+   * A mini tool's single application-level Webview page. Finch renders it as
+   * a full route and adds its entry above Toolcase in the left sidebar. It is
+   * not a right-side Panel tab: there is no Session scope, toolbar, instance
+   * control, Delivery target, or `AppPanel` lifecycle handle.
+   */
+  export interface AppViewContribution {
+    /**
+     * Stable navigation title. Omit to inherit the mini tool's own `name`/
+     * `displayName` (and its `i18n/<locale>.json` → `name` override) — a
+     * mini tool's several entry surfaces (this App View, `appPanel`, its
+     * Composer action…) should read as the same product, so only set this
+     * when the App View genuinely needs a different label. If set, override
+     * per-locale via `i18n/<locale>.json` → `appView.title`.
+     */
+    readonly title?: LocalizedString;
+    /**
+     * Optional longer description shown as the sidebar entry's tooltip
+     * (replaces the default tooltip, which otherwise just repeats the mini
+     * tool's name). Override per-locale via `i18n/<locale>.json` →
+     * `appView.description`.
+     */
+    readonly description?: LocalizedString;
+    /** Sidebar icon. Supports Finch built-in {@link IconRef} or `ext:` SVG. */
+    readonly icon?: IconRef;
+    /** Packaged `local` pages receive the trusted Bridge and Finch theme variables; public `url` pages do not. */
+    readonly source: AppPanelEntrySource;
+  }
+
+  /**
+   * 小工具唯一的 Panel App 声明。一个小工具最多声明一个；它同时作为右侧 Panel
+   * 的用户入口、`ctx.ui.createPanel()` 的运行时定义和 Delivery 行的点击目标。
+   * `showInLauncher: false` 时隐藏右侧「+」菜单与起始页入口，但不影响其他打开路径。
+   *
+   * @example
+   * "appPanel": {
+   *   "title": "仪表盘",
+   *   "icon": "gauge",
+   *   "viewType": "demo.dashboard",
+   *   "source": { "type": "local", "path": "dist/dashboard.html" }
+   * }
+   */
+  export interface AppPanelContribution {
+    /**
+     * 入口显示名称。留空则继承小工具自身的 `name`/`displayName`
+     * （及其 `i18n/<locale>.json` → `name` 覆盖）——同一小工具的各个入口
+     * （本 Panel App、`appView`、Composer action…）在用户看来应是同一款
+     * 工具，因此仅在该入口确实需要与小工具本身不同的名称时才显式声明。
+     * 若声明，可用 `i18n/<locale>.json` → `appPanel.title` 提供语言覆盖。
+     */
+    readonly title?: LocalizedString;
+    /** 入口图标。支持 Finch built-in {@link IconRef} 或 `ext:` SVG。 */
+    readonly icon?: IconRef;
+    /**
+     * 面板类型 key。`instanceMode: 'single'` 时，同一会话内相同 `viewType` 的
+     * 面板会被复用而不是重复打开。
+     */
+    readonly viewType: string;
+    /**
+     * 面板内容来源：
+     * - `{ "type": "local", "path": "dist/page.html" }` —— 小工具包内页面，
+     *   由平台静态服务以 `http://127.0.0.1:<port>/__finch_ext__/<extensionId>/...`
+     *   加载（真实 http origin，ESM / fetch 可用），默认注入 JS Bridge。
+     * - `{ "type": "url", "url": "https://…" }` —— 开发者自建服务或公网页面，
+     *   不注入 JS Bridge。
+     */
+    readonly source: AppPanelEntrySource;
+    /** `single` 面板在同一 Panel scope 内复用；默认 `multiple`。 */
+    readonly instanceMode?: 'single' | 'multiple';
+    /** 是否在右侧 Panel 的「+」菜单和起始页显示默认入口；默认 `true`。 */
+    readonly showInLauncher?: boolean;
+    /** 独立渲染在标签栏下方的工具栏行（静态），见 {@link AppPanelToolbarItem}。 */
+    readonly toolbar?: readonly AppPanelToolbarItem[];
+  }
+
+  /**
+   * `package.json → finch` 字段的完整类型定义。
+   * 可在编写 package.json 时用于 JSON Schema 提示。
+   *
+   * @example
+   * // package.json
+   * {
+   *   "finch": {
+   *     "manifestVersion": 1,
+   *     "minVersion": "1.6.0",
+   *     "id": "my-tool",
+   *     "name": "My Tool",
+   *     "description": "Does something useful.",
+   *     "systemPrompt": "When the user asks about X, prefer this mini tool's tools.",
+   *     "promptGuides": [
+   *       { "id": "start", "title": "Start", "prompt": "/my_skill Help me ..." }
+   *     ],
+   *     "main": "dist/index.js",
+   *     "activationEvents": ["onStartup"],
+   *     "contributes": {
+   *       "tools": true,
+   *       "composerActions": [
+   *         { "id": "my-btn", "icon": "Star", "tooltip": "My Button" }
+   *       ]
+   *     },
+   *     "permissions": {
+   *       "filesystem": "read",
+   *       "network": false,
+   *       "shell": false,
+   *       "secrets": ["MY_API_KEY"]
+   *     }
+   *   }
+   * }
+   *
+   * // i18n/zh-CN.json
+   * {
+   *   "name": "我的小工具",
+   *   "description": "做一些有用的事。",
+   *   "systemPrompt": "当用户询问 X 时，优先使用这个小工具的工具。"
+   * }
+   */
+  export interface MiniToolManifest {
     /** 必须为 `1`。 */
     readonly manifestVersion: 1;
     /**
@@ -2286,7 +2701,7 @@ declare module 'finch' {
     /** 一句话动态 system prompt。新扩展建议写默认字符串，把多语言文案放到 `i18n/<locale>.json`。 */
     readonly systemPrompt?: LocalizedString;
     /** 插件详情页 README 上方展示的 prompt 引导语。 */
-    readonly promptGuides?: readonly ExtensionPromptGuide[];
+    readonly promptGuides?: readonly MiniToolPromptGuide[];
     /** 编译后入口文件相对路径，默认 `dist/index.js`。 */
     readonly main: string;
     readonly activationEvents?: ActivationEvent[];
@@ -2325,8 +2740,16 @@ declare module 'finch' {
       readonly mcpServers?: McpServerContribution[];
       /** ctx.sessions.create() 可使用的 owner-scoped 容器声明。 */
       readonly sessionContainers?: readonly SessionContainerContribution[];
+      /**
+       * 小工具唯一的静态 App Panel 启动入口（一个小工具最多一个）。默认
+       * 出现在右侧 Panel 的「+」菜单与起始页，点击直接打开该小工具的 App
+       * Panel（无需 Agent 调用）。`showInLauncher: false` 可隐藏这两个入口。
+       */
+      readonly appPanel?: AppPanelContribution;
+      /** One application-level page shown above Toolcase in the left sidebar. */
+      readonly appView?: AppViewContribution;
     };
-    readonly permissions?: ExtensionPermissions;
+    readonly permissions?: MiniToolPermissions;
     /**
      * 仅对随 Finch 捆绑的官方插件有效：是否在首次安装时自动启用。默认 true。
      * 需要用户显式授权或额外配置的插件（如 MCP 桥接）应设为 false。
@@ -2343,9 +2766,9 @@ declare module 'finch' {
     readonly privacyPolicyUrl?: string;
     readonly termsOfServiceUrl?: string;
     /** 本插件提供的能力，如官方 MCP 插件提供 mcp.client。 */
-    readonly provides?: ExtensionCapabilitySpec;
+    readonly provides?: MiniToolCapabilitySpec;
     /** 本插件依赖的能力，如社区插件声明需要 mcp.client。 */
-    readonly requires?: ExtensionCapabilitySpec;
+    readonly requires?: MiniToolCapabilitySpec;
   }
 
   /**
@@ -2397,16 +2820,15 @@ declare module 'finch' {
 
   /**
    * 插件权限声明。
-   * @deprecated Use {@link MiniToolPermissions} for new mini tools.
    */
-  export interface ExtensionPermissions {
+  export interface MiniToolPermissions {
     /** 文件系统访问级别。`'none'` = 禁止，`'read'` = 只读，`'readwrite'` = 读写。 */
     readonly filesystem?: 'none' | 'read' | 'readwrite';
     /** 是否允许发起网络请求。 */
     readonly network?: boolean;
     /** 是否允许执行 shell 命令。 */
     readonly shell?: boolean;
-    /** 可访问的密钥 key 列表（在 Finch 设置中由用户填写）。 */
+    /** 可访问的密钥 key 或末尾通配符前缀；通过系统安全存储加密。 */
     readonly secrets?: string[];
     /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */
     readonly oauth?: string[];
@@ -2419,32 +2841,5 @@ declare module 'finch' {
      */
     readonly sessionInteractions?: boolean;
   }
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // § 11  Mini Tool aliases — preferred public names
-  // ════════════════════════════════════════════════════════════════════════════
-
-  /** Preferred name for {@link ExtensionContext}. */
-  export type MiniToolContext = ExtensionContext;
-  /** Preferred name for {@link ExtensionInfo}. */
-  export type MiniToolInfo = ExtensionInfo;
-  /** Preferred name for {@link ExtensionFormField}. */
-  export type MiniToolFormField = ExtensionFormField;
-  /** Preferred name for {@link ExtensionFormSpec}. */
-  export type MiniToolFormSpec = ExtensionFormSpec;
-  /** Preferred name for {@link ExtensionFormResult}. */
-  export type MiniToolFormResult = ExtensionFormResult;
-  /** Preferred name for {@link ExtensionContribution}. */
-  export type MiniToolContribution<T = unknown> = ExtensionContribution<T>;
-  /** Preferred name for {@link ExtensionI18n}. */
-  export type MiniToolI18n = ExtensionI18n;
-  /** Preferred name for {@link ExtensionPromptGuide}. */
-  export type MiniToolPromptGuide = ExtensionPromptGuide;
-  /** Preferred name for {@link ExtensionCapabilitySpec}. */
-  export type MiniToolCapabilitySpec = ExtensionCapabilitySpec;
-  /** Preferred name for {@link ExtensionManifest}. */
-  export type MiniToolManifest = ExtensionManifest;
-  /** Preferred name for {@link ExtensionPermissions}. */
-  export type MiniToolPermissions = ExtensionPermissions;
 
 } // end declare module 'finch'

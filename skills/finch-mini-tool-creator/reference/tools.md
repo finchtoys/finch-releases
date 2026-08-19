@@ -73,6 +73,24 @@ return {
 
 This returns fast work in one call, and degrades slow work into a task id the model can poll — instead of freezing the turn or, worse, timing out and letting the model submit the same job twice. When a call does time out, Finch tells the model the work may still be running and to query existing tasks rather than re-submitting, so always ship a companion status/list action.
 
+### On-demand tool discovery (`registerDiscoveryProvider`)
+
+For large or external tool sets (e.g. MCP servers), register a discovery provider instead of hardcoding every tool at startup:
+
+```ts
+ctx.subscriptions.push(ctx.tools.registerDiscoveryProvider({
+  id: 'my-server-tools',
+  description: 'Tools exposed by the my-server MCP server',
+  async search(query, ctx) {
+    return [{ toolName: 'mcp__my-server__read_file', title: 'Read File', description: '...' }];
+  },
+}));
+```
+
+- `search(query, ctx)` is called when the model or ToolSearch requests tools matching a query; return the `toolName`s to activate (e.g. `mcp__<server>__<tool>`).
+- Combine with `exposure: 'dynamic'` on tools registered at runtime — they are injected only after registration, keeping the per-session tool list small.
+- The old `registerSearchProvider` is deprecated — use `registerDiscoveryProvider` in new code.
+
 ## 3. Naming and description rules
 
 Tool names are model-facing global identifiers. **Always use this exact format:**
@@ -101,7 +119,7 @@ Use `exec` inside `execute()` for call-specific data:
 - `signal` — an `AbortSignal` when the user cancels or the request times out; check `signal.aborted` before heavy work.
 - `logger` — per-call logger; also available on `ctx.logger`.
 - `storage` — mini-tool private KV storage; also available on `ctx.storage`.
-- `secrets` — read-only secrets; also available on `ctx.secrets`.
+- `secrets` — manifest-authorized encrypted secret access (`get/set/delete`); also available on `ctx.secrets`.
 - `progress` — live progress reporter for long-running work.
 - `ui` — request forms from the user during the call.
 
