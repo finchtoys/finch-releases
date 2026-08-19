@@ -1,6 +1,6 @@
 {
   "name": "@finchtoys/mcp-client",
-  "version": "1.2.13",
+  "version": "1.2.14",
   "description": "Connect Model Context Protocol (MCP) servers into Finch.",
   "author": {
     "name": "Finch Team",
@@ -23,7 +23,7 @@
     "README.zh-CN.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --target=node22 --packages=bundle --external:finch --banner:js=\"import { createRequire as __finchCreateRequire } from 'node:module'; const require = __finchCreateRequire(import.meta.url);\" --outfile=dist/index.js",
+    "build": "tsc -p tsconfig.json && node ../../scripts/bundle-extension.mjs .",
     "prepack": "npm run build"
   },
   "finch": {
@@ -80,8 +80,6 @@
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
-    "@finchtoys/minitool-api": "^0.2.13",
-    "@types/node": "^26.1.1",
-    "esbuild": "^0.28.1"
+    "@types/node": "^26.1.1"
   }
 }

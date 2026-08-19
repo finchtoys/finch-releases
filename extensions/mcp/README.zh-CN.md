@@ -80,11 +80,11 @@ interface McpClientCapability {
   unregisterServer(name: string): Promise<{ ok: boolean }>;
 }
 
-async function readSetup(ctx: finch.ExtensionContext): Promise<StoredSetup | undefined> {
+async function readSetup(ctx: finch.MiniToolContext): Promise<StoredSetup | undefined> {
   return ctx.storage.get<StoredSetup>(STORAGE_KEY);
 }
 
-async function registerRuntimeServer(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<void> {
+async function registerRuntimeServer(ctx: finch.MiniToolContext, setup: StoredSetup): Promise<void> {
   if (!ctx.capabilities.has('mcp.client')) {
     ctx.logger.warn('mcp.client capability is not available');
     return;
@@ -103,7 +103,7 @@ async function registerRuntimeServer(ctx: finch.ExtensionContext, setup: StoredS
   }
 }
 
-export function activate(ctx: finch.ExtensionContext): void {
+export function activate(ctx: finch.MiniToolContext): void {
   void readSetup(ctx).then((setup) => {
     if (setup) return registerRuntimeServer(ctx, setup);
   });

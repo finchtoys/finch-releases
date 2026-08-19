@@ -19,7 +19,7 @@ export interface McpOAuthConfig {
   id: string;
   /** User-facing OAuth provider name, e.g. "Notion MCP". */
   providerName?: string;
-  /** Provider logo owned by the contributing extension, as `finch-ext-icon://<extensionId>/<file>.png`.
+  /** Provider logo owned by the contributing extension, as `finch-ext-icon://<scope>/<package>/<file>.png`.
    *  Finch only accepts an icon that the owning extension declared in `contributes.mcpServers[].oauth.providerIcon`. */
   providerIcon?: string;
   /** Optional scopes. Discovery metadata is used when omitted. */
@@ -28,6 +28,12 @@ export interface McpOAuthConfig {
   clientUri?: string;
 }
 
+/**
+ * Where the persistent half of an MCP OAuth connection lives.
+ *
+ * Backed by Finch's encrypted credential custody rather than the extension's own storage: these
+ * records hold access and refresh tokens, and an extension's `ctx.storage` is plaintext JSON.
+ */
 export interface OAuthStorage {
   get<T = unknown>(key: string): Promise<T | undefined>;
   set<T = unknown>(key: string, value: T): Promise<void>;
@@ -60,6 +66,14 @@ function storageKey(config: McpOAuthConfig): string {
 
 class PersistentOAuthProvider implements OAuthClientProvider {
   private stored: StoredOAuthState = {};
+  /**
+   * PKCE verifier, in memory only.
+   *
+   * It is single-use and lives exactly as long as one authorization: both `auth()` calls run
+   * inside `authorizeMcpOAuth`. Persisting it would put the one secret that protects the code
+   * exchange on disk in exchange for surviving a restart the flow cannot survive anyway.
+   */
+  private verifier?: string;
 
   constructor(
     private readonly redirect: string,
@@ -99,12 +113,11 @@ class PersistentOAuthProvider implements OAuthClientProvider {
     await this.authorizationRedirect(url);
   }
   async saveCodeVerifier(value: string): Promise<void> {
-    await this.storage.set(`${this.key}.verifier`, value);
+    this.verifier = value;
   }
   async codeVerifier(): Promise<string> {
-    const value = await this.storage.get<string>(`${this.key}.verifier`);
-    if (!value) throw new Error('MCP OAuth PKCE verifier is missing');
-    return value;
+    if (!this.verifier) throw new Error('MCP OAuth PKCE verifier is missing');
+    return this.verifier;
   }
   async saveDiscoveryState(value: OAuthDiscoveryState): Promise<void> {
     this.stored.discovery = value;
@@ -118,7 +131,7 @@ class PersistentOAuthProvider implements OAuthClientProvider {
     }
     if (scope === 'all' || scope === 'tokens') this.stored.tokens = undefined;
     if (scope === 'all' || scope === 'discovery') this.stored.discovery = undefined;
-    if (scope === 'all' || scope === 'verifier') await this.storage.delete(`${this.key}.verifier`);
+    if (scope === 'all' || scope === 'verifier') this.verifier = undefined;
     await this.persist();
   }
   private persist(): Promise<void> { return this.storage.set(this.key, this.stored); }
@@ -174,7 +187,6 @@ export async function authorizeMcpOAuth(
     authorizationCode,
     scope: config.scopes?.join(' '),
   });
-  await storage.delete(`${key}.verifier`);
 }
 
 export async function createMcpOAuthProvider(
@@ -193,7 +205,5 @@ export async function createMcpOAuthProvider(
 }
 
 export async function clearMcpOAuth(config: McpOAuthConfig, storage: OAuthStorage): Promise<void> {
-  const key = storageKey(config);
-  await storage.delete(key);
-  await storage.delete(`${key}.verifier`);
+  await storage.delete(storageKey(config));
 }

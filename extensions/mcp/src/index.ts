@@ -5,7 +5,7 @@
  * toolset to the Agent, and provides an `mcp.client` capability so other
  * extensions can talk to MCP servers without bundling their own client:
  *   - `<extensionData>/servers.json`            — user / local config file
- *   - `ctx.extensions.listContributions('mcpServers')` — servers contributed by
+ *   - `ctx.minitools.listContributions('mcpServers')` — servers contributed by
  *      enabled extensions via `contributes.mcpServers`.
  *
  * Supported server shapes (transport inferred from field presence):
@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServerConfig, type McpServerConfig, type McpTool, type McpToolResult } from './client.js';
 import { authorizeMcpOAuth, clearMcpOAuth, createMcpOAuthProvider, type McpOAuthConfig } from './oauth.js';
+import { createOAuthCustody, migrateLegacyOAuthStorage } from './oauthCustody.js';
 
 type ManagedMcpServerConfig = McpServerConfig & {
   /** Maps environment variable names to extension-scoped encrypted secret keys. */
@@ -46,7 +47,7 @@ type ContributedServerMeta = {
   qualifiedName?: string;
   toolMeta?: ManagedMcpServerConfig['toolMeta'];
   toolDisplay?: ManagedMcpServerConfig['toolDisplay'];
-  /** Provider logo declared by the owning extension, already qualified to `finch-ext-icon://<id>/<file>.png`. */
+  /** Provider logo declared by the owning extension, already qualified to `finch-ext-icon://<scope>/<package>/<file>.png`. */
   oauthProviderIcon?: string;
 };
 
@@ -61,7 +62,11 @@ function contributedProviderIcon(raw: Record<string, unknown>, ownerExtensionId:
   const path = icon.trim().replace(/^\/+/, '');
   if (!path || !path.toLowerCase().endsWith('.png') || path.includes('\\')) return undefined;
   if (path.split('/').some((segment) => !segment || segment === '.' || segment === '..')) return undefined;
-  return `finch-ext-icon://${ownerExtensionId}/${path}`;
+  const separator = ownerExtensionId.indexOf('@');
+  const ownerPath = separator > 0
+    ? `${encodeURIComponent(ownerExtensionId.slice(0, separator))}/${encodeURIComponent(ownerExtensionId.slice(separator + 1))}`
+    : encodeURIComponent(ownerExtensionId);
+  return `finch-ext-icon://${ownerPath}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 /** Attach the owning extension's declared provider logo to an OAuth server config.
@@ -116,8 +121,8 @@ const reconnectTimers = new Map<string, NodeJS.Timeout>();
  * registry and races with mid-run dynamic-tool injection).
  */
 const registeredTools = new Map<string, Map<string, finch.Disposable>>();
-/** Active ExtensionContext — stored so module-level helpers can register tools dynamically. */
-let activeCtx: finch.ExtensionContext | null = null;
+/** Active MiniToolContext — stored so module-level helpers can register tools dynamically. */
+let activeCtx: finch.MiniToolContext | null = null;
 
 // Reconnection constants (stdio only — httpStream heals naturally per-request).
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -365,7 +370,7 @@ function secretRefFor(serverName: string, envKey: string): string {
   return `mcp.${sanitizeSegment(serverName)}.env.${sanitizeSegment(envKey)}`;
 }
 
-async function resolveServerSecrets(config: ManagedMcpServerConfig, ctx: finch.ExtensionContext): Promise<ManagedMcpServerConfig> {
+async function resolveServerSecrets(config: ManagedMcpServerConfig, ctx: finch.MiniToolContext): Promise<ManagedMcpServerConfig> {
   const refs = config.secretRefs ?? {};
   const entries = await Promise.all(Object.entries(refs).map(async ([envKey, secretKey]) => {
     const value = await ctx.secrets.get(secretKey);
@@ -376,7 +381,7 @@ async function resolveServerSecrets(config: ManagedMcpServerConfig, ctx: finch.E
 }
 
 /** Migrate legacy plaintext env values before the config is rewritten without them. */
-async function sealServerSecrets(ctx: finch.ExtensionContext, server: ManagedMcpServerConfig): Promise<ManagedMcpServerConfig> {
+async function sealServerSecrets(ctx: finch.MiniToolContext, server: ManagedMcpServerConfig): Promise<ManagedMcpServerConfig> {
   const env = server.env ?? {};
   if (!Object.keys(env).length) return server;
   const secretRefs = { ...(server.secretRefs ?? {}) };
@@ -389,7 +394,7 @@ async function sealServerSecrets(ctx: finch.ExtensionContext, server: ManagedMcp
 }
 
 async function removeServerSecrets(
-  ctx: finch.ExtensionContext,
+  ctx: finch.MiniToolContext,
   server: ManagedMcpServerConfig | undefined,
   preservedRefs: ReadonlySet<string> = new Set(),
 ): Promise<void> {
@@ -398,7 +403,7 @@ async function removeServerSecrets(
   }
 }
 
-async function migrateLegacySecrets(ctx: finch.ExtensionContext): Promise<void> {
+async function migrateLegacySecrets(ctx: finch.MiniToolContext): Promise<void> {
   const servers = readUserServers(ctx.storagePath);
   let changed = false;
   const migrated: ManagedMcpServerConfig[] = [];
@@ -521,8 +526,8 @@ function readServersFile(file: string, logger: finch.Logger): ManagedMcpServerCo
   }
 }
 
-function readContributedServers(ctx: finch.ExtensionContext): ContributedServerMeta[] {
-  return ctx.extensions.listContributions<unknown>('mcpServers').flatMap((contribution) => {
+function readContributedServers(ctx: finch.MiniToolContext): ContributedServerMeta[] {
+  return ctx.minitools.listContributions<unknown>('mcpServers').flatMap((contribution) => {
     const values = Array.isArray(contribution.value) ? contribution.value : [];
     // Use the looser isContributedServerEntry check (name only) so that
     // metadata-only contributions (name + toolMeta + toolDisplay, no transport)
@@ -635,7 +640,7 @@ function mergeRuntimeWithContribution(
  * presentation are preserved across tiers so dependency-only MCP services stay
  * attributed to the contributing extension.
  */
-function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[] {
+function loadServerConfigs(ctx: finch.MiniToolContext): ManagedMcpServerConfig[] {
   const storagePath = ctx.storagePath;
   const fileServers = readServersFile(join(storagePath, 'servers.json'), ctx.logger);
   const contributed = readContributedServers(ctx);
@@ -656,7 +661,7 @@ function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[
   // own and must not appear as pending/failed servers in the status list.
   // Re-read the raw contributions here so transport-capable entries can be cast
   // to ManagedMcpServerConfig and added to byName for immediate connection.
-  for (const contribution of ctx.extensions.listContributions<unknown>('mcpServers')) {
+  for (const contribution of ctx.minitools.listContributions<unknown>('mcpServers')) {
     const values = Array.isArray(contribution.value) ? contribution.value : [];
     for (const raw of values) {
       if (!isServerConfig(raw)) continue;
@@ -677,7 +682,7 @@ function loadServerConfigs(ctx: finch.ExtensionContext): ManagedMcpServerConfig[
   return [...byName.values()];
 }
 
-function refreshServerConfigs(ctx: finch.ExtensionContext): void {
+function refreshServerConfigs(ctx: finch.MiniToolContext): void {
   const next = new Map(loadServerConfigs(ctx).map((config) => [config.name, config]));
   for (const name of [...configs.keys()]) {
     if (!next.has(name)) {
@@ -752,7 +757,7 @@ async function connectIfNeeded(name: string, logger: finch.Logger, reconnectAtte
 
   const promise = (async () => {
     const authProvider = isHttpConfig(config) && config.oauth
-      ? await createMcpOAuthProvider(config.oauth, activeCtx!.storage)
+      ? await createMcpOAuthProvider(config.oauth, createOAuthCustody(activeCtx!.oauth, config.oauth))
       : undefined;
     const resolvedConfig = await resolveServerSecrets(config, activeCtx!);
     const client = createMcpClient(resolvedConfig, authProvider);
@@ -819,7 +824,7 @@ function toToolResult(result: McpToolResult): finch.ToolResult {
   return { content, isError: result.isError };
 }
 
-export async function activate(ctx: finch.ExtensionContext): Promise<void> {
+export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   activeCtx = ctx;
 
   // User-facing form strings are localized via ctx.i18n; the dictionary lives in
@@ -830,6 +835,14 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
   // Move legacy plaintext environment values into the encrypted extension store
   // before loading configs. Failed entries remain untouched for retry.
   await migrateLegacySecrets(ctx);
+
+  // Earlier versions also kept MCP OAuth tokens in plaintext extension storage.
+  // Move them into Main-owned encrypted custody without blocking activation.
+  void migrateLegacyOAuthStorage(ctx.storage, ctx.oauth, ctx.logger)
+    .then((migrated) => {
+      if (migrated > 0) ctx.logger.info(`Migrated ${migrated} MCP OAuth credentials into Finch secure storage`);
+    })
+    .catch(() => { /* Logged per key; the plaintext copy stays and retries next activation. */ });
 
   // Load server configs and register them.
   // Connections are established lazily the first time a server is actually used
@@ -907,7 +920,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     const httpHeaderName = (args.authHeader ?? '').trim() || 'Authorization';
     const isBearer = httpHeaderName.toLowerCase() === 'authorization';
 
-    const fields: finch.ExtensionFormField[] = [];
+    const fields: finch.MiniToolFormField[] = [];
     if (isHttp) {
       // HTTP: name (1/3) + URL (2/3) on one row; token below full-width.
       fields.push(
@@ -1052,7 +1065,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
     const existingCmd = !existingIsHttp ? (existing as { command: string }).command : '';
     const existingArgs = !existingIsHttp ? ((existing as { args?: string[] }).args ?? []).join(' ') : '';
 
-    const fields: finch.ExtensionFormField[] = [];
+    const fields: finch.MiniToolFormField[] = [];
     if (isHttp) {
       // HTTP: name (1/3) + URL (2/3) on one row; token below full-width.
       fields.push(
@@ -1228,7 +1241,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       return { content: [{ type: 'text', text: `MCP server "${name}" is not configured for OAuth.` }], isError: true };
     }
     disconnectServer(name);
-    await authorizeMcpOAuth(config.url, config.oauth, ctx.storage, ctx.oauth);
+    await authorizeMcpOAuth(config.url, config.oauth, createOAuthCustody(ctx.oauth, config.oauth), ctx.oauth);
     serverStatus.set(name, 'pending');
     await connectIfNeeded(name, ctx.logger);
     return { content: [{ type: 'text', text: `Connected MCP server "${name}" with OAuth discovery, DCR, and PKCE.` }] };
@@ -1241,7 +1254,7 @@ export async function activate(ctx: finch.ExtensionContext): Promise<void> {
       return { content: [{ type: 'text', text: `OAuth MCP server "${name}" was not found.` }], isError: true };
     }
     disconnectServer(name);
-    await clearMcpOAuth(config.oauth, ctx.storage);
+    await clearMcpOAuth(config.oauth, createOAuthCustody(ctx.oauth, config.oauth));
     serverStatus.set(name, 'pending');
     return { content: [{ type: 'text', text: `Disconnected OAuth from MCP server "${name}".` }] };
   }
