@@ -57,6 +57,7 @@ finch-releases/
 - 本仓库不存放 Finch App 主程序源码；主程序源码位于独立的开发仓库。
 - 小工具（mini-tools）开发统一放在 `extensions/` 目录下，每个子目录一个扩展项目。如需独立维护（如大项目迁移至单独仓库），在 `extensions/` 保留配置文件索引并指向外部仓库链接。
 - `packages/` 使用 npm workspaces 管理，发布脚本位于 `scripts/publish-all.sh`，CI 配置位于 `.github/workflows/publish.yml`。
+- **回复 Issue 必须使用 `gh-bot-reply` skill**，以 `finch-paia[bot]` 身份回复（bug 分流、路线图更新、关闭/重复通知等官方维护者场景），个人观点才用 `puterjam` 个人账号。
 - 如需调整空间规则，请修改本文件并同步更新 `README.md`。
 
 ---
