@@ -144,7 +144,7 @@
     "description": "A handy Git branch widget inside your chat dialog.",
     "repo": "finchtoys/finch-releases",
     "npm": "finch-git-branch",
-    "version": "0.2.10",
+    "version": "0.2.11",
     "extensionType": "official",
     "categories": [
       "developer"

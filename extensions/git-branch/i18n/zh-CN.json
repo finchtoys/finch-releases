@@ -14,6 +14,8 @@
   "git.branch.coauthor.label": "包含 {finchName} 作为代码协作者",
   "git.branch.coauthor.on": "已开启",
   "git.branch.coauthor.off": "已关闭",
+  "git.branch.coauthor.tip.on": "Code Co-authored 已开启，开启新会话生效",
+  "git.branch.coauthor.tip.off": "Code Co-authored 已关闭，开启新会话生效",
   "git.branch.changes": "{count} 个改动",
   "git.branch.more": "更多分支",
   "git.branch.more.group": "分支",

@@ -1,5 +1,5 @@
 /**
- * @finchtoys/ext-git-branch v0.2.1
+ * @finchtoys/ext-git-branch v0.2.11
  *
  * Composer toolbar button for Git branch management:
  * - Branch switch with uncommitted-changes guard (ModalDialog)
@@ -176,7 +176,7 @@ export function activate(ctx: finch.ExtensionContext): void {
       },
 
       async getReminder({ cwd, surface }): Promise<string | undefined> {
-        if (surface === 'home' || !cwd || !isGitRepo(cwd) || (await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY)) === false) {
+        if (surface === 'home' || !cwd || !isGitRepo(cwd) || (await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY)) !== true) {
           return undefined;
         }
         return `When creating any Git commit, append a blank line followed by the exact trailer: ${await getCoAuthorTrailer(ctx)}`;
@@ -217,7 +217,7 @@ export function activate(ctx: finch.ExtensionContext): void {
             }),
           );
 
-          const coAuthorEnabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false;
+          const coAuthorEnabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) === true;
           const { assistantName } = await ctx.app.getInfo();
           const items: finch.ComposerActionMenuItem[] = [{
             id: '__toggle_co_author__',
@@ -300,8 +300,14 @@ export function activate(ctx: finch.ExtensionContext): void {
         if (!cwd || !itemId) return;
 
         if (itemId === '__toggle_co_author__') {
-          const enabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false;
-          await ctx.storage.set(CO_AUTHOR_ENABLED_KEY, !enabled);
+          const enabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) === true;
+          const next = !enabled;
+          await ctx.storage.set(CO_AUTHOR_ENABLED_KEY, next);
+          await ctx.ui.showToast({
+            title: ctx.i18n.t(next ? 'git.branch.coauthor.tip.on' : 'git.branch.coauthor.tip.off'),
+            variant: next ? 'success' : 'info',
+            position: 'TC',
+          });
           composerAction.notifyUpdate();
           return;
         }
@@ -341,7 +347,7 @@ export function activate(ctx: finch.ExtensionContext): void {
             await git(cwd, [
               'commit', '-m',
               ctx.i18n.t('git.branch.switch.commit.msg', { branch: itemId }),
-              ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false
+              ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) === true
                 ? ['-m', await getCoAuthorTrailer(ctx)]
                 : []),
             ]);
@@ -437,7 +443,7 @@ export function activate(ctx: finch.ExtensionContext): void {
           await git(cwd, [
             'commit', '-m',
             `checkpoint: before creating branch ${branchName}`,
-            ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) !== false
+            ...(await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) === true
               ? ['-m', await getCoAuthorTrailer(ctx)]
               : []),
           ]);
