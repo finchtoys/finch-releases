@@ -30,7 +30,7 @@
   },
   {
     "id": "brave-search",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "name": "Brave Search",
     "author": "henryye",
     "description": "Search the web with the Brave Search API and retrieve up-to-date results for Finch.",
