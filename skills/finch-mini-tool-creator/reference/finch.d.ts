@@ -100,6 +100,12 @@ declare module 'finch' {
     appendCodeblock(value: string, language?: string): MarkdownString;
   }
 
+  /** Finch 宿主级导航；后端 `ctx.navigation` 与页面 `window.finch.navigation` 共用此接口。 */
+  export interface Navigation {
+    /** 在当前 Finch 窗口打开已有 Session。 */
+    openSession(sessionId: string): Promise<void>;
+  }
+
   // ════════════════════════════════════════════════════════════════════════════
   // § 1  插件生命周期
   // ════════════════════════════════════════════════════════════════════════════
@@ -226,6 +232,9 @@ declare module 'finch' {
      * 后续版本会增加 `ctx.commands.register()` 支持。
      */
     readonly commands: undefined;
+
+    /** Finch 宿主级导航；不依赖 Composer Action，可在任意后端回调中调用。 */
+    readonly navigation: Navigation;
 
     /** Finch 内置 Browser Panel。每次调用在当前 Panel scope 新建一个 Browser Tab。 */
     readonly browser: {
@@ -897,6 +906,13 @@ declare module 'finch' {
     readonly message: string;
     /** 0–100；省略时 Finch 展示不确定进度动画。 */
     readonly percent?: number;
+    /** 设为 'image' 时渲染专用的生图动效，取代默认进度条。 */
+    readonly kind?: 'image';
+    /** kind: 'image' 时展示的附加信息。 */
+    readonly image?: {
+      /** [宽, 高] 像素，例如 [1024, 1024]；展示为角标，同时决定画布自身尺寸——按与正方形大致相同的面积缩放，长方形/竖形分辨率会渲染出成比例变宽/变高的画布，而不是被裁成正方形。 */
+      readonly resolution?: readonly [number, number];
+    };
   }
 
   /** 单次工具调用的进度上报入口。 */
@@ -1208,11 +1224,8 @@ declare module 'finch' {
   export interface ComposerActionActions {
     /** Composer 域 helper：内联 confirm、填充输入框等。 */
     composer: ComposerActionComposerActions;
-    /** 用户触发 ComposerAction 时可用的 App 导航能力。 */
-    navigation: {
-      /** 在当前 Finch 窗口打开已有 Session。 */
-      openSession(sessionId: string): Promise<void>;
-    };
+    /** @deprecated 请改用激活时捕获的 `ctx.navigation`。 */
+    navigation: Navigation;
     /**
      * @deprecated 请使用 `actions.composer.fill(text, options)`。
      *
@@ -1870,6 +1883,41 @@ declare module 'finch' {
      */
     readonly spaces: {
       list(): Promise<SpaceSummary[]>;
+    };
+    /**
+     * 宿主级导航能力。与普通 `<a href="finch://…">` 不同，这些方法不会让
+     * guest webview 自己加载自定义协议，也不会通过系统外部协议处理器跳出
+     * 当前窗口；调用要求来自真实用户手势。
+     */
+    readonly navigation: Navigation;
+    /**
+     * 仅在 `contributes.appView` 页面内可用（`view === 'appView'`）：把内置
+     * 的文件预览 / 浏览器面板，或另一个已声明 `embeddable: true` 的小程序
+     * 的 `appView` 页面，作为下一层级压入 Appview 的导航栈。栈会显示为多级
+     * 面包屑（`小程序 > 当前小程序 > 文件预览（report.md）> ...`），点击
+     * 面包屑中的某一级会关闭它右侧（含自身）的所有层级，回到该级 —— 这是
+     * 唯一的返回方式，没有单独的"关闭"调用。
+     *
+     * 栈深度有限（当前上限 3 层），超出会 reject；`openApp` 额外做防环检测
+     * ——不能把已经在当前栈路径上的小程序再打开一次。不做状态保留：某一层
+     * 被关闭后会被销毁，不保留滚动位置等内部状态，下次重新打开会重新加载。
+     *
+     * @example
+     * document.getElementById('open-report').addEventListener('click', async () => {
+     *   await window.finch.appView.openPreview('/Users/me/report.md');
+     * });
+     */
+    readonly appView: {
+      /** 压入内置文件预览面板，展示 `path` 指向的本地文件。 */
+      openPreview(path: string): Promise<{ id: string }>;
+      /** 压入内置浏览器面板，加载给定的 http(s) 地址。 */
+      openBrowser(url: string): Promise<{ id: string }>;
+      /**
+       * 压入另一个小程序的 `contributes.appView` 页面。目标小程序必须在自己
+       * 的 manifest 中声明 `contributes.appView.embeddable: true`，否则会
+       * reject；默认拒绝，需要显式声明才能被其他小程序嵌入。
+       */
+      openApp(extensionId: string): Promise<{ id: string }>;
     };
   }
 
@@ -2590,6 +2638,15 @@ declare module 'finch' {
     readonly icon?: IconRef;
     /** Packaged `local` pages receive the trusted Bridge and Finch theme variables; public `url` pages do not. */
     readonly source: AppPanelEntrySource;
+    /**
+     * Whether another mini tool's own App View may open this page as a
+     * nested child inside its Appview navigation stack via
+     * `window.finch.appView.openApp(extensionId)`. Defaults to `false` —
+     * a mini tool must opt in explicitly before others can embed it this
+     * way; Finch's own built-in file preview / browser panels need no such
+     * declaration.
+     */
+    readonly embeddable?: boolean;
   }
 
   /**
