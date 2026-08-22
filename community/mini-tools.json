@@ -110,6 +110,20 @@
     "featured": true
   },
   {
+    "id": "finch-helper",
+    "version": "0.2.3",
+    "name": "Finch Helper",
+    "author": "puterjam",
+    "description": "A Finch assistant that answers questions about Finch usage, features and mini tool development from the official documentation.",
+    "repo": "puterjam/finch-tools",
+    "npm": "finch-helper",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ],
+    "featured": true
+  },
+  {
     "id": "finch-pet",
     "version": "1.0.6",
     "name": "Finch Pet",
