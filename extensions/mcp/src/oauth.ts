@@ -1,14 +1,12 @@
 import { createHash, randomBytes } from 'node:crypto';
-import {
-  auth,
-  type OAuthClientProvider,
-  type OAuthDiscoveryState,
-} from '@modelcontextprotocol/sdk/client/auth.js';
+import { auth } from '@modelcontextprotocol/client';
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
+  OAuthClientProvider,
+  OAuthDiscoveryState,
   OAuthTokens,
-} from '@modelcontextprotocol/sdk/shared/auth.js';
+} from '@modelcontextprotocol/client';
 
 export const FINCH_MCP_OAUTH_CALLBACK_URL = 'https://oauth.finchwork.app/callback';
 export const FINCH_MCP_OAUTH_PERMISSION_ID = 'mcp';

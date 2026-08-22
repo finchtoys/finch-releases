@@ -5,13 +5,10 @@
  * status, dynamic tool registration, retries, and user-facing errors while the
  * SDK owns transports, framing, JSON-RPC, and process lifecycle details.
  */
-import { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { Client as SdkClient, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import type { OAuthClientProvider, ServerCapabilities, Transport } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import type { McpOAuthConfig } from './oauth.js';
-import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 
 export type McpServerConfig = McpStdioServerConfig | McpHttpStreamServerConfig;
 
@@ -129,7 +126,13 @@ class SdkBackedMcpClient implements McpClient {
     this.closing = false;
     const client = new SdkClient(
       { name: 'finch', version: '1.0.0' },
-      { capabilities: {} },
+      {
+        capabilities: {},
+        // Probe for the modern (2026-07-28+) protocol era and negotiate it when
+        // the server supports it, falling back to the plain legacy handshake
+        // otherwise. See https://github.com/finchtoys/finch-releases/issues/53.
+        versionNegotiation: { mode: 'auto' },
+      },
     );
     client.fallbackNotificationHandler = async (notification) => {
       const handlers = this.notificationHandlers.get(notification.method);
@@ -189,7 +192,6 @@ class SdkBackedMcpClient implements McpClient {
     const client = this.requireClient();
     const result = await client.callTool(
       { name, arguments: args },
-      undefined,
       { timeout: timeoutMs, maxTotalTimeout: timeoutMs },
     );
     if ('toolResult' in result) {
@@ -200,7 +202,7 @@ class SdkBackedMcpClient implements McpClient {
     return {
       content: result.content as McpToolResult['content'],
       isError: result.isError,
-      structuredContent: result.structuredContent,
+      structuredContent: result.structuredContent as Record<string, unknown> | undefined,
     };
   }
 
