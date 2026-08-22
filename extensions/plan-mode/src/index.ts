@@ -32,6 +32,20 @@ let homePlanningEnabled = false;
 let pendingNewSessionPlan = false;
 const knownSessions = new Set<string>();
 
+// Composer 点击可能由嵌套元素重复派发；同一 surface 的短时间重复事件只处理一次。
+let lastClickKey: string | undefined;
+let lastClickAt = 0;
+const CLICK_DEDUP_MS = 300;
+
+function isDuplicateClick(surface: string, sessionId: string | undefined): boolean {
+  const key = `${surface}:${sessionId ?? ''}`;
+  const now = Date.now();
+  const duplicate = key === lastClickKey && now - lastClickAt < CLICK_DEDUP_MS;
+  lastClickKey = key;
+  lastClickAt = now;
+  return duplicate;
+}
+
 // ── Activation ────────────────────────────────────────────────────────────────
 export function activate(ctx: finch.ExtensionContext): void {
   // 拉取助手名称，缓存在内存里，fallback 到 'Finch'
@@ -72,13 +86,17 @@ export function activate(ctx: finch.ExtensionContext): void {
 
     // ── Click ─────────────────────────────────────────────────────────────
     async onClick({ surface, sessionId }) {
+      if (isDuplicateClick(surface, sessionId)) {
+        ctx.logger.info('ignored duplicate plan-mode click', { surface, sessionId });
+        return;
+      }
+
       // Home: one-shot
       if (surface === 'home') {
         homePlanningEnabled = !homePlanningEnabled;
         // 提前同步 pending flag：确保后续任何时序的 getBadge 都能拿到正确状态
         // 用户若再次点击关闭，同步清掉
         pendingNewSessionPlan = homePlanningEnabled;
-        action.notifyUpdate();
         void ctx.ui.showToast({
           title: homePlanningEnabled ? t('toast.enter.title') : t('toast.home.exit.title'),
           description: homePlanningEnabled ? t('toast.home.enter.desc') : t('toast.home.exit.desc'),
@@ -92,7 +110,6 @@ export function activate(ctx: finch.ExtensionContext): void {
       if (!sessionId) return;
       const next = !isEnabled(sessionId);
       setEnabled(sessionId, next);
-      action.notifyUpdate();
 
       void ctx.storage.set(storageKey(sessionId), next).catch((err) => {
         ctx.logger.warn('failed to persist plan mode state', err);
