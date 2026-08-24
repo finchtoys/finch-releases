@@ -1,14 +1,16 @@
 import type * as finch from 'finch';
 import { execFile } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
 type RepoFile = {
   path: string; basename: string; dirname: string; status: string; staged: boolean; add: number; del: number;
+  diffLeftPath?: string; diffRightPath?: string;
 };
 type GraphCommit = {
   hash: string; parents: string[]; shortHash: string; subject: string; author: string; date: string;
@@ -84,6 +86,16 @@ async function inspectRepo(path: string): Promise<Repo> {
     const item = files.find((entry) => entry.path === file);
     if (item) { item.add = Number(add) || 0; item.del = Number(del) || 0; }
   }
+  await Promise.all(files.map(async (file) => {
+    const absolute = resolve(path, file.path);
+    const rightPath = existsSync(absolute) ? realpathSync(absolute) : await createDiffFile('worktree', file.path, '');
+    const compareIndex = file.staged;
+    file.diffLeftPath = await createDiffFile('base', file.path,
+      file.status === '?' ? '' : await fileAtRevision(path, compareIndex ? 'HEAD' : '', file.path));
+    file.diffRightPath = compareIndex
+      ? await createDiffFile('index', file.path, await fileAtRevision(path, '', file.path))
+      : rightPath;
+  }));
   let ahead = 0; let behind = 0;
   if (upstream) {
     const counts = await runGit(path, ['rev-list', '--left-right', '--count', `HEAD...${upstream}`]).catch(() => '0\t0');
@@ -133,44 +145,97 @@ function allowedFile(repoPath: string, filePath: unknown): string | undefined {
   return relative(repoPath, absolute).startsWith('..') ? undefined : absolute;
 }
 
+async function createDiffFile(label: string, filePath: string, content: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), 'finch-git-diff-'));
+  const output = join(directory, `${label}-${basename(filePath)}`);
+  await writeFile(output, content, 'utf8');
+  return output;
+}
+
+async function fileAtRevision(repoPath: string, revision: string, filePath: string): Promise<string> {
+  return runGit(repoPath, ['show', `${revision}:${filePath}`], 15_000, false).catch(() => '');
+}
+
 export function activateScmPanel(ctx: finch.MiniToolContext): void {
   ctx.subscriptions.push(panelUi(ctx).onDidOpenPanel((panel) => {
-    const assistantInfo = ctx.app.getInfo();
     let cwd = '';
+    let scopeKey = '';
+    let generation = 0;
     let repos: Repo[] = [];
-    const refresh = async (force = true) => {
-      // Polling only checks whether the active Space changed; unchanged workspaces never repaint.
-      const nextCwd = ctx.workspace.directoryPath ?? ctx.workspace.projectPath ?? cwd;
-      const workspaceChanged = nextCwd !== cwd;
-      if (!nextCwd || (!force && !workspaceChanged)) return;
+    const sendConfig = async () => {
+      const { assistantName } = await ctx.app.getInfo();
+      await panel.postMessage({ type: 'config', assistantName });
+    };
+    // Also push config immediately: an already-live Webview may not emit finch:env again
+    // after the mini tool backend is reloaded.
+    void sendConfig().catch(() => undefined);
+    const setScope = async (message: Record<string, unknown>, useCurrentWorkspace = false): Promise<boolean> => {
+      const webviewCwd = typeof message.cwd === 'string' ? message.cwd : '';
+      // Session switches can retain a live Webview without replaying finch:env.
+      // The backend workspace follows the active session and is authoritative for heartbeat refreshes.
+      const activeCwd = ctx.workspace.directoryPath ?? ctx.workspace.projectPath ?? '';
+      const nextCwd = useCurrentWorkspace && activeCwd ? activeCwd : webviewCwd;
+      const nextScopeKey = typeof message.scopeKey === 'string' ? message.scopeKey : (scopeKey || nextCwd);
+      if (nextScopeKey === scopeKey && nextCwd === cwd) return false;
+      generation += 1;
+      scopeKey = nextScopeKey;
       cwd = nextCwd;
-      await panel.postMessage({ type: 'loading', loading: true });
+      repos = [];
+      await panel.postMessage({ type: 'status', repos: [], scopeKey });
+      return true;
+    };
+    const refresh = async () => {
+      const requestGeneration = generation;
+      const requestScope = scopeKey;
+      const requestCwd = cwd;
+      if (!requestCwd) {
+        await panel.updateToolbarItem('scm-title', {
+          label: 'Source Control', icon: 'ext:git-branch/git-branch',
+        });
+        await panel.postMessage({ type: 'status', repos: [], scopeKey: requestScope, cwd: requestCwd });
+        return;
+      }
+      await panel.postMessage({ type: 'loading', loading: true, scopeKey: requestScope });
       try {
-        repos = await discoverRepos(cwd);
+        const nextRepos = await discoverRepos(requestCwd);
+        // A newer finch:env/init won while Git was running; never paint stale results.
+        if (requestGeneration !== generation || requestScope !== scopeKey || requestCwd !== cwd) return;
+        repos = nextRepos;
         await panel.updateToolbarItem('scm-title', {
           label: toolbarTitle(repos[0]?.path),
           icon: 'ext:git-branch/git-branch',
         });
-        await panel.postMessage({ type: 'status', repos });
+        await panel.postMessage({ type: 'status', repos, scopeKey: requestScope, cwd: requestCwd });
       } finally {
-        await panel.postMessage({ type: 'loading', loading: false });
+        if (requestGeneration === generation && requestScope === scopeKey) {
+          await panel.postMessage({ type: 'loading', loading: false, scopeKey: requestScope });
+        }
       }
     };
     const toast = async (title: string, variant: 'success' | 'error' | 'info' = 'success') => {
       await panel.postMessage({ type: 'toast', title, variant, position: 'TC' });
     };
-    ctx.subscriptions.push(panel.onDidReceiveMessage(async (raw) => {
+    ctx.subscriptions.push(panel.onDidReceiveMessage((raw) => {
+      void (async () => {
       const message = raw as Record<string, unknown>;
       try {
         if (message.type === 'init') {
-          cwd = typeof message.cwd === 'string' ? message.cwd : '';
-          const { assistantName } = await assistantInfo;
-          await panel.postMessage({ type: 'config', assistantName });
+          await setScope(message);
+          await sendConfig();
           await refresh();
           return;
         }
-        if (message.type === 'refresh') { await refresh(); return; }
-        if (message.type === 'syncWorkspace') { await refresh(false); return; }
+        if (message.type === 'refresh') {
+          await setScope(message, true);
+          await refresh();
+          return;
+        }
+        if (message.type === 'syncWorkspace') {
+          const changed = await setScope(message, true);
+          await sendConfig();
+          if (changed || repos.length === 0) await refresh();
+          return;
+        }
         const repoPath = allowedRepo(repos, message.repoPath);
         if (!repoPath) return;
         if (message.type === 'stage') await runGit(repoPath, ['add', '--', String(message.filePath)]);
@@ -180,10 +245,30 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
         if (message.type === 'pull') { await runGit(repoPath, ['pull', '--ff-only'], 60_000); await toast('Pulled latest changes'); }
         if (message.type === 'push') { await runGit(repoPath, ['push'], 60_000); await toast('Pushed to remote'); }
         if (message.type === 'fetch') { await runGit(repoPath, ['fetch', '--prune'], 60_000); await toast('Fetched remote updates'); }
+        if (message.type === 'requestCommit') {
+          const result = await ctx.ui.showModalDialog({
+            title: ctx.i18n.t('git.scm.commit.title'),
+            actions: [
+              { id: 'cancel', label: ctx.i18n.t('git.scm.commit.cancel'), variant: 'secondary' },
+              { id: 'commit', label: ctx.i18n.t('git.scm.commit.submit'), variant: 'primary' },
+            ],
+            fields: [{
+              key: 'message', label: ctx.i18n.t('git.scm.commit.field'), type: 'textarea', required: true,
+              placeholder: ctx.i18n.t('git.scm.commit.placeholder'),
+            }],
+          });
+          if (result.action !== 'commit') return;
+          const text = String(result.values?.message ?? '').trim();
+          if (!text) return;
+          await runGit(repoPath, ['add', '-A']);
+          await runGit(repoPath, ['commit', '-m', text, '-m', 'Co-authored-by: 帕亚 <noreply@finchwork.app>']);
+          await toast(ctx.i18n.t('git.scm.commit.success'));
+        }
         if (message.type === 'commit') {
           const text = typeof message.message === 'string' ? message.message.trim() : '';
           if (!text) throw new Error('Commit message is required');
-          await runGit(repoPath, ['commit', '-m', text]);
+          await runGit(repoPath, ['add', '-A']);
+          await runGit(repoPath, ['commit', '-m', text, '-m', 'Co-authored-by: 帕亚 <noreply@finchwork.app>']);
           await toast('Committed changes');
         }
         if (message.type === 'discard') {
@@ -198,11 +283,33 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
           if (file && existsSync(file)) await panelUi(ctx).openFilePreview(realpathSync(file));
           return;
         }
+        if (message.type === 'prepareFileDiff') {
+          const file = allowedFile(repoPath, message.filePath);
+          const relativePath = file ? relative(repoPath, file).replace(/\\/g, '/') : '';
+          const entry = repos.find((repo) => repo.path === repoPath)?.files.find((item) => item.path === relativePath);
+          if (!file || !entry || !relativePath) throw new Error('Invalid file path');
+          const rightPath = existsSync(file)
+            ? realpathSync(file)
+            : await createDiffFile('worktree', relativePath, '');
+          const compareIndex = entry.staged;
+          const leftPath = await createDiffFile('base', relativePath,
+            entry.status === '?' ? '' : await fileAtRevision(repoPath, compareIndex ? 'HEAD' : '', relativePath));
+          const resolvedRightPath = compareIndex
+            ? await createDiffFile('index', relativePath, await fileAtRevision(repoPath, '', relativePath))
+            : rightPath;
+          await panel.postMessage({ type: 'fileDiff', leftPath, rightPath: resolvedRightPath });
+          return;
+        }
         await refresh();
       } catch (error) {
-        await toast(error instanceof Error ? error.message : 'Git operation failed', 'error');
-        await refresh();
+        try {
+          await toast(error instanceof Error ? error.message : 'Git operation failed', 'error');
+          await refresh();
+        } catch (recoveryError) {
+          ctx.logger.error('SCM panel recovery failed', recoveryError);
+        }
       }
+      })().catch((error) => ctx.logger.error('SCM panel message failed', error));
     }));
   }));
 }

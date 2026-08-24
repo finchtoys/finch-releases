@@ -1,6 +1,6 @@
 {
   "name": "finch-tavily-search",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Tavily Search MCP extension for Finch.",
   "author": {
     "name": "Finch Team",
@@ -20,6 +20,7 @@
   },
   "finch": {
     "manifestVersion": 1,
+    "minVersion": "1.5.4",
     "id": "tavily-search",
     "name": "Tavily Search",
     "description": "Connect Tavily Search through MCP and make web search, extract, crawl, and map tools available to Finch.",
@@ -60,6 +61,10 @@
     "contributes": {
       "tools": true,
       "skills": true,
+      "settingsMenu": {
+        "icon": "settings",
+        "tooltip": "Configure Tavily"
+      },
       "mcpServers": [
         {
           "name": "Tavily",
@@ -154,11 +159,14 @@
     "permissions": {
       "filesystem": "readwrite",
       "network": false,
-      "shell": true
+      "shell": true,
+      "secrets": [
+        "tavily.apiKey"
+      ]
     }
   },
   "devDependencies": {
-    "@finchtoys/minitool-api": "^0.1.16",
+    "@finchtoys/minitool-api": "0.2.11",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },

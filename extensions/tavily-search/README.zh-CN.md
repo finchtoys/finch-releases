@@ -6,7 +6,7 @@ Tavily 搜索小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是�
 
 1. 启用 MCP Client 扩展。
 2. 启用 Tavily Search 扩展。
-3. 对 Finch 说：`帮我设置 Tavily Search`，在弹出的安全表单里填入 Tavily API Key。
+3. 在工具箱中打开 Tavily 小程序的**设置**菜单，选择「配置 API Key」（或对 Finch 说：`帮我设置 Tavily Search`），并在安全表单中填入 Tavily API Key。
 4. 配置完成后，用 `/tavily-search` 进行网页研究。
 
 需要 Tavily API Key，可在 [tavily.com](https://www.tavily.com/) 注册获取。
@@ -18,4 +18,4 @@ Tavily 搜索小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是�
 
 ## 安全说明
 
-Tavily API Key 通过 Finch 表单的 secret 字段收集，不会回显给模型，仅保存在本扩展的本地存储中；卸载 Tavily 时会一并清除。
+Tavily API Key 通过 Finch 表单的 secret 字段收集，不会回显给模型，仅保存在系统安全存储（Keychain、DPAPI 或 Secret Service）中，不会写入扩展本地存储。

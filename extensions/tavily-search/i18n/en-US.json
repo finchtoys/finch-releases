@@ -20,5 +20,22 @@
   "form.setup.submit": "Save & connect",
   "form.setup.apiKey.description": "Key starts with tvly- and is never shared with the model",
   "toast.saved.title": "Tavily saved",
-  "toast.saved.description": "MCP Client will read the local config and connect Tavily."
+  "toast.saved.description": "MCP Client will read the local config and connect Tavily.",
+  "settings.status.label": "Connection status",
+  "settings.status.configured": "API key configured",
+  "settings.status.unconfigured": "API key not configured",
+  "settings.configure.add": "Configure API key",
+  "settings.configure.update": "Update API key",
+  "settings.configure.hover": "Save the Tavily API key in system secure storage.",
+  "settings.dialog.title": "Configure Tavily API key",
+  "settings.dialog.message": "Enter a Tavily API key. It is stored only in system secure storage and is never shared with the model.",
+  "settings.dialog.cancel": "Cancel",
+  "settings.dialog.save": "Save & connect",
+  "settings.toast.error.title": "Tavily could not connect",
+  "settings.toast.error.description": "The API key was saved, but MCP Client did not accept the server configuration.",
+  "contributes": {
+    "settingsMenu": {
+      "tooltip": "Configure Tavily"
+    }
+  }
 }

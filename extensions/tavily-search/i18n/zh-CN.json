@@ -20,5 +20,22 @@
   "form.setup.submit": "保存并连接",
   "form.setup.apiKey.description": "密钥以 tvly- 开头，仅保存本地，不会反馈给模型",
   "toast.saved.title": "Tavily 配置已保存",
-  "toast.saved.description": "MCP Client 将读取本机配置并连接 Tavily"
+  "toast.saved.description": "MCP Client 将读取本机配置并连接 Tavily",
+  "settings.status.label": "连接状态",
+  "settings.status.configured": "已配置 API Key",
+  "settings.status.unconfigured": "尚未配置 API Key",
+  "settings.configure.add": "配置 API Key",
+  "settings.configure.update": "更新 API Key",
+  "settings.configure.hover": "将 Tavily API Key 保存到系统安全存储。",
+  "settings.dialog.title": "配置 Tavily API Key",
+  "settings.dialog.message": "输入 Tavily API Key。密钥只保存到系统安全存储，绝不会提供给模型。",
+  "settings.dialog.cancel": "取消",
+  "settings.dialog.save": "保存并连接",
+  "settings.toast.error.title": "Tavily 连接失败",
+  "settings.toast.error.description": "API Key 已保存，但 MCP Client 未接受服务器配置。",
+  "contributes": {
+    "settingsMenu": {
+      "tooltip": "配置 Tavily"
+    }
+  }
 }

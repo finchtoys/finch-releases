@@ -52,6 +52,12 @@
   "git.branch.create.nocwd": "没有工作目录",
   "git.branch.create.success": "✅ 已创建并切换到分支 `{name}`",
   "git.branch.create.checkpoint": "\n\n已自动提交当前工作区的更改作为 checkpoint。",
+  "git.scm.commit.title": "提交更改",
+  "git.scm.commit.field": "提交信息",
+  "git.scm.commit.placeholder": "例如：feat: 添加源代码管理面板",
+  "git.scm.commit.submit": "提交",
+  "git.scm.commit.cancel": "取消",
+  "git.scm.commit.success": "已提交更改",
   "tool.create.title": "Create Git Branch",
   "tool.create.desc": "创建并检出 Git 分支。已确定分支名时传入 branchName 参数，以静默创建；否则省略该参数以打开表单收集分支名。"
 }

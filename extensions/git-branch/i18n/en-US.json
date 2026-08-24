@@ -10,6 +10,15 @@
       "tooltip": "Git Branch Manager"
     }
   },
+  "appPanel": {
+    "title": "Source Control",
+    "toolbar": [
+      { "label": "Source Control" },
+      {},
+      { "tooltip": "Refresh repository status" },
+      { "items": [{ "label": "Fetch" }, { "label": "Pull" }, { "label": "Push" }] }
+    ]
+  },
 
   "git.branch.coauthor.label": "Include {finchName} as code co-author",
   "git.branch.coauthor.on": "On",
@@ -43,6 +52,12 @@
   "git.branch.create.nocwd": "No working directory",
   "git.branch.create.success": "✅ Created and switched to branch `{name}`",
   "git.branch.create.checkpoint": "\n\nUncommitted changes were auto-committed as a checkpoint.",
+  "git.scm.commit.title": "Commit Changes",
+  "git.scm.commit.field": "Commit Message",
+  "git.scm.commit.placeholder": "For example: feat: add source control panel",
+  "git.scm.commit.submit": "Commit",
+  "git.scm.commit.cancel": "Cancel",
+  "git.scm.commit.success": "Committed changes",
   "tool.create.title": "Create Git Branch",
   "tool.create.desc": "Create and switch to a new Git branch. Pass branchName to create it without a form when the name is known; otherwise omit it to collect the name in a form."
 }

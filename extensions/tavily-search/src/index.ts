@@ -3,19 +3,27 @@ import type * as finch from 'finch';
 const SERVER_NAME = 'tavily';
 const REMOTE_URL = 'https://mcp.tavily.com/mcp/';
 const DEFAULT_PARAMETERS = '{"include_images": true, "max_results": 15, "search_depth": "advanced"}';
-/** ctx.storage key holding the user's setup inputs (apiKey + mode + params).
- *  This is the extension's OWN storage, removed automatically on uninstall — so
- *  Tavily's config never lingers inside the MCP Client after removal. */
+/** ctx.storage key holding non-secret setup inputs (mode + params).
+ * The API key is kept separately in system secure storage. */
 const STORAGE_KEY = 'tavily.setup';
+const API_KEY_SECRET = 'tavily.apiKey';
 
 type TavilyMode = 'local' | 'remote' | 'http';
 
-/** Persisted setup inputs. The resolved MCP server config is rebuilt from these
- *  on every activation, so buildServer() logic can evolve without migrations. */
+/** Non-sensitive MCP setup persisted in extension storage. */
 interface StoredSetup {
-  apiKey: string;
   mode: TavilyMode;
   defaultParameters: string;
+}
+
+/** Legacy plaintext setup retained only long enough to migrate its API key into
+ * system secure storage. */
+interface LegacyStoredSetup extends StoredSetup {
+  apiKey?: string;
+}
+
+interface ResolvedSetup extends StoredSetup {
+  apiKey: string;
 }
 
 // Transport is built dynamically here (command/url + env with the resolved API key)
@@ -43,34 +51,41 @@ interface McpClientCapability {
 
 /** Active context, captured on activate so deactivate() can unregister the
  *  runtime server (deactivate has no ctx parameter). */
-let activeCtx: finch.ExtensionContext | null = null;
+let activeCtx: finch.MiniToolContext | null = null;
 
-function t(ctx: finch.ExtensionContext, key: string, values?: Record<string, string | number | boolean>): string {
+function t(ctx: finch.MiniToolContext, key: string, values?: Record<string, string | number | boolean>): string {
   return ctx.i18n?.t ? ctx.i18n.t(key, values) : key;
 }
 
-async function readSetup(ctx: finch.ExtensionContext): Promise<StoredSetup | undefined> {
-  const raw = await ctx.storage.get<StoredSetup>(STORAGE_KEY);
-  if (!raw || typeof raw.apiKey !== 'string' || !raw.apiKey) return undefined;
-  let mode = parseMode(raw.mode);
-  // Migrate legacy setups: `remote` is the deprecated mcp-remote proxy shim —
-  // Finch connects to the same endpoint directly over HTTP, so upgrade it to
-  // `http` and persist the change. `local` is left untouched (deliberate choice).
-  if (mode === 'remote') {
-    mode = 'http';
-    await ctx.storage.set(STORAGE_KEY, { ...raw, mode });
+async function readSetup(ctx: finch.MiniToolContext): Promise<ResolvedSetup | undefined> {
+  const raw = await ctx.storage.get<LegacyStoredSetup>(STORAGE_KEY);
+  if (!raw) return undefined;
+
+  // Migrate old releases that stored the key in plaintext. The legacy value is
+  // deleted only after Keychain/DPAPI storage accepts it successfully.
+  let apiKey = await ctx.secrets.get(API_KEY_SECRET);
+  if (!apiKey && typeof raw.apiKey === 'string' && raw.apiKey.trim()) {
+    apiKey = raw.apiKey.trim();
+    await ctx.secrets.set(API_KEY_SECRET, apiKey);
   }
-  return { apiKey: raw.apiKey, mode, defaultParameters: String(raw.defaultParameters ?? DEFAULT_PARAMETERS) };
+  if (!apiKey) return undefined;
+
+  let mode = parseMode(raw.mode);
+  if (mode === 'remote') mode = 'http';
+  const stored: StoredSetup = { mode, defaultParameters: String(raw.defaultParameters ?? DEFAULT_PARAMETERS) };
+  if (raw.apiKey !== undefined || raw.mode !== mode) await ctx.storage.set(STORAGE_KEY, stored);
+  return { apiKey, ...stored };
 }
 
-/** Persist setup inputs, then (re)register the resolved server with MCP Client. */
-async function saveAndRegister(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<{ ok: boolean; error?: string }> {
-  await ctx.storage.set(STORAGE_KEY, setup);
+/** Persist non-secret setup and API key separately, then register with MCP Client. */
+async function saveAndRegister(ctx: finch.MiniToolContext, setup: ResolvedSetup): Promise<{ ok: boolean; error?: string }> {
+  await ctx.secrets.set(API_KEY_SECRET, setup.apiKey);
+  await ctx.storage.set(STORAGE_KEY, { mode: setup.mode, defaultParameters: setup.defaultParameters });
   return registerRuntimeServer(ctx, setup);
 }
 
 /** Build the resolved server from stored setup and hand it to MCP Client. */
-async function registerRuntimeServer(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<{ ok: boolean; error?: string }> {
+async function registerRuntimeServer(ctx: finch.MiniToolContext, setup: ResolvedSetup): Promise<{ ok: boolean; error?: string }> {
   if (!ctx.capabilities.has('mcp.client')) return { ok: false, error: 'mcp.client capability unavailable' };
   const mcp = ctx.capabilities.get<McpClientCapability>('mcp.client');
   const server = buildServer(setup.mode, setup.apiKey, setup.defaultParameters);
@@ -84,7 +99,7 @@ async function registerRuntimeServer(ctx: finch.ExtensionContext, setup: StoredS
 }
 
 /** Remove Tavily's runtime server from MCP Client (best-effort). */
-async function unregisterRuntimeServer(ctx: finch.ExtensionContext): Promise<void> {
+async function unregisterRuntimeServer(ctx: finch.MiniToolContext): Promise<void> {
   if (!ctx.capabilities.has('mcp.client')) return;
   try {
     await ctx.capabilities.get<McpClientCapability>('mcp.client').unregisterServer(SERVER_NAME);
@@ -153,7 +168,7 @@ function serverSummary(server: McpServerConfig, mode: TavilyMode): string {
   return `${mode} → ${server.command} ${(server.args ?? []).map((arg) => arg.includes('tavilyApiKey=') ? arg.replace(/tavilyApiKey=[^&]+/, 'tavilyApiKey=***') : arg).join(' ')}`;
 }
 
-async function verifyWithMcpClient(ctx: finch.ExtensionContext): Promise<string> {
+async function verifyWithMcpClient(ctx: finch.MiniToolContext): Promise<string> {
   if (!ctx.capabilities.has('mcp.client')) {
     return 'MCP Client capability is not available. Enable the MCP Client extension, then try Tavily again.';
   }
@@ -175,7 +190,79 @@ async function verifyWithMcpClient(ctx: finch.ExtensionContext): Promise<string>
   }
 }
 
-function registerSetupTool(ctx: finch.ExtensionContext): void {
+function registerSettingsMenu(ctx: finch.MiniToolContext): void {
+  const menu = ctx.settingsMenu.register({
+    async getMenu() {
+      const configured = Boolean(await readSetup(ctx));
+      return [
+        {
+          id: 'status',
+          label: t(ctx, 'settings.status.label'),
+          description: t(ctx, configured ? 'settings.status.configured' : 'settings.status.unconfigured'),
+          iconName: configured ? 'toggle-right' : 'toggle-left',
+          disabled: true,
+        },
+        { id: 'divider', label: '', separator: true },
+        {
+          id: 'configure',
+          label: t(ctx, configured ? 'settings.configure.update' : 'settings.configure.add'),
+          iconName: 'settings',
+          hoverText: t(ctx, 'settings.configure.hover'),
+        },
+      ];
+    },
+
+    async execute(_menuContext, itemId) {
+      if (itemId !== 'configure') return;
+      const current = await readSetup(ctx);
+      const result = await ctx.ui.showModalDialog({
+        title: t(ctx, 'settings.dialog.title'),
+        message: t(ctx, 'settings.dialog.message'),
+        actions: [
+          { id: 'cancel', label: t(ctx, 'settings.dialog.cancel') },
+          { id: 'save', label: t(ctx, 'settings.dialog.save'), variant: 'primary' },
+        ],
+        fields: [{
+          key: 'apiKey',
+          label: 'API Key',
+          type: 'password',
+          secret: true,
+          required: true,
+          placeholder: 'tvly-…',
+          description: t(ctx, 'form.setup.apiKey.description'),
+        }],
+      });
+      if (result.action !== 'save') return;
+
+      const apiKey = String(result.values?.apiKey ?? '').trim();
+      if (!apiKey) return;
+      const setup: ResolvedSetup = {
+        apiKey,
+        mode: current?.mode ?? 'http',
+        defaultParameters: current?.defaultParameters ?? DEFAULT_PARAMETERS,
+      };
+      const registration = await saveAndRegister(ctx, setup);
+      if (!registration.ok) {
+        ctx.logger.error('failed to register Tavily MCP server from settings menu', registration.error);
+        await ctx.ui.showToast({
+          title: t(ctx, 'settings.toast.error.title'),
+          description: registration.error ?? t(ctx, 'settings.toast.error.description'),
+          variant: 'error',
+        });
+        return;
+      }
+      menu.notifyUpdate();
+      await ctx.ui.showToast({
+        title: t(ctx, 'toast.saved.title'),
+        description: t(ctx, 'toast.saved.description'),
+        variant: 'success',
+      });
+    },
+  });
+  ctx.subscriptions.push(menu);
+}
+
+function registerSetupTool(ctx: finch.MiniToolContext): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'setup_tavily_search',
     title: 'Set up Tavily Search',
@@ -219,7 +306,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
       }
 
       const selectedMode = parseMode(result.values.mode);
-      const setup: StoredSetup = { apiKey, mode: selectedMode, defaultParameters: params };
+      const setup: ResolvedSetup = { apiKey, mode: selectedMode, defaultParameters: params };
       const server = buildServer(selectedMode, apiKey, params);
 
       const registration = await saveAndRegister(ctx, setup);
@@ -245,7 +332,7 @@ function registerSetupTool(ctx: finch.ExtensionContext): void {
   }));
 }
 
-function registerStatusTool(ctx: finch.ExtensionContext): void {
+function registerStatusTool(ctx: finch.MiniToolContext): void {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'tavily_search_status',
     title: 'Tavily Search Status',
@@ -288,7 +375,7 @@ function registerStatusTool(ctx: finch.ExtensionContext): void {
  *  name), so if the MCP Client host hasn't provided its capability yet, poll a
  *  few times before giving up. Finch seeds + pushes capability availability, so
  *  has() flips to true as soon as MCP Client is up. */
-async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup): Promise<void> {
+async function registerWhenReady(ctx: finch.MiniToolContext, setup: ResolvedSetup): Promise<void> {
   const MAX_ATTEMPTS = 20;
   const INTERVAL_MS = 250;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -303,9 +390,10 @@ async function registerWhenReady(ctx: finch.ExtensionContext, setup: StoredSetup
   ctx.logger.warn('Tavily: mcp.client capability never became available; server not registered. Is MCP Client enabled?');
 }
 
-export function activate(ctx: finch.ExtensionContext): void {
+export function activate(ctx: finch.MiniToolContext): void {
   ctx.logger.info('Tavily Search extension activated');
   activeCtx = ctx;
+  registerSettingsMenu(ctx);
   registerSetupTool(ctx);
   registerStatusTool(ctx);
   // Re-register the runtime MCP server from stored setup. Runtime registrations

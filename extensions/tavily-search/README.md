@@ -6,7 +6,7 @@ Tavily Search is a mini tool for [Finch](https://finchwork.app/) — a desktop A
 
 1. Enable the MCP Client extension.
 2. Enable the Tavily Search extension.
-3. Ask Finch: `Set up Tavily Search`, then paste your Tavily API key into the secure form.
+3. Open the Tavily mini tool's **Settings** menu in Toolcase and choose **Configure API key** (or ask Finch: `Set up Tavily Search`). Paste your Tavily API key into the secure form.
 4. Use `/tavily-search` for web research.
 
 You need a Tavily API key — sign up at [tavily.com](https://www.tavily.com/).
@@ -18,4 +18,4 @@ You need a Tavily API key — sign up at [tavily.com](https://www.tavily.com/).
 
 ## Security
 
-Your Tavily API key is collected via Finch's secret form field, is never echoed back to the model, and is stored only in this extension's local storage — removing Tavily also removes it.
+Your Tavily API key is collected via Finch's secret form field, is never echoed back to the model, and is stored in system secure storage (Keychain, DPAPI, or Secret Service), never in extension storage.
