@@ -307,11 +307,15 @@ export function activate(ctx: finch.MiniToolContext): void {
           const enabled = await ctx.storage.get<boolean>(CO_AUTHOR_ENABLED_KEY) === true;
           const next = !enabled;
           await ctx.storage.set(CO_AUTHOR_ENABLED_KEY, next);
-          await ctx.ui.showToast({
-            title: ctx.i18n.t(next ? 'git.branch.coauthor.tip.on' : 'git.branch.coauthor.tip.off'),
-            variant: next ? 'success' : 'info',
-            position: 'TC',
-          });
+          try {
+            await ctx.ui.showToast({
+              title: ctx.i18n.t(next ? 'git.branch.coauthor.tip.on' : 'git.branch.coauthor.tip.off'),
+              variant: next ? 'success' : 'info',
+              position: 'TC',
+            });
+          } catch {
+            // The Composer may have closed before its Toast can be displayed.
+          }
           composerAction.notifyUpdate();
           return;
         }

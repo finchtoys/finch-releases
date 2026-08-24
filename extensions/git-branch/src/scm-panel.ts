@@ -22,9 +22,12 @@ type Repo = {
 
 // AppPanel is available in the current Finch runtime; API package v0.2.x lacks its type declaration.
 type RuntimePanel = {
+  readonly visible: boolean;
   postMessage(message: unknown): Promise<void>;
   updateToolbarItem(id: string, item: { label?: string; icon?: string }): Promise<void>;
   onDidReceiveMessage(listener: (message: unknown) => unknown): finch.Disposable;
+  onDidChangeVisibility(listener: (visible: boolean) => unknown): finch.Disposable;
+  onDidDispose(listener: () => unknown): finch.Disposable;
 };
 type RuntimePanelUi = {
   onDidOpenPanel(listener: (panel: RuntimePanel) => unknown): finch.Disposable;
@@ -162,9 +165,30 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
     let scopeKey = '';
     let generation = 0;
     let repos: Repo[] = [];
+    let unavailable = false;
+    const active = () => !unavailable && panel.visible;
+    const post = async (message: unknown): Promise<boolean> => {
+      if (!active()) return false;
+      try {
+        await panel.postMessage(message);
+        return true;
+      } catch {
+        // The Session may have dropped its viewer between the visibility check and send.
+        unavailable = true;
+        return false;
+      }
+    };
+    const updateToolbar = async (label: string, icon: string): Promise<void> => {
+      if (!active()) return;
+      try {
+        await panel.updateToolbarItem('scm-title', { label, icon });
+      } catch {
+        unavailable = true;
+      }
+    };
     const sendConfig = async () => {
       const { assistantName } = await ctx.app.getInfo();
-      await panel.postMessage({ type: 'config', assistantName });
+      await post({ type: 'config', assistantName });
     };
     // Also push config immediately: an already-live Webview may not emit finch:env again
     // after the mini tool backend is reloaded.
@@ -181,42 +205,54 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
       scopeKey = nextScopeKey;
       cwd = nextCwd;
       repos = [];
-      await panel.postMessage({ type: 'status', repos: [], scopeKey });
+      await post({ type: 'status', repos: [], scopeKey });
       return true;
     };
     const refresh = async () => {
       const requestGeneration = generation;
       const requestScope = scopeKey;
       const requestCwd = cwd;
+      if (!active()) return;
       if (!requestCwd) {
-        await panel.updateToolbarItem('scm-title', {
-          label: 'Source Control', icon: 'ext:git-branch/git-branch',
-        });
-        await panel.postMessage({ type: 'status', repos: [], scopeKey: requestScope, cwd: requestCwd });
+        await updateToolbar('Source Control', 'ext:git-branch/git-branch');
+        await post({ type: 'status', repos: [], scopeKey: requestScope, cwd: requestCwd });
         return;
       }
-      await panel.postMessage({ type: 'loading', loading: true, scopeKey: requestScope });
+      await post({ type: 'loading', loading: true, scopeKey: requestScope });
       try {
         const nextRepos = await discoverRepos(requestCwd);
         // A newer finch:env/init won while Git was running; never paint stale results.
-        if (requestGeneration !== generation || requestScope !== scopeKey || requestCwd !== cwd) return;
+        if (!active() || requestGeneration !== generation || requestScope !== scopeKey || requestCwd !== cwd) return;
         repos = nextRepos;
-        await panel.updateToolbarItem('scm-title', {
-          label: toolbarTitle(repos[0]?.path),
-          icon: 'ext:git-branch/git-branch',
-        });
-        await panel.postMessage({ type: 'status', repos, scopeKey: requestScope, cwd: requestCwd });
+        await updateToolbar(toolbarTitle(repos[0]?.path), 'ext:git-branch/git-branch');
+        await post({ type: 'status', repos, scopeKey: requestScope, cwd: requestCwd });
       } finally {
-        if (requestGeneration === generation && requestScope === scopeKey) {
-          await panel.postMessage({ type: 'loading', loading: false, scopeKey: requestScope });
+        if (active() && requestGeneration === generation && requestScope === scopeKey) {
+          await post({ type: 'loading', loading: false, scopeKey: requestScope });
         }
       }
     };
     const toast = async (title: string, variant: 'success' | 'error' | 'info' = 'success') => {
-      await panel.postMessage({ type: 'toast', title, variant, position: 'TC' });
+      if (!active()) return;
+      try {
+        await ctx.ui.showToast({ title, variant, position: 'TC' });
+      } catch {
+        unavailable = true;
+      }
     };
+    ctx.subscriptions.push(panel.onDidChangeVisibility((visible) => {
+      if (!visible) return;
+      unavailable = false;
+      void sendConfig().then(refresh).catch(() => undefined);
+    }));
+    ctx.subscriptions.push(panel.onDidDispose(() => {
+      unavailable = true;
+      generation += 1;
+      repos = [];
+    }));
     ctx.subscriptions.push(panel.onDidReceiveMessage((raw) => {
       void (async () => {
+      if (!active()) return;
       const message = raw as Record<string, unknown>;
       try {
         if (message.type === 'init') {
@@ -297,17 +333,13 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
           const resolvedRightPath = compareIndex
             ? await createDiffFile('index', relativePath, await fileAtRevision(repoPath, '', relativePath))
             : rightPath;
-          await panel.postMessage({ type: 'fileDiff', leftPath, rightPath: resolvedRightPath });
+          await post({ type: 'fileDiff', leftPath, rightPath: resolvedRightPath });
           return;
         }
         await refresh();
       } catch (error) {
-        try {
-          await toast(error instanceof Error ? error.message : 'Git operation failed', 'error');
-          await refresh();
-        } catch (recoveryError) {
-          ctx.logger.error('SCM panel recovery failed', recoveryError);
-        }
+        await toast(error instanceof Error ? error.message : 'Git operation failed', 'error');
+        if (active()) await refresh();
       }
       })().catch((error) => ctx.logger.error('SCM panel message failed', error));
     }));
