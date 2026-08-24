@@ -235,6 +235,13 @@ MCP Client 仍然支持用户手写 `servers.json`，用于本地高级配置和
 
 HTTP Stream 中的 `env` 只用于替换 `headers` 里的 `${KEY}` 占位，不会作为请求 body 发送。
 
+`headers` 只用于**业务自定义头**（如 `Authorization`、`X-Api-Key`、`X-Tenant-Id`）。MCP 协议头
+（`MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name`、`Mcp-Param-*`）由官方 SDK 的 transport 根据
+每次请求体动态生成，**不要**配置成固定值：客户端已通过 `versionNegotiation` 自动协商协议版本
+（`2026-07-28` 及更新版本，旧服务端自动回退），`Mcp-Name` 必须与请求体的 `params.name` /
+`params.uri` 完全一致。如果服务端报 `HeaderMismatch`（-32020，HTTP 400）或缺少 `Mcp-Name` 头，
+请检查客户端 SDK 版本与 transport 层，而不是往 `headers` 里硬编码协议头。
+
 ## Agent 使用方式
 
 Agent 不应该在工具尚未激活前直接调用 `mcp__<server>__<tool>`。它应先调用 Finch 的 `ToolSearch`，并设置 `source: "mcp"`；MCP Client 会连接匹配的 server、发现工具，并把命中的 MCP 工具注入当前 run。

@@ -23,7 +23,7 @@
     "README.zh-CN.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ../../scripts/bundle-extension.mjs .",
+    "build": "tsc -p tsconfig.json",
     "prepack": "npm run build"
   },
   "finch": {
@@ -34,7 +34,7 @@
     "toolMeta": {
       "name": "MCP"
     },
-    "systemPrompt": "Use MCP with action=list/add/edit/remove/connect/disconnect to manage configured MCP services. For an OAuth-enabled HTTP MCP service, action=connect runs OAuth discovery, Dynamic Client Registration, and PKCE; do not check status first when the user asks to authorize. Never ask users to paste secrets in chat, because add/edit opens a secure form for secret values. To add an HTTP (url) MCP server just pass name+url — the form shows one API-token field and auto-creates a standard 'Authorization: Bearer <token>' header; never pass, view, or hand-edit the token or any header, and only set authHeader for a non-standard header name (e.g. X-Api-Key). To use actual MCP server tools, when the target server name is known first call Finch ToolSearch with source:\"mcp:<server>\"; fall back to source:\"mcp\" only if that precise search finds no usable tool, because mcp__<server>__<tool> names are never pre-loaded and will fail if called directly. ToolSearch connects the selected servers, discovers their tools, and injects mcp__<server>__<tool> functions into the current run. Authorization can be granted per-tool (mcp__filesystem__read_file) or with a wildcard (mcp__filesystem__*).",
+    "systemPrompt": "Use MCP with action=list/add/edit/remove/connect/disconnect to manage configured MCP services. For an OAuth-enabled HTTP MCP service, action=connect runs OAuth discovery, Dynamic Client Registration, and PKCE; do not check status first when the user asks to authorize. Never ask users to paste secrets in chat, because add/edit opens a secure form for secret values. To add an HTTP (url) MCP server just pass name+url — the form shows one API-token field and auto-creates a standard 'Authorization: Bearer <token>' header; never pass, view, or hand-edit the token or any header, and only set authHeader for a non-standard header name (e.g. X-Api-Key). Protocol headers (MCP-Protocol-Version, Mcp-Method, Mcp-Name, Mcp-Param-*) are generated automatically by the client per request — never configure them as fixed custom headers, because Mcp-Name must match the request body's params.name/params.uri; a HeaderMismatch/-32020 or missing-Mcp-Name error points to client/transport protocol issues (negotiated version, SDK version, transport wrapper), not a missing custom header. To use actual MCP server tools, when the target server name is known first call Finch ToolSearch with source:\"mcp:<server>\"; fall back to source:\"mcp\" only if that precise search finds no usable tool, because mcp__<server>__<tool> names are never pre-loaded and will fail if called directly. ToolSearch connects the selected servers, discovers their tools, and injects mcp__<server>__<tool> functions into the current run. Authorization can be granted per-tool (mcp__filesystem__read_file) or with a wildcard (mcp__filesystem__*).",
     "promptGuides": [
       {
         "id": "setup-filesystem",
@@ -80,6 +80,7 @@
     "@modelcontextprotocol/client": "^2.0.0"
   },
   "devDependencies": {
+    "@finchtoys/minitool-api": "^0.3.4",
     "@types/node": "^26.1.1"
   }
 }

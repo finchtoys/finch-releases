@@ -333,6 +333,39 @@ Rules:
 - Put locale overrides in `i18n/<locale>.json`
 - Do not localize ids, tool names, command ids, or capability names
 
+### 10.1 `i18n/<locale>.json` shape — nested JSON, never dotted flat keys
+
+Finch parses `i18n/<locale>.json` against a **fixed nested schema** matching the manifest's own shape. Top-level scalar fields (`name`, `displayName`, `description`, `systemPrompt`) are flat, but every field that lives *inside* a manifest object (`contributes.appView.description`, `contributes.appPanel.title`, `composerActions[].tooltip`, `sessionContainers[].title`, …) must be overridden with the **same nested object shape**, keyed by the stable `id`/`key` from the manifest — **not** a single flattened key that spells out the JSON path with dots.
+
+```json
+// ✅ correct — nested object, mirrors contributes.appView in package.json
+{
+  "name": "产物库",
+  "appView": {
+    "title": "产物库",
+    "description": "浏览 AI 在所有会话中生成的全部产物。"
+  },
+  "appPanel": { "title": "产物库" },
+  "composerActions": {
+    "my-btn": { "tooltip": "按钮提示" }
+  },
+  "sessionContainers": {
+    "inbox": { "title": "收件箱", "description": "…" }
+  }
+}
+```
+
+```json
+// ❌ wrong — looks reasonable, silently does nothing
+{
+  "name": "产物库",
+  "appView.description": "浏览 AI 在所有会话中生成的全部产物。",
+  "appPanel.title": "产物库"
+}
+```
+
+The wrong form parses as valid JSON with a literal key named `"appView.description"` — it is **not** the same as `{"appView": {"description": ...}}`. Finch's loader looks up `i18n.appView?.description`, finds `undefined` on the flat file, and silently falls back to the English default in `package.json`. There is no warning or error anywhere in the pipeline — the mini tool just quietly shows English strings for that one field while everything else (e.g. a correctly flat top-level `name`) localizes fine, which makes this easy to misdiagnose as an app bug instead of a manifest typo. Always verify by opening `i18n/<locale>.json` in an editor and confirming brackets nest the way the manifest field does, or by re-reading the exact override keys listed in the `ctx.i18n` bullet in `SKILL.md` §2/§7.
+
 ## 11. Practical checklist
 
 Before shipping:

@@ -252,20 +252,24 @@ Good uses:
 
 Do not use it for ordinary app pages.
 
-## 7. Native file preview
+## 7. Native preview and Diff
 
 Use `ctx.ui.openFilePreview(absolutePath)` to open Markdown, source code, or
-another previewable text file in Finch's existing native Panel preview. This
-requires an active Panel scope but does **not** require `contributes.appPanel`.
+another previewable text file, and `ctx.ui.openDiff(request)` for native
+file/Git Diff. Both require an active Panel scope but do **not** require
+`contributes.appPanel`; their Panel/modal presentation follows the user's
+「改动与文件预览」setting.
 
 ```ts
 await ctx.ui.openFilePreview('/workspace/README.md');
+await ctx.ui.openDiff({ type: 'files', leftPath: '/workspace/old.ts', rightPath: '/workspace/new.ts' });
+await ctx.ui.openDiff({ type: 'git', repoPath: '/workspace', base: 'HEAD~1', target: 'HEAD' });
 ```
 
-Pass an absolute local path. This API requests UI only: Finch reads and renders
-the file through its own preview pipeline, so the mini tool never receives file
+Pass absolute local paths. These APIs request UI only: Finch reads and renders
+the content through its own pipeline, so the mini tool never receives file
 content. Finch applies its normal text-size limits and binary detection. Do not
-use it as a file-reading API or assume every path is previewable.
+use them as file-reading APIs or assume every path is previewable.
 
 ## 8. Panel App
 
@@ -350,10 +354,15 @@ Declare the app in the manifest:
 - `showInLauncher` controls both the right Panel `+` menu and Welcome page;
   it defaults to `true`. Setting it to `false` does not disable the app:
   `createPanel()`, Composer actions, and Delivery rows can still open it.
-- `toolbar` is declared here. Every button or menu click reaches the page as
-  `{ type: 'finch:menu', itemId }` through `window.finch.onMessage()`.
+- `toolbar` is declared here. Use `{ type: 'title', id, icon, label }` for a
+  static icon-and-label heading; it is display-only and does not send a message.
+  From an `AppPanel` handle, `setToolbar(items)` atomically replaces the row and
+  `updateToolbarItem(id, { label, icon })` updates one top-level item. Every
+  button or menu click reaches the page as `{ type: 'finch:menu', itemId }`
+  through `window.finch.onMessage()`.
 - The page changes its current tab with `window.finch.panel.setTitle()` and
-  `window.finch.panel.setIcon()`; toolbar shape remains manifest-owned.
+  `window.finch.panel.setIcon()`. Backend `AppPanel` handles may also replace
+  the whole toolbar or update a top-level item as described above.
 
 ### 7.1 Bridge security
 
@@ -432,6 +441,29 @@ document.getElementById('delete-btn').addEventListener('click', async () => {
 - Use `setTitle` and `setIcon` for dynamic chrome; the toolbar itself stays manifest-owned (`contributes.appPanel.toolbar`).
 - Stop expensive page work when `onDidChangeVisibility(false)` fires.
 - Dispose the panel or push it to `ctx.subscriptions` so disabling the mini tool closes it.
+
+### 7.5 App View host previews and Diff
+
+An App View page may open Finch's native preview surfaces from a real user gesture:
+
+```ts
+await window.finch.appView.openPreview('/workspace/report.md');
+await window.finch.appView.openDiff({
+  type: 'files',
+  leftPath: '/workspace/before.ts',
+  rightPath: '/workspace/after.ts',
+});
+await window.finch.appView.openDiff({
+  type: 'git',
+  repoPath: '/workspace/repo',
+  base: 'HEAD~1',
+  target: 'HEAD',
+});
+```
+
+`openPreview()` and `openDiff()` do not accept a presentation option. Finch follows the user's global「改动与文件预览」setting and opens the same native component in either the right Panel or a modal. File Diff requires two absolute paths. Git Diff resolves both commit/refs inside the absolute `repoPath` and may display added, modified, deleted, and renamed files in one multi-file view. The mini tool receives no file contents from these calls.
+
+`openBrowser()` and `openApp()` are different: they remain child levels in the App View breadcrumb navigation stack. `openApp()` still requires the target's `embeddable: true` declaration.
 
 ## 9. UI best practices
 

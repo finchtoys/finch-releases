@@ -235,6 +235,8 @@ In dev mode, the root is `~/.finch-dev/`.
 
 For HTTP Stream, `env` is only used to expand `${KEY}` placeholders in `headers`; it is not sent in the request body.
 
+`headers` is only for **business headers** (e.g. `Authorization`, `X-Api-Key`, `X-Tenant-Id`). The MCP protocol headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`) are generated dynamically by the official SDK transport per request — do **not** configure them as fixed values: the client already negotiates the protocol version automatically via `versionNegotiation` (`2026-07-28` and later, falling back for legacy servers), and `Mcp-Name` must match the request body's `params.name` / `params.uri` exactly. If the server reports `HeaderMismatch` (-32020, HTTP 400) or a missing `Mcp-Name` header, investigate the client SDK version and transport layer instead of hardcoding protocol headers into `headers`.
+
 ## Agent usage
 
 The Agent should not call `mcp__<server>__<tool>` names before they are activated. It should first use Finch `ToolSearch` with `source: "mcp"`; MCP Client will connect matching servers, discover their tools, and inject the matched tools into the current run.
