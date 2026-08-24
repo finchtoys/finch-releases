@@ -58,6 +58,7 @@
   "git.scm.commit.submit": "提交",
   "git.scm.commit.cancel": "取消",
   "git.scm.commit.success": "已提交更改",
+  "git.scm.commit.empty": "没有需要提交的更改",
   "git.scm.stage.success": "已暂存",
   "git.scm.unstage.success": "已取消暂存",
   "git.scm.stageAll.success": "已暂存全部更改",

@@ -58,6 +58,7 @@
   "git.scm.commit.submit": "Commit",
   "git.scm.commit.cancel": "Cancel",
   "git.scm.commit.success": "Committed changes",
+  "git.scm.commit.empty": "No changes to commit",
   "git.scm.stage.success": "Staged changes",
   "git.scm.unstage.success": "Unstaged changes",
   "git.scm.stageAll.success": "Staged all changes",
