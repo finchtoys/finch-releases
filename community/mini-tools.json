@@ -15,7 +15,7 @@
   },
   {
     "id": "anydoc",
-    "version": "0.1.0",
+    "version": "0.2.1",
     "name": "AnyDoc",
     "author": "puterjam",
     "description": "Read Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, CSV, and PDF files as clean Markdown, with outline and paging support for long documents.",
