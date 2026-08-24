@@ -238,13 +238,13 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
         }
         const repoPath = allowedRepo(repos, message.repoPath);
         if (!repoPath) return;
-        if (message.type === 'stage') await runGit(repoPath, ['add', '--', String(message.filePath)]);
-        if (message.type === 'unstage') await runGit(repoPath, ['restore', '--staged', '--', String(message.filePath)]);
-        if (message.type === 'stageAll') await runGit(repoPath, ['add', '-A']);
-        if (message.type === 'unstageAll') await runGit(repoPath, ['restore', '--staged', '.']);
-        if (message.type === 'pull') { await runGit(repoPath, ['pull', '--ff-only'], 60_000); await toast('Pulled latest changes'); }
-        if (message.type === 'push') { await runGit(repoPath, ['push'], 60_000); await toast('Pushed to remote'); }
-        if (message.type === 'fetch') { await runGit(repoPath, ['fetch', '--prune'], 60_000); await toast('Fetched remote updates'); }
+        if (message.type === 'stage') { await runGit(repoPath, ['add', '--', String(message.filePath)]); await toast(ctx.i18n.t('git.scm.stage.success')); }
+        if (message.type === 'unstage') { await runGit(repoPath, ['restore', '--staged', '--', String(message.filePath)]); await toast(ctx.i18n.t('git.scm.unstage.success')); }
+        if (message.type === 'stageAll') { await runGit(repoPath, ['add', '-A']); await toast(ctx.i18n.t('git.scm.stageAll.success')); }
+        if (message.type === 'unstageAll') { await runGit(repoPath, ['restore', '--staged', '.']); await toast(ctx.i18n.t('git.scm.unstageAll.success')); }
+        if (message.type === 'pull') { await runGit(repoPath, ['pull', '--ff-only'], 60_000); await toast(ctx.i18n.t('git.scm.pull.success')); }
+        if (message.type === 'push') { await runGit(repoPath, ['push'], 60_000); await toast(ctx.i18n.t('git.scm.push.success')); }
+        if (message.type === 'fetch') { await runGit(repoPath, ['fetch', '--prune'], 60_000); await toast(ctx.i18n.t('git.scm.fetch.success')); }
         if (message.type === 'requestCommit') {
           const result = await ctx.ui.showModalDialog({
             title: ctx.i18n.t('git.scm.commit.title'),
@@ -269,14 +269,14 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
           if (!text) throw new Error('Commit message is required');
           await runGit(repoPath, ['add', '-A']);
           await runGit(repoPath, ['commit', '-m', text, '-m', 'Co-authored-by: 帕亚 <noreply@finchwork.app>']);
-          await toast('Committed changes');
+          await toast(ctx.i18n.t('git.scm.commit.success'));
         }
         if (message.type === 'discard') {
           const file = allowedFile(repoPath, message.filePath);
           if (!file) throw new Error('Invalid file path');
           if (message.status === '?') await runGit(repoPath, ['clean', '-f', '--', String(message.filePath)]);
           else await runGit(repoPath, ['restore', '--source=HEAD', '--staged', '--worktree', '--', String(message.filePath)]);
-          await toast('Discarded changes');
+          await toast(ctx.i18n.t('git.scm.discard.success'));
         }
         if (message.type === 'openFile') {
           const file = allowedFile(repoPath, message.filePath);

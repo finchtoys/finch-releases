@@ -58,6 +58,14 @@
   "git.scm.commit.submit": "提交",
   "git.scm.commit.cancel": "取消",
   "git.scm.commit.success": "已提交更改",
+  "git.scm.stage.success": "已暂存",
+  "git.scm.unstage.success": "已取消暂存",
+  "git.scm.stageAll.success": "已暂存全部更改",
+  "git.scm.unstageAll.success": "已取消暂存全部更改",
+  "git.scm.discard.success": "已放弃更改",
+  "git.scm.pull.success": "已拉取最新更改",
+  "git.scm.push.success": "已推送到远程",
+  "git.scm.fetch.success": "已获取远程更新",
   "tool.create.title": "Create Git Branch",
   "tool.create.desc": "创建并检出 Git 分支。已确定分支名时传入 branchName 参数，以静默创建；否则省略该参数以打开表单收集分支名。"
 }

@@ -58,6 +58,14 @@
   "git.scm.commit.submit": "Commit",
   "git.scm.commit.cancel": "Cancel",
   "git.scm.commit.success": "Committed changes",
+  "git.scm.stage.success": "Staged changes",
+  "git.scm.unstage.success": "Unstaged changes",
+  "git.scm.stageAll.success": "Staged all changes",
+  "git.scm.unstageAll.success": "Unstaged all changes",
+  "git.scm.discard.success": "Discarded changes",
+  "git.scm.pull.success": "Pulled latest changes",
+  "git.scm.push.success": "Pushed to remote",
+  "git.scm.fetch.success": "Fetched remote updates",
   "tool.create.title": "Create Git Branch",
   "tool.create.desc": "Create and switch to a new Git branch. Pass branchName to create it without a form when the name is known; otherwise omit it to collect the name in a form."
 }
