@@ -20,6 +20,15 @@ type Repo = {
   staged: number; unstaged: number; untracked: number; files: RepoFile[]; graph: GraphCommit[];
 };
 
+function repoSignature(repos: Repo[]): string {
+  return JSON.stringify(repos.map((repo) => ({
+    path: repo.path, branch: repo.branch, dirty: repo.dirty, ahead: repo.ahead, behind: repo.behind,
+    staged: repo.staged, unstaged: repo.unstaged, untracked: repo.untracked,
+    files: repo.files.map(({ path, status, staged, add, del }) => ({ path, status, staged, add, del })),
+    graph: repo.graph.map(({ hash, parents, subject, author, date }) => ({ hash, parents, subject, author, date })),
+  })));
+}
+
 // AppPanel is available in the current Finch runtime; API package v0.2.x lacks its type declaration.
 type RuntimePanel = {
   readonly visible: boolean;
@@ -208,26 +217,29 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
       await post({ type: 'status', repos: [], scopeKey });
       return true;
     };
-    const refresh = async () => {
+    const refresh = async (showLoading = true) => {
       const requestGeneration = generation;
       const requestScope = scopeKey;
       const requestCwd = cwd;
+      const previousSignature = repoSignature(repos);
       if (!active()) return;
       if (!requestCwd) {
+        if (repos.length === 0) return;
         await updateToolbar('Source Control', 'ext:git-branch/git-branch');
         await post({ type: 'status', repos: [], scopeKey: requestScope, cwd: requestCwd });
         return;
       }
-      await post({ type: 'loading', loading: true, scopeKey: requestScope });
+      if (showLoading) await post({ type: 'loading', loading: true, scopeKey: requestScope });
       try {
         const nextRepos = await discoverRepos(requestCwd);
         // A newer finch:env/init won while Git was running; never paint stale results.
         if (!active() || requestGeneration !== generation || requestScope !== scopeKey || requestCwd !== cwd) return;
+        if (repoSignature(nextRepos) === previousSignature) return;
         repos = nextRepos;
         await updateToolbar(toolbarTitle(repos[0]?.path), 'ext:git-branch/git-branch');
         await post({ type: 'status', repos, scopeKey: requestScope, cwd: requestCwd });
       } finally {
-        if (active() && requestGeneration === generation && requestScope === scopeKey) {
+        if (showLoading && active() && requestGeneration === generation && requestScope === scopeKey) {
           await post({ type: 'loading', loading: false, scopeKey: requestScope });
         }
       }
@@ -243,7 +255,7 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
     ctx.subscriptions.push(panel.onDidChangeVisibility((visible) => {
       if (!visible) return;
       unavailable = false;
-      void sendConfig().then(refresh).catch(() => undefined);
+      void sendConfig().then(() => refresh()).catch(() => undefined);
     }));
     ctx.subscriptions.push(panel.onDidDispose(() => {
       unavailable = true;
@@ -263,7 +275,7 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
         }
         if (message.type === 'refresh') {
           await setScope(message, true);
-          await refresh();
+          await refresh(message.silent !== true);
           return;
         }
         if (message.type === 'syncWorkspace') {
