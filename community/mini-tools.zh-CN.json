@@ -40,6 +40,11 @@
     "description": "让 Finch 在独立的 Ego Lite 任务空间中浏览网页，你可以随时查看、接管或关闭 Agent 打开的页面。"
   },
   {
+    "id": "finch-delivery",
+    "name": "成果库",
+    "description": "跟踪并浏览 AI 助手产出的交付物（Markdown、Word、PPT、PDF、Excel、网页、图片）。"
+  },
+  {
     "id": "finch-helper",
     "name": "Finch 助手",
     "description": "回答关于 Finch 使用、功能和小程序开发的问题，基于官方文档。"

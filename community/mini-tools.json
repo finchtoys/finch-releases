@@ -110,6 +110,20 @@
     "featured": true
   },
   {
+    "id": "finch-delivery",
+    "version": "0.3.1",
+    "name": "Artifacts",
+    "author": "puterjam",
+    "description": "Track and browse deliverables (Markdown, Word, PPT, PDF, Excel, web pages, images) produced by the AI assistant across all sessions.",
+    "repo": "puterjam/finch-tools",
+    "npm": "finch-delivery",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ],
+    "featured": true
+  },
+  {
     "id": "finch-helper",
     "version": "0.2.5",
     "name": "Finch Helper",
