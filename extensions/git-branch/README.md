@@ -4,7 +4,7 @@ Git Branch is a mini tool for [Finch](https://finchwork.app/) — a desktop AI a
 
 ![Git Branch](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/extensions/git-branch/shot.png)
 
-It puts a handy Git branch widget right inside your chat dialog.
+It adds both a compact Git branch widget to chat and a Source Control Panel app.
 
 ## What it does
 
@@ -16,14 +16,19 @@ It puts a handy Git branch widget right inside your chat dialog.
 - If you have unsaved changes, it can save a checkpoint commit first, then switch.
 - After switching, it tells you which commit was saved and which branch you're now on.
 - You can also ask the Agent to create a new branch for you.
+- Opens a 12px monospace **Source Control** panel with repository, changes, and commit graph lists.
+- Detects the current repository and its `.gitmodules` submodules, showing branch, dirty `*`, and ahead/behind status.
+- Supports Fetch, Pull (fast-forward only), Push, staging, unstaging, discarding a file, opening a file preview, and committing staged changes.
 
 ## How to use
 
 1. Open a Finch chat inside a Git project folder.
-2. Click the Git branch button on the top bar of the chat.
-3. Pick a branch to switch to.
-4. If there are unsaved changes, the dialog asks: save a checkpoint first, or cancel.
-5. Click **Create and checkout branch...** to let the Agent help you name a new branch.
+2. Open **Source Control** from the right Panel launcher.
+3. Select the main repository or a detected submodule. A `*` beside the branch means it has local changes.
+4. Stage files, write a message, then click **Commit**. Use Fetch / Pull / Push to synchronize.
+5. Use the chat Git branch button to switch or create a branch; it protects you from switching with uncommitted changes.
+
+The first version intentionally leaves out force-push, rebase, reset, cherry-pick, and history rewriting. They are powerful but too easy to misuse in a lightweight daily UI.
 
 ## Permissions
 

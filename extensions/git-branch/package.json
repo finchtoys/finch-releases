@@ -1,6 +1,6 @@
 {
   "name": "finch-git-branch",
-  "version": "0.2.11",
+  "version": "0.3.0",
   "description": "Git Branch Manager for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",
@@ -16,7 +16,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json && cp src/scm-panel.html dist/scm-panel.html && cp node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2 dist/jetbrains-mono-latin.woff2 && mkdir -p dist/jetbrains-icons && cp -R src/jetbrains-icons/. dist/jetbrains-icons/"
   },
   "finch": {
     "manifestVersion": 1,
@@ -49,6 +49,52 @@
           "label": "Git Branch Icons"
         }
       ],
+      "appPanel": {
+        "title": "Source Control",
+        "icon": "ext:git-branch/git-branch",
+        "viewType": "finch.git-source-control",
+        "instanceMode": "single",
+        "showInLauncher": true,
+        "source": {
+          "type": "local",
+          "path": "dist/scm-panel.html"
+        },
+        "toolbar": [
+          {
+            "type": "title",
+            "id": "scm-title",
+            "icon": "ext:git-branch/git-branch",
+            "label": "Source Control"
+          },
+          {
+            "type": "spacer"
+          },
+          {
+            "id": "refresh",
+            "icon": "ext:git-branch/refresh-cw",
+            "tooltip": "Refresh repository status"
+          },
+          {
+            "type": "menu",
+            "id": "sync",
+            "icon": "ext:git-branch/ellipsis",
+            "items": [
+              {
+                "id": "fetch",
+                "label": "Fetch"
+              },
+              {
+                "id": "pull",
+                "label": "Pull"
+              },
+              {
+                "id": "push",
+                "label": "Push"
+              }
+            ]
+          }
+        ]
+      },
       "skills": false
     },
     "permissions": {
@@ -58,7 +104,7 @@
     }
   },
   "devDependencies": {
-    "@finchtoys/minitool-api": "^0.1.16",
+    "@finchtoys/minitool-api": "^0.2.14",
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3"
   },
@@ -69,5 +115,8 @@
     "icon.png",
     "README.md",
     "README.zh-CN.md"
-  ]
+  ],
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0"
+  }
 }
