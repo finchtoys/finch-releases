@@ -1,7 +1,7 @@
 {
   "name": "finch-git-branch",
-  "version": "0.3.0",
-  "description": "Git Branch Manager for Finch Composer toolbar.",
+  "version": "0.3.1",
+  "description": "Git Source Control for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",
     "url": "https://finchwork.app"
@@ -21,7 +21,7 @@
   "finch": {
     "manifestVersion": 1,
     "id": "git-branch",
-    "name": "Git Branch",
+    "name": "Git Source Control",
     "description": "Switch Git branches from the Composer toolbar with change previews.",
     "systemPrompt": "When creating a Git branch, use create_git_branch. Pass branchName to create and check out a known branch without a form; otherwise omit it to collect the name in a form.",
     "main": "dist/index.js",
@@ -40,7 +40,7 @@
         {
           "id": "git-branch",
           "icon": "git-branch",
-          "tooltip": "Git 分支管理"
+          "tooltip": "Git 源码管理"
         }
       ],
       "iconPacks": [

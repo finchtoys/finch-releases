@@ -1,6 +1,6 @@
-## Git Branch for Finch
+## Git Source Control for Finch
 
-Git Branch is a mini tool for [Finch](https://finchwork.app/) — a desktop AI agent you can download at [finchwork.app](https://finchwork.app/). 
+Git Source Control is a mini tool for [Finch](https://finchwork.app/) — a desktop AI agent you can download at [finchwork.app](https://finchwork.app/). 
 
 ![Git Branch](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/extensions/git-branch/shot.png)
 

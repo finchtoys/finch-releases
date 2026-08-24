@@ -167,12 +167,12 @@
   },
   {
     "id": "git-branch",
-    "name": "Git Branch",
+    "name": "Git Source Control",
     "author": "Finch Team",
-    "description": "A handy Git branch widget inside your chat dialog.",
+    "description": "A handy Git source control widget inside your chat dialog.",
     "repo": "finchtoys/finch-releases",
     "npm": "finch-git-branch",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "extensionType": "official",
     "categories": [
       "developer"

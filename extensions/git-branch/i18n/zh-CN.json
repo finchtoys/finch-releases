@@ -1,13 +1,13 @@
 {
-  "name": "Git 分支",
-  "description": "在对话框里管理 Git 分支的小工具",
+  "name": "Git 源码管理",
+  "description": "在对话框里管理 Git 源码的小工具",
   "systemPrompt": "当需要创建 Git 分支时，使用 create_git_branch 工具。已确定分支名时传入 branchName 参数以静默创建并检出；否则省略该参数以弹出表单收集分支名。",
   "toolMeta": {
-    "name": "Git 分支"
+    "name": "Git 源码管理"
   },
   "composerActions": {
     "git-branch": {
-      "tooltip": "Git 分支管理"
+      "tooltip": "Git 源码管理"
     }
   },
   "appPanel": {
@@ -59,6 +59,9 @@
   "git.scm.commit.cancel": "取消",
   "git.scm.commit.success": "已提交更改",
   "git.scm.commit.empty": "没有需要提交的更改",
+  "git.scm.commit.manual.title": "请手动提交",
+  "git.scm.commit.manual.desc": "提交将由你在终端手动执行，请复制并运行以下命令：",
+  "git.scm.commit.manual.ok": "完成",
   "git.scm.stage.success": "已暂存",
   "git.scm.unstage.success": "已取消暂存",
   "git.scm.stageAll.success": "已暂存全部更改",

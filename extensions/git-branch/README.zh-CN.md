@@ -1,6 +1,6 @@
-## Git 分支小工具
+## Git 源码管理小工具
 
-Git 分支小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是一款桌面 AI Agent，可在 [finchwork.app](https://finchwork.app/) 下载。
+Git 源码管理小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是一款桌面 AI Agent，可在 [finchwork.app](https://finchwork.app/) 下载。
 
 ![Git Branch](https://raw.githubusercontent.com/finchtoys/finch-releases/refs/heads/main/extensions/git-branch/shot.png)
 
@@ -20,7 +20,7 @@ Git 分支小工具是 [Finch](https://finchwork.app/) 的扩展。Finch 是一�
 ## 用法
 
 1. 在 Git 项目目录里打开一个 Finch 对话。
-2. 点击对话顶部工具栏的 Git 分支按钮。
+2. 点击对话顶部工具栏的 Git 源码管理按钮。
 3. 选一个分支切换过去。
 4. 如果有没保存的改动，对话框会问你先存档再切，还是取消。
 5. 点「创建并检出分支...」让 Agent 帮你输入新分支名。

@@ -168,10 +168,6 @@ async function fileAtRevision(repoPath: string, revision: string, filePath: stri
   return runGit(repoPath, ['show', `${revision}:${filePath}`], 15_000, false).catch(() => '');
 }
 
-async function hasStagedChanges(repoPath: string): Promise<boolean> {
-  return Boolean(await runGit(repoPath, ['diff', '--cached', '--name-only']));
-}
-
 export function activateScmPanel(ctx: finch.MiniToolContext): void {
   ctx.subscriptions.push(panelUi(ctx).onDidOpenPanel((panel) => {
     let cwd = '';
@@ -312,24 +308,16 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
           if (result.action !== 'commit') return;
           const text = String(result.values?.message ?? '').trim();
           if (!text) return;
-          await runGit(repoPath, ['add', '-A']);
-          if (!await hasStagedChanges(repoPath)) {
-            await toast(ctx.i18n.t('git.scm.commit.empty'), 'info');
-            return;
-          }
-          await runGit(repoPath, ['commit', '-m', text, '-m', 'Co-authored-by: 帕亚 <noreply@finchwork.app>']);
-          await toast(ctx.i18n.t('git.scm.commit.success'));
-        }
-        if (message.type === 'commit') {
-          const text = typeof message.message === 'string' ? message.message.trim() : '';
-          if (!text) throw new Error('Commit message is required');
-          await runGit(repoPath, ['add', '-A']);
-          if (!await hasStagedChanges(repoPath)) {
-            await toast(ctx.i18n.t('git.scm.commit.empty'), 'info');
-            return;
-          }
-          await runGit(repoPath, ['commit', '-m', text, '-m', 'Co-authored-by: 帕亚 <noreply@finchwork.app>']);
-          await toast(ctx.i18n.t('git.scm.commit.success'));
+          // 提交由人类在自己的终端手动执行，扩展只生成命令，不再自动 git commit。
+          const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+          await ctx.ui.showModalDialog({
+            title: ctx.i18n.t('git.scm.commit.manual.title'),
+            description: ctx.i18n.t('git.scm.commit.manual.desc'),
+            message: `\`git add -A\`\n\`git commit -m "${escaped}"\``,
+            actions: [
+              { id: 'ok', label: ctx.i18n.t('git.scm.commit.manual.ok'), variant: 'primary' },
+            ],
+          });
         }
         if (message.type === 'discard') {
           const file = allowedFile(repoPath, message.filePath);
