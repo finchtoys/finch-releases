@@ -32,7 +32,7 @@ The first version intentionally leaves out force-push, rebase, reset, cherry-pic
 
 ## Permissions
 
-This tool needs shell permission because it runs `git` commands locally. No network access needed.
+This tool needs shell permission to run local `git` commands and read-only filesystem permission to inspect repository metadata and changed files. No network access needed.
 
 ## Development
 

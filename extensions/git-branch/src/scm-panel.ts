@@ -179,7 +179,10 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
     let generation = 0;
     let repos: Repo[] = [];
     let unavailable = false;
-    const active = () => !unavailable && panel.visible;
+    // A panel can receive its initial bridge message before `visible` flips to
+    // true. Treat the live handle as available so that init is never dropped;
+    // visibility still triggers an explicit refresh below.
+    const active = () => !unavailable;
     const post = async (message: unknown): Promise<boolean> => {
       if (!active()) return false;
       try {
