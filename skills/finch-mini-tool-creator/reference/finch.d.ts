@@ -301,6 +301,29 @@ declare module 'finch' {
       showToast(options: ToastOptions): Promise<ToastResult>;
       showConfirmDialog(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
       showModalDialog(options: ModalDialogOptions): ModalDialogHandle;
+      /**
+       * 打开 Finch 原生文件选择器：浏览当前 Space/工作间目录树，或输入关键字模糊过滤，
+       * 只返回选中文件的绝对路径，不回传文件内容——需要哪个文件的内容，小程序自己按
+       * 路径读取（需要 manifest `permissions.filesystem: "read"` 或 `"readwrite"`）。
+       *
+       * 默认只能在当前 Space（或全局工作间）目录下选择，和 Composer `@` 提及文件看到
+       * 的目录范围一致。若这次调用发生在 `contributes.appView` 页面（不绑定单个
+       * Session/Space），可以传 `allowSpaceSwitch: true`，弹窗顶部会出现一个 Space /
+       * 工作间切换器。
+       *
+       * @example
+       * const result = await ctx.ui.pickFile({
+       *   title: '选择要导入的文件',
+       *   multiple: true,
+       *   filter: { extensions: ['.md', '.png', '.jpg'] },
+       * });
+       * if (result.action === 'select') {
+       *   for (const file of result.files) {
+       *     const text = await fs.readFile(file.path, 'utf-8');
+       *   }
+       * }
+       */
+      pickFile(options?: FilePickerOptions): FilePickerHandle;
       /** 显示一条 Toast 通知（映射为 showToast，保留了 `type` 参数以兼容不同严重等级）。 */
       notify(message: string, type?: 'info' | 'warning' | 'error'): void;
       /**
@@ -1656,6 +1679,54 @@ declare module 'finch' {
    */
   export interface ModalDialogHandle extends Promise<ModalDialogResult> {
     close(action?: string): Promise<void>;
+  }
+
+  /** `ctx.ui.pickFile()` 的过滤条件。 */
+  export interface FilePickerFilter {
+    /** 后缀白名单，形如 `.md`；省略表示不过滤。目录始终可见（用于展开浏览），不受此过滤影响。 */
+    readonly extensions?: readonly string[];
+  }
+
+  export interface FilePickerOptions {
+    readonly title?: string;
+    readonly description?: string;
+    /** 是否允许多选。默认 `false`（单选）。 */
+    readonly multiple?: boolean;
+    readonly filter?: FilePickerFilter;
+    /** 预填搜索框内容。 */
+    readonly initialQuery?: string;
+    /** 覆盖默认根目录。省略时按当前 Space / 全局工作间解析。 */
+    readonly root?: { readonly directoryPath: string };
+    /**
+     * 是否允许用户在弹窗内切换到其他 Space 或工作间。默认 `false`——只能在
+     * 当前 Space/工作间目录下选择。仅在小程序自己判断当前处于
+     * `contributes.appView` 页面等不绑定单一 Session/Space 的场景时传 `true`。
+     */
+    readonly allowSpaceSwitch?: boolean;
+  }
+
+  /** `ctx.ui.pickFile()` 返回的单个选中项。 */
+  export interface PickedFileEntry {
+    /** 绝对路径。 */
+    readonly path: string;
+    /** 相对于选择时所在根目录的路径，仅用于展示。 */
+    readonly relativePath: string;
+    readonly name: string;
+    readonly isDir: boolean;
+    /** 选择时所在的 Space（如有）。 */
+    readonly spaceId?: string;
+    readonly spaceName?: string;
+  }
+
+  export interface FilePickerResult {
+    readonly action: 'select' | 'dismissed';
+    /** `dismissed` 时为空数组。 */
+    readonly files: readonly PickedFileEntry[];
+  }
+
+  /** 与 {@link ModalDialogHandle} 同构：可 await，也可编程关闭（视为用户取消）。 */
+  export interface FilePickerHandle extends Promise<FilePickerResult> {
+    close(): Promise<void>;
   }
 
   /** 工具栏 `menu` 项下拉菜单里的一行。 */
