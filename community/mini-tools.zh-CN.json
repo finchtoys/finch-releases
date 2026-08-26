@@ -115,6 +115,11 @@
     "description": "通过 MCP 连接 Tavily Search，让 Finch 使用网页搜索、内容提取、站点抓取和站点地图工具。"
   },
   {
+    "id": "telegram-bot",
+    "name": "Telegram Bot",
+    "description": "通过安全长轮询将 Telegram 私聊接入 Finch，并映射为收件箱会话。"
+  },
+  {
     "id": "todo-list",
     "name": "待办清单",
     "description": "轻松记录待办，跟进进行中的事项，并归档已完成内容。"

@@ -319,6 +319,19 @@
     "featured": true
   },
   {
+    "id": "telegram-bot",
+    "version": "0.2.0",
+    "name": "Telegram Bot",
+    "author": "Kassell",
+    "description": "Connect Telegram private chats to Finch through secure long polling and inbox Sessions.",
+    "repo": "Kassell/finch-telegram-bot",
+    "npm": "finch-telegram-bot",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ]
+  },
+  {
     "id": "todo-list",
     "version": "0.3.4",
     "name": "Todo List",
