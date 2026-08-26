@@ -206,12 +206,12 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
     // Also push config immediately: an already-live Webview may not emit finch:env again
     // after the mini tool backend is reloaded.
     void sendConfig().catch(() => undefined);
-    const setScope = async (message: Record<string, unknown>, useCurrentWorkspace = false): Promise<boolean> => {
-      const webviewCwd = typeof message.cwd === 'string' ? message.cwd : '';
-      // Session switches can retain a live Webview without replaying finch:env.
-      // The backend workspace follows the active session and is authoritative for heartbeat refreshes.
-      const activeCwd = ctx.workspace.directoryPath ?? ctx.workspace.projectPath ?? '';
-      const nextCwd = useCurrentWorkspace && activeCwd ? activeCwd : webviewCwd;
+    const setScope = async (message: Record<string, unknown>): Promise<boolean> => {
+      // A Panel belongs to the Session that opened it. Its bridged finch:env cwd
+      // remains the only reliable scope after switching other Spaces/Sessions;
+      // ctx.workspace describes the globally active workspace and can belong to
+      // a different Session by the time this callback runs.
+      const nextCwd = typeof message.cwd === 'string' ? message.cwd : '';
       const nextScopeKey = typeof message.scopeKey === 'string' ? message.scopeKey : (scopeKey || nextCwd);
       if (nextScopeKey === scopeKey && nextCwd === cwd) return false;
       generation += 1;
@@ -278,12 +278,12 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
           return;
         }
         if (message.type === 'refresh') {
-          await setScope(message, true);
+          await setScope(message);
           await refresh(message.silent !== true);
           return;
         }
         if (message.type === 'syncWorkspace') {
-          const changed = await setScope(message, true);
+          const changed = await setScope(message);
           await sendConfig();
           if (changed || repos.length === 0) await refresh();
           return;

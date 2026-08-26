@@ -1,6 +1,6 @@
 {
   "name": "finch-git-branch",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Git Source Control for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",
