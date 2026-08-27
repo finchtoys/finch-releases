@@ -766,8 +766,17 @@
         },
       };
       let words = t.en;
+      // Attach the latest env-derived scope to every backend action. This is
+      // both restoration metadata and a safety boundary: if a Session/Space
+      // switch races with an action, the backend can reject stale repo state
+      // instead of executing against the previous cwd.
       const post = (type, data = {}) =>
-        window.finch?.postMessage({ type, ...data });
+        window.finch?.postMessage({
+          type,
+          cwd: state.cwd,
+          scopeKey: state.scopeKey,
+          ...data,
+        });
       const esc = (s) =>
         String(s).replace(
           /[&<>'"]/g,

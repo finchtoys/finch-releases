@@ -178,19 +178,18 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
     let scopeKey = '';
     let generation = 0;
     let repos: Repo[] = [];
-    let unavailable = false;
-    // A panel can receive its initial bridge message before `visible` flips to
-    // true. Treat the live handle as available so that init is never dropped;
-    // visibility still triggers an explicit refresh below.
-    const active = () => !unavailable;
+    let disposed = false;
+    const active = () => !disposed;
     const post = async (message: unknown): Promise<boolean> => {
       if (!active()) return false;
       try {
         await panel.postMessage(message);
         return true;
-      } catch {
-        // The Session may have dropped its viewer between the visibility check and send.
-        unavailable = true;
+      } catch (error) {
+        // Session/Space navigation can briefly leave this scope without a
+        // viewer. That is retryable: only onDidDispose permanently ends the
+        // handle, and the page's next init/refresh handshake must still work.
+        ctx.logger.debug('SCM panel post deferred until next handshake', error);
         return false;
       }
     };
@@ -198,8 +197,8 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
       if (!active()) return;
       try {
         await panel.updateToolbarItem('scm-title', { label, icon });
-      } catch {
-        unavailable = true;
+      } catch (error) {
+        ctx.logger.debug('SCM toolbar update deferred until next refresh', error);
       }
     };
     const sendConfig = async () => {
@@ -255,17 +254,16 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
       if (!active()) return;
       try {
         await ctx.ui.showToast({ title, variant, position: 'TC' });
-      } catch {
-        unavailable = true;
+      } catch (error) {
+        ctx.logger.debug('SCM toast skipped during scope transition', error);
       }
     };
     ctx.subscriptions.push(panel.onDidChangeVisibility((visible) => {
-      if (!visible) return;
-      unavailable = false;
+      if (!visible || !active()) return;
       void sendConfig().then(() => refresh()).catch(() => undefined);
     }));
     ctx.subscriptions.push(panel.onDidDispose(() => {
-      unavailable = true;
+      disposed = true;
       generation += 1;
       repos = [];
     }));
@@ -289,6 +287,15 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
           const changed = await setScope(message);
           await sendConfig();
           if (changed || repos.length === 0) await refresh();
+          return;
+        }
+        // Every page action carries its current env-derived scope. If an init
+        // message was lost during navigation, this prevents a stale repoPath
+        // from running against the previous Space; refresh the new scope and
+        // require a fresh user action instead.
+        if (await setScope(message)) {
+          await sendConfig();
+          await refresh();
           return;
         }
         const repoPath = allowedRepo(repos, message.repoPath);
