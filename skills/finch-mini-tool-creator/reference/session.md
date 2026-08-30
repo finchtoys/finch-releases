@@ -183,7 +183,7 @@ const session = await ctx.sessions.create({
   title: 'Chat with Alice',      // optional; users can rename later
   // No profileId: the container's declared agentProfile is applied automatically.
   activity: 'interactive',       // default
-  permissionMode: 'ask',         // default for interactive
+  permissionMode: 'ask',         // optional override; default is acceptCalls
   initialMessage: {
     text: 'Hello from the bot.',
     idempotencyKey: 'welcome-alice-2026-01-01',
@@ -202,11 +202,27 @@ console.log(session.sessionId);
 | `title` | `string` | Optional initial title. |
 | `profileId` | `string` | **Deprecated and ignored.** The Agent profile comes from the container's `agentProfile` declaration and is applied automatically. Passing it never fails session creation — Finch logs a deprecation warning and ignores the value. Declare the profile on the container instead. |
 | `activity` | `'interactive' \| 'background'` | Defaults to `interactive`. |
-| `permissionMode` | `'ask' \| 'acceptCalls'` | Defaults to `ask` for interactive, `acceptCalls` for background. |
+| `permissionMode` | `'ask' \| 'acceptCalls'` | Defaults to `acceptCalls`. Pass `ask` when the Session should pause for each permission decision. |
 | `context` | `'caller'` | Only valid during an Agent tool call; inherits the caller's cwd, model, policy, and Space context. |
 | `initialMessage` | `SessionUserMessage` | Optional first message, sent atomically with Session creation. |
 
 A failed `create()` with `initialMessage` does not leave a ghost Session.
+
+### 3.1 Changing an existing Session's permission mode
+
+A mini tool may switch any Session it owns between `acceptCalls` and `ask` without replacing the Session or losing conversation history:
+
+```ts
+await ctx.sessions.setPermissionMode(session.sessionId, 'ask');
+// Later, after an explicit user setting change:
+await ctx.sessions.setPermissionMode(session.sessionId, 'acceptCalls');
+```
+
+The change is persisted, applies to future resumed/queued turns, and is synchronized to a currently active Runner. Switching `ask → acceptCalls` resolves only pending calls that Finch's existing `acceptCalls` policy permits. It never approves a dangerous operation. Switching `acceptCalls → ask` affects the next permission decision and cannot undo a tool that already started.
+
+Only `'ask' | 'acceptCalls'` are accepted; mini tools cannot select `auto`. The call is owner-scoped and uses the existing `permissions.sessions` gate. Dangerous permission waits may still be rejected through `respondToWait()`, but approval remains available only to a human in Finch Desktop—not through a bot callback.
+
+For an external bot that relays permission cards, use an `interactive` Session. Background Sessions run without a live approval surface and do not emit waits for remote handling.
 
 ---
 

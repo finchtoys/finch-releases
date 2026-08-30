@@ -255,13 +255,16 @@ Do not use it for ordinary app pages.
 ## 7. Native preview and Diff
 
 Use `ctx.ui.openFilePreview(absolutePath)` to open Markdown, source code, or
-another previewable text file, and `ctx.ui.openDiff(request)` for native
+another previewable text file. HTML/HTM defaults to the built-in Browser; pass
+`{ htmlPreview: 'code' }` when the user should inspect its source. Use
+`ctx.ui.openDiff(request)` for native
 file/Git Diff. Both require an active Panel scope but do **not** require
 `contributes.appPanel`; their Panel/modal presentation follows the user's
 「改动与文件预览」setting.
 
 ```ts
 await ctx.ui.openFilePreview('/workspace/README.md');
+await ctx.ui.openFilePreview('/workspace/report.html', { htmlPreview: 'code' });
 await ctx.ui.openDiff({ type: 'files', leftPath: '/workspace/old.ts', rightPath: '/workspace/new.ts' });
 await ctx.ui.openDiff({ type: 'git', repoPath: '/workspace', base: 'HEAD~1', target: 'HEAD' });
 ```
@@ -439,7 +442,8 @@ document.getElementById('delete-btn').addEventListener('click', async () => {
 - Mini tool install/enable scope remains personal or global; only the panel instance is scope-bound as above.
 - `reveal()` reopens/activates the panel.
 - Use `setTitle` and `setIcon` for dynamic chrome; the toolbar itself stays manifest-owned (`contributes.appPanel.toolbar`).
-- Stop expensive page work when `onDidChangeVisibility(false)` fires.
+- Stop expensive backend work when `onDidChangeVisibility(false)` fires. Visibility reflects the real user-facing state: selected tab in an expanded Panel, including scope switches and responsive auto-hide.
+- Do not use `onDidChangeVisibility(true)` as a page-ready signal. It can fire before a newly created/recreated guest has installed its listener. If backend state must be restored, install `window.finch.onMessage` first and then have the page send an explicit `ready`/`init` message; reply with the current snapshot. Treat a failed `postMessage()` during navigation as transient, not as permanent panel disposal.
 - Dispose the panel or push it to `ctx.subscriptions` so disabling the mini tool closes it.
 
 ### 7.5 App View host previews and Diff

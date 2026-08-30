@@ -259,7 +259,7 @@ declare module 'finch' {
        * @example
        * await ctx.ui.openFilePreview('/workspace/README.md');
        */
-      openFilePreview(path: string): Promise<void>;
+      openFilePreview(path: string, options?: FilePreviewOptions): Promise<void>;
       /**
        * 在当前 Panel scope 打开 Finch 原生双文件或 Git commit/ref Diff。
        * 仅传入要比较的路径/ref；右侧 Panel 或弹窗由用户的「改动与文件预览」设置决定。
@@ -640,7 +640,7 @@ declare module 'finch' {
      * session container 入口显示提醒红点。
      */
     readonly activity?: MinitoolSessionActivity;
-    /** 后台/Bot Session 默认 acceptCalls；可显式设为 ask。 */
+    /** 默认 acceptCalls；可显式设为 ask。 */
     readonly permissionMode?: 'ask' | 'acceptCalls';
     /** 提供时，与 Session 创建原子接收；失败不会留下 ghost Session。 */
     readonly initialMessage?: SessionUserMessage;
@@ -834,6 +834,11 @@ declare module 'finch' {
     get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
     list(options?: SessionListOptions): Promise<MinitoolSessionDescriptor[]>;
     send(sessionId: string, message: SessionUserMessage, options?: SessionSendOptions): Promise<SessionSendReceipt>;
+    /**
+     * 动态修改当前 mini tool 自己拥有的 Session 权限模式并持久化。
+     * acceptCalls 仍不会自动批准危险操作；不支持 auto。
+     */
+    setPermissionMode(sessionId: string, permissionMode: 'ask' | 'acceptCalls'): Promise<void>;
     /** 等待指定 turn 完成或失败，无需 sleep/polling。 */
     waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
@@ -1745,12 +1750,18 @@ declare module 'finch' {
    * 以及把后续项推到行尾的弹性空白。标题项仅展示，不会向页面发送消息；它
    * 也需要稳定的 `id`，以便通过 {@link AppPanel.updateToolbarItem} 更新：
    *
+   * `button`/`menu` 项还支持 `checked`，用来做开关型工具栏按钮（如「显示行号」
+   * 这类切换）：设为 `true` 时按钮渲染成按下态（accent 高亮背景 + `aria-pressed`），
+   * 由小工具自己在 `finch:menu` 消息处理里维护这份开关状态并调用
+   * `updateToolbarItem(id, { checked })` 同步：
+   *
    * ```ts
    * toolbar: [
    *   { type: 'title', id: 'section-title', icon: 'book-open', label: '资料库' },
    *   { id: 'reload', icon: 'rotate-cw', tooltip: '重新加载' },
    *   { type: 'separator' },
    *   { id: 'share', label: '分享', icon: 'share-2' },
+   *   { id: 'wrap', label: '自动换行', icon: 'wrap-text', checked: true },
    *   { type: 'spacer' },
    *   { type: 'menu', id: 'more', icon: 'ellipsis', items: [
    *     { id: 'clear-log', label: '清空日志' },
@@ -1761,8 +1772,8 @@ declare module 'finch' {
    * ```
    */
   export type AppPanelToolbarItem =
-    | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean }
-    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly items: readonly AppPanelMenuItem[] }
+    | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly checked?: boolean }
+    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly checked?: boolean; readonly items: readonly AppPanelMenuItem[] }
     | { readonly type: 'title'; readonly id: string; readonly icon: IconRef; readonly label: string }
     | { readonly type: 'separator' }
     | { readonly type: 'spacer' };
@@ -1773,6 +1784,8 @@ declare module 'finch' {
     readonly icon?: IconRef;
     readonly tooltip?: string;
     readonly disabled?: boolean;
+    /** 切换按钮/menu 触发器的按下（checked）态；见 {@link AppPanelToolbarItem}。 */
+    readonly checked?: boolean;
   }
 
   /**
@@ -1885,6 +1898,7 @@ declare module 'finch' {
     readonly spaceName?: string;
     /** 当前 Panel 实例的打开上下文；single 实例再次打开时会更新。 */
     readonly payload?: JsonValue;
+    /** 仅当本实例是实际展开、未被响应式隐藏的 Panel 中当前选中 tab 时为 true。 */
     readonly visible: boolean;
     reveal(): Promise<void>;
     postMessage(message: unknown): Promise<void>;
@@ -1893,6 +1907,11 @@ declare module 'finch' {
     /** 按稳定 id 更新一个顶层工具栏项的展示字段。 */
     updateToolbarItem(itemId: string, patch: AppPanelToolbarItemPatch): Promise<void>;
     onDidReceiveMessage(listener: (message: unknown) => unknown): Disposable;
+    /**
+     * tab 选择、scope 切换、Panel 折叠/展开或响应式自动隐藏导致实际可见性变化时触发。
+     * `true` 不代表 guest 页面已安装消息监听器；恢复后端状态时，页面仍须在
+     * `window.finch.onMessage` 安装后主动发送 ready/init 握手。
+     */
     onDidChangeVisibility(listener: (visible: boolean) => unknown): Disposable;
     onDidDispose(listener: () => unknown): Disposable;
     dispose(): void;
@@ -1946,6 +1965,15 @@ declare module 'finch' {
   export type AppViewDiffRequest =
     | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string }
     | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string };
+
+  /** 选择 Finch 原生文件预览打开 HTML 的方式。 */
+  export type HtmlPreviewMode = 'browser' | 'code';
+
+  /** 原生文件预览的可选行为。 */
+  export interface FilePreviewOptions {
+    /** HTML/HTM 默认在浏览器打开；传入 `code` 可查看源码。 */
+    readonly htmlPreview?: HtmlPreviewMode;
+  }
 
   /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
   export interface WebviewBridgeApi {
@@ -2024,7 +2052,7 @@ declare module 'finch' {
      */
     readonly appView: {
       /** 用 Finch 内置文件预览展示本地文件；展示位置遵循用户设置。 */
-      openPreview(path: string): Promise<{ id: string }>;
+      openPreview(path: string, options?: FilePreviewOptions): Promise<{ id: string }>;
       /**
        * 用 Finch 内置 Diff 展示两个本地文件，或 Git repository 中两个 commit/ref
        * 的多文件差异；App View 和 Panel App 都可调用。展示位置遵循用户设置，
