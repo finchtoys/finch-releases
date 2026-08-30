@@ -330,6 +330,13 @@ All runtime capabilities go through `ctx`:
 - `ctx.capabilities` — cross-extension collaboration; see `reference/capabilities.md`
 - `ctx.minitool` — this mini tool's own metadata (`id` / `displayName` / `version` / `scope` …). The old `ctx.extension` is deprecated — use `ctx.minitool` in new code.
 - `ctx.minitools` — snapshot of enabled mini tools' manifest contributions (`listContributions(point)`). The old `ctx.extensions` is deprecated — use `ctx.minitools` in new code.
+- `ctx.events` — read-only Agent runtime event subscription (`onAgentEvent`), for status display or light telemetry; best-effort push, listener errors never break the Agent flow
+- `ctx.notifications` — Finch user-visible notification events
+- `ctx.session` — read-only snapshot of the current Session
+- `ctx.workspace` — read-only current Space / Workspace info (`spaceId` / `spaceName` / `directoryPath` …)
+- `ctx.storagePath` — absolute path to the mini tool's private persistent storage directory, pre-created by Finch; write complex state directly with Node `fs`
+- `ctx.settings` — settings the user configured on the mini tool detail page (declared by manifest `settings` schema), read-only; the mini tool reloads after the user saves
+- `ctx.icons` — runtime SVG icon pack registration (`icons.register(packId, { id: { svg } })`), used with manifest `contributes.iconPacks`
 
 ### Install and debug
 
