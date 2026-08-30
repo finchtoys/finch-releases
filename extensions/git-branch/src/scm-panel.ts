@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -40,7 +40,7 @@ type RuntimePanel = {
 };
 type RuntimePanelUi = {
   onDidOpenPanel(listener: (panel: RuntimePanel) => unknown): finch.Disposable;
-  openFilePreview(path: string): Promise<void>;
+  openFilePreview(path: string, options?: { htmlPreview?: 'browser' | 'code' }): Promise<void>;
 };
 function panelUi(ctx: finch.MiniToolContext): RuntimePanelUi {
   return ctx.ui as unknown as RuntimePanelUi;
@@ -170,6 +170,34 @@ async function fileAtRevision(repoPath: string, revision: string, filePath: stri
 
 async function hasStagedChanges(repoPath: string): Promise<boolean> {
   return Boolean(await runGit(repoPath, ['diff', '--cached', '--name-only']));
+}
+
+function remoteToBrowserUrl(url: string): string | undefined {
+  const trimmed = url.trim();
+  if (!trimmed) return undefined;
+  // git@github.com:user/repo.git -> https://github.com/user/repo
+  const sshMatch = trimmed.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+  if (sshMatch) {
+    const [, host, path] = sshMatch;
+    return `https://${host}/${path.replace(/\.git$/i, '')}`;
+  }
+  // ssh://git@host/path/repo.git
+  const sshProtoMatch = trimmed.match(/^ssh:\/\/(?:git@)?([^/]+)\/(.+?)(?:\.git)?$/);
+  if (sshProtoMatch) {
+    const [, host, path] = sshProtoMatch;
+    return `https://${host}/${path.replace(/\.git$/i, '')}`;
+  }
+  // https://host/path/repo.git or http://...
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\.git$/i, '');
+  }
+  return undefined;
+}
+
+function openInBrowser(url: string, platform: string): void {
+  if (platform === 'darwin') execFile('open', [url]);
+  else if (platform === 'win32') execFile('cmd', ['/c', 'start', '', url]);
+  else execFile('xdg-open', [url]);
 }
 
 export function activateScmPanel(ctx: finch.MiniToolContext): void {
@@ -307,6 +335,17 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
         if (message.type === 'pull') { await runGit(repoPath, ['pull', '--ff-only'], 60_000); await toast(ctx.i18n.t('git.scm.pull.success')); }
         if (message.type === 'push') { await runGit(repoPath, ['push'], 60_000); await toast(ctx.i18n.t('git.scm.push.success')); }
         if (message.type === 'fetch') { await runGit(repoPath, ['fetch', '--prune'], 60_000); await toast(ctx.i18n.t('git.scm.fetch.success')); }
+        if (message.type === 'openRemote') {
+          const remoteUrl = await runGit(repoPath, ['remote', 'get-url', 'origin']).catch(() => '');
+          const browserUrl = remoteToBrowserUrl(remoteUrl);
+          if (!browserUrl) {
+            await toast(ctx.i18n.t('git.scm.openRemote.none'), 'error');
+            return;
+          }
+          openInBrowser(browserUrl, process.platform);
+          await toast(ctx.i18n.t('git.scm.openRemote.success'));
+          return;
+        }
         if (message.type === 'requestCommit') {
           const result = await ctx.ui.showModalDialog({
             title: ctx.i18n.t('git.scm.commit.title'),
@@ -339,7 +378,13 @@ export function activateScmPanel(ctx: finch.MiniToolContext): void {
         }
         if (message.type === 'openFile') {
           const file = allowedFile(repoPath, message.filePath);
-          if (file && existsSync(file)) await panelUi(ctx).openFilePreview(realpathSync(file));
+          if (file && existsSync(file)) {
+            const previewPath = realpathSync(file);
+            const htmlOptions = ['.html', '.htm'].includes(extname(previewPath).toLowerCase())
+              ? { htmlPreview: 'code' as const }
+              : undefined;
+            await panelUi(ctx).openFilePreview(previewPath, htmlOptions);
+          }
           return;
         }
         if (message.type === 'prepareFileDiff') {

@@ -893,28 +893,39 @@
         document.querySelectorAll(".file").forEach((row) => {
           const path = row.dataset.path,
             file = r.files.find((f) => f.path === path);
-          row.querySelector(".open").onclick = () =>
-            post("openFile", { repoPath: state.path, filePath: path });
-          row.querySelector(".stage").onclick = () =>
+          const bindFileAction = (selector, handler) => {
+            const button = row.querySelector(selector);
+            if (!button) return;
+            // The row itself opens Diff on pointerdown. Handle child actions in
+            // the same event phase so the parent never consumes the first tap.
+            button.onpointerdown = (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void handler();
+            };
+          };
+          bindFileAction(".open", () =>
+            post("openFile", { repoPath: state.path, filePath: path }),
+          );
+          bindFileAction(".stage", () =>
             post(file.staged ? "unstage" : "stage", {
               repoPath: state.path,
               filePath: path,
+            }),
+          );
+          bindFileAction(".undo", async () => {
+            const ok = await window.finch.ui.confirm({
+              title: words.discard,
+              message: path,
+              variant: "danger",
             });
-          const undo = row.querySelector(".undo");
-          if (undo)
-            undo.onclick = async () => {
-              const ok = await window.finch.ui.confirm({
-                title: words.discard,
-                message: path,
-                variant: "danger",
+            if (ok.confirmed)
+              post("discard", {
+                repoPath: state.path,
+                filePath: path,
+                status: file.status,
               });
-              if (ok.confirmed)
-                post("discard", {
-                  repoPath: state.path,
-                  filePath: path,
-                  status: file.status,
-                });
-            };
+          });
           row.onpointerdown = async (event) => {
             if (event.target.closest(".file-actions")) return;
             event.preventDefault();

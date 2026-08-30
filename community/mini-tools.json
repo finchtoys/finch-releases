@@ -172,7 +172,7 @@
     "description": "A handy Git source control widget inside your chat dialog.",
     "repo": "finchtoys/finch-releases",
     "npm": "finch-git-branch",
-    "version": "0.3.5",
+    "version": "0.3.6",
     "extensionType": "official",
     "categories": [
       "developer"

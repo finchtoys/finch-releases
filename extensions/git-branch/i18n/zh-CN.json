@@ -16,6 +16,7 @@
       { "label": "源代码管理" },
       {},
       { "tooltip": "刷新存储库状态" },
+      { "tooltip": "打开远程存储库" },
       { "items": [{ "label": "获取" }, { "label": "拉取" }, { "label": "推送" }] }
     ]
   },
@@ -67,6 +68,8 @@
   "git.scm.pull.success": "已拉取最新更改",
   "git.scm.push.success": "已推送到远程",
   "git.scm.fetch.success": "已获取远程更新",
+  "git.scm.openRemote.success": "已打开远程存储库",
+  "git.scm.openRemote.none": "未配置远程存储库",
   "tool.create.title": "Create Git Branch",
   "tool.create.desc": "创建并检出 Git 分支。已确定分支名时传入 branchName 参数，以静默创建；否则省略该参数以打开表单收集分支名。"
 }

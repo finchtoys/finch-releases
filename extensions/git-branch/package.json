@@ -1,6 +1,6 @@
 {
   "name": "finch-git-branch",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Git Source Control for Finch Composer toolbar.",
   "author": {
     "name": "Finch Team",
@@ -73,6 +73,11 @@
             "id": "refresh",
             "icon": "ext:git-branch/refresh-cw",
             "tooltip": "Refresh repository status"
+          },
+          {
+            "id": "openRemote",
+            "icon": "ext:git-branch/external-link",
+            "tooltip": "Open remote repository"
           },
           {
             "type": "menu",
