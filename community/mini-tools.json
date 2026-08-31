@@ -194,19 +194,6 @@
     "repo": "npm:finch-glm-vision"
   },
   {
-    "id": "kimi-webbridge",
-    "version": "1.0.1",
-    "name": "Web Assistant",
-    "author": "Arthur",
-    "description": "Let Finch use your existing Chrome session to open websites, click, fill forms, capture screenshots, and save PDFs.",
-    "repo": "BlessedChild/finch-web-assistant",
-    "npm": "finch-web-assistant",
-    "extensionType": "community",
-    "categories": [
-      "productivity"
-    ]
-  },
-  {
     "id": "markdown-editor",
     "version": "0.1.8",
     "name": "Writing",
@@ -304,20 +291,6 @@
       "productivity"
     ],
     "featured": true
-  },
-  {
-    "id": "pp-ocrv6",
-    "version": "0.3.0",
-    "name": "PP-OCRv6",
-    "author": "JoeHe",
-    "description": "OCR extension powered by PP-OCRv6 — extract Chinese and English text from images using Python PaddleOCR.",
-    "repo": "joehe71/pp-ocrv6",
-    "npm": "@joehe71/pp-ocrv6",
-    "extensionType": "community",
-    "categories": [
-      "productivity",
-      "research"
-    ]
   },
   {
     "id": "tavily-search",
