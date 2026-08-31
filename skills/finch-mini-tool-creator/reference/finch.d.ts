@@ -1809,6 +1809,8 @@ declare module 'finch' {
     | "--finch-radius-sm" | "--finch-radius-md" | "--finch-radius-lg" | "--finch-radius-full"
     | "--finch-shadow-sm" | "--finch-shadow-md"
     | "--finch-font-body" | "--finch-font-mono"
+    | "--finch-message-font-size" | "--finch-message-line-height"
+    | "--finch-code-font-size" | "--finch-code-line-height"
     | "--finch-theme-mode";
 
   /**
