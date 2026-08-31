@@ -207,6 +207,21 @@
     ]
   },
   {
+    "id": "markdown-editor",
+    "version": "0.1.8",
+    "name": "Writing",
+    "author": "PuterJam",
+    "description": "Edit Markdown and preview it as a WeChat Official Account article, with selection-based AI edits and AI-designed custom styles.",
+    "repo": "puterjam/finch-tools",
+    "npm": "finch-markdown-editor",
+    "extensionType": "community",
+    "categories": [
+      "productivity",
+      "creative"
+    ],
+    "featured": true
+  },
+  {
     "id": "mcp",
     "name": "MCP Client",
     "author": "Finch Team",

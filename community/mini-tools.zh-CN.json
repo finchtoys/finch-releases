@@ -75,6 +75,11 @@
     "description": "让 Finch 使用你已登录的 Chrome 会话打开网页、点击、填表、截图并保存 PDF。"
   },
   {
+    "id": "markdown-editor",
+    "name": "写字",
+    "description": "编辑 Markdown 并预览为微信公众号文章，支持选区 AI 修改与 AI 设计自定义排版。"
+  },
+  {
     "id": "mcp",
     "name": "MCP 客户端",
     "description": "连接 Model Context Protocol 服务，并把它们的工具暴露给 Finch。"
