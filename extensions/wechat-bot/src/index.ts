@@ -8,7 +8,7 @@ import {
   type BotState, type TaskRecord, type PendingWaitRecord, type WeixinInboundMessage, type GetUpdatesResponse,
 } from './types';
 import { createBotState } from './types';
-import { sleep, randomHex } from './utils';
+import { formatChinaDateTime, sleep, randomHex } from './utils';
 import { IlinkClient, type BotConfig } from './ilink-client';
 import { MediaManager } from './media';
 import { AuthManager } from './auth';
@@ -50,10 +50,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   // ── Session 管理 ────────────────────────────────────────────────────────────
 
   const formatWechatSessionTitle = (label?: string): string => {
-    const createdAt = new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-    }).format(new Date()).replace(/\//g, '-');
+    const createdAt = formatChinaDateTime();
     return label ? `微信 · ${createdAt} · ${label}` : `微信 · ${createdAt}`;
   };
 

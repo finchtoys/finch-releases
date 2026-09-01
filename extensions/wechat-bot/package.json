@@ -1,6 +1,6 @@
 {
   "name": "finch-wechat-bot",
-  "version": "0.5.19",
+  "version": "0.5.20",
   "description": "Connect WeChat to Finch through iLink with QR login, inbox sessions, proactive messaging, and Space tasks.",
   "author": {
     "name": "Finch Team",

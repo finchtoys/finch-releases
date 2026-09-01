@@ -28,6 +28,23 @@ export const randomHex = (bytes: number): string =>
     Math.floor(Math.random() * 256).toString(16).padStart(2, '0'),
   ).join('');
 
+/**
+ * 格式化中国标准时间。精简 ICU 运行时可能缺少 `Asia/Shanghai` 的时区数据；
+ * 此时以 UTC+08:00 手动格式化，避免非关键的标题生成阻断消息接收。
+ */
+export const formatChinaDateTime = (date = new Date()): string => {
+  try {
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(date).replace(/\//g, '-');
+  } catch {
+    const chinaDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+    const pad = (value: number): string => String(value).padStart(2, '0');
+    return `${chinaDate.getUTCFullYear()}-${pad(chinaDate.getUTCMonth() + 1)}-${pad(chinaDate.getUTCDate())} ${pad(chinaDate.getUTCHours())}:${pad(chinaDate.getUTCMinutes())}`;
+  }
+};
+
 /** X-WECHAT-UIN header：随机 uint32 → 十进制字符串 → base64。 */
 export const randomWechatUin = (): string =>
   Buffer.from(String(Math.floor(Math.random() * 0xffffffff)), 'utf8').toString('base64');
