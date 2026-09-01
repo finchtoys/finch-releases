@@ -69,8 +69,21 @@
     "featured": false
   },
   {
+    "id": "codex-canvas",
+    "version": "0.3.12",
+    "name": "Codex Canvas",
+    "author": "emuio",
+    "description": "Generate images, compose reference images, and annotate local edits directly on an infinite Excalidraw canvas using the local Codex CLI, iterating through connections and version branches.",
+    "repo": "npm:finch-codex-canvas",
+    "npm": "finch-codex-canvas",
+    "extensionType": "community",
+    "categories": [
+      "creative"
+    ]
+  },
+  {
     "id": "codex-imagegen",
-    "version": "0.3.1",
+    "version": "0.6.0",
     "name": "Codex ImageGen",
     "author": "emuio",
     "description": "Generate, edit, and composite images in Finch through the locally installed, OAuth-authenticated Codex CLI and its built-in image_gen tool, with async jobs and up to five ordered reference images — no OPENAI_API_KEY required.",
@@ -139,7 +152,7 @@
   },
   {
     "id": "finch-pet",
-    "version": "1.0.6",
+    "version": "1.0.10",
     "name": "Finch Pet",
     "author": "Kassell",
     "description": "A desktop pet companion for Finch.",
@@ -308,7 +321,7 @@
   },
   {
     "id": "telegram-bot",
-    "version": "0.2.0",
+    "version": "0.3.2",
     "name": "Telegram Bot",
     "author": "Kassell",
     "description": "Connect Telegram private chats to Finch through secure long polling and inbox Sessions.",

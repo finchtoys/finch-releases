@@ -25,6 +25,11 @@
     "description": "通过 MCP 连接 Chrome DevTools，支持浏览器自动化、页面调试、Lighthouse 审计、性能追踪等操作。"
   },
   {
+    "id": "codex-canvas",
+    "name": "Codex 画布",
+    "description": "在一张 Excalidraw 无限画布中使用本机 Codex CLI 生成图片、组合参考图、直接标注局部修改，并以连线与版本分支持续迭代。"
+  },
+  {
     "id": "codex-imagegen",
     "name": "Codex ImageGen",
     "description": "通过本机已完成 OAuth 登录的 Codex CLI 及其内置 image_gen 工具，在 Finch 中生成、编辑和合成图片。支持异步任务与最多五张有序参考图，无需 OPENAI_API_KEY。"

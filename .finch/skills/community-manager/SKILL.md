@@ -22,7 +22,7 @@ description: >
 | `community/mini-tools.zh-CN.json` | 小工具中文覆盖 | 中文界面降级回退到英文 |
 | `community/skills.zh-CN.json` | 技能中文覆盖 | 中文界面降级回退到英文 |
 
-这些文件通过 Cloudflare Worker（`community/worker.js`）发布到 `community.finchwork.app`，修改后约 1 小时生效。
+这些文件通过 Cloudflare Worker 发布到 `community.finchwork.app`。Worker 源码位于相邻项目的 `../finch/scripts/community.finchwork.app/worker.js`；发布后必须执行本 skill 的「发布与缓存刷新」流程，不能只等待 TTL。
 
 ## 文件格式规范
 
@@ -86,6 +86,57 @@ description: >
 ```bash
 cd ../../..  # finch-releases 仓库根目录
 ```
+
+---
+
+## 发布与缓存刷新
+
+完成 JSON 修改并通过 `validate.py` 后，按以下流程发布；不要只推送 GitHub 后等待缓存过期。
+
+1. 提交并推送 `community/*.json` 变更到 `main`。
+2. 编辑 `../finch/scripts/community.finchwork.app/worker.js`，将 `CACHE_VERSION` 递增（例如 `v2` → `v3`）。版本化 cache key 会让所有 PoP 绕过旧的 `caches.default` 条目；`cache.delete()` 只保证当前 PoP 清理，不能作为全局刷新方案。
+3. 部署 Worker。当前 Worker 名称为 `fancy-feather-a91f`：
+
+   ```bash
+   npx wrangler deploy ../finch/scripts/community.finchwork.app/worker.js \
+     --name fancy-feather-a91f \
+     --compatibility-date 2026-08-28
+   ```
+
+   部署前确认已运行 `npx wrangler login` 或在安全环境设置了 `CLOUDFLARE_API_TOKEN`。不要把 token 写入仓库。
+4. 调用 Worker 的受保护 purge 接口，并请求索引完成预热。
+
+   - `PURGE_SECRET` 必须同时配置在 Cloudflare Worker 的 Secret variables 与本机 **`finch-releases/.env`**；`.env` 必须被 Git 忽略，绝不在聊天、日志或提交中暴露。
+   - `.env` 可能包含签名等非 Shell 格式字段，**不要 `source .env`**。
+   - 仅在进程内读取 `PURGE_SECRET`；不要输出、记录或提交该密钥。
+
+   ```bash
+   node -e '
+   const fs = require("node:fs");
+   const { execFileSync } = require("node:child_process");
+   const line = fs.readFileSync(".env", "utf8").split(/\r?\n/)
+     .find((value) => value.startsWith("PURGE_SECRET="));
+   if (!line) throw new Error("PURGE_SECRET is not configured");
+   const raw = line.slice("PURGE_SECRET=".length).trim();
+   const quoted = raw[0] === "\"" || raw.charCodeAt(0) === 39;
+   const secret = quoted && raw.at(-1) === raw[0] ? raw.slice(1, -1) : raw;
+   execFileSync("curl", [
+     "-sS", "--fail-with-body", "-X", "POST",
+     "https://community.finchwork.app/purge?file=mini-tools.json",
+     "-H", `Authorization: Bearer ${secret}`,
+   ], { stdio: "inherit" });
+   '
+   ```
+
+   新 `CACHE_VERSION` 首次 purge 返回 `"deleted": false` 属正常；接着访问索引，确认 `X-Cache: MISS` 且内容已更新，即完成预热。若返回 `401`，检查本机 `.env` 与 Cloudflare Secret 是否完全一致并已重新部署；若返回 `404`，说明线上 Worker 尚未部署包含 `/purge` 路由的版本。
+5. 验证线上内容。首次响应应为 `X-Cache: MISS`，之后访问会变为 `HIT`：
+
+   ```bash
+   curl -sS -D - 'https://community.finchwork.app/mini-tools.json' | \
+     grep -E 'X-Cache|"id": "markdown-editor"'
+   ```
+
+> Worker 的 JSON 缓存只保留 `caches.default` 一层；不要为 JSON 上游 `fetch()` 再设置 `cf.cacheTtl`，否则 purge 后仍可能读取到旧的上游缓存。
 
 ---
 
