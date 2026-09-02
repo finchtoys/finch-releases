@@ -208,7 +208,7 @@
   },
   {
     "id": "markdown-editor",
-    "version": "0.1.8",
+    "version": "0.2.0",
     "name": "Writing",
     "author": "PuterJam",
     "description": "Edit Markdown and preview it as a WeChat Official Account article, with selection-based AI edits and AI-designed custom styles.",
