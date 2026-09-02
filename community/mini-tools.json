@@ -359,5 +359,19 @@
       "productivity"
     ],
     "featured": true
+  },
+  {
+    "id": "xiaojia-marketing",
+    "version": "0.5.2",
+    "name": "Xiaojia Marketing",
+    "author": "qinshimeng18",
+    "description": "Turn product ideas into campaign plans, social posts, marketing copy, and images with Xiaojia.",
+    "repo": "qinshimeng18/xiaojia-Marketing-Delivery",
+    "npm": "finch-xiaojia-marketing",
+    "extensionType": "community",
+    "categories": [
+      "creative",
+      "commerce"
+    ]
   }
 ]

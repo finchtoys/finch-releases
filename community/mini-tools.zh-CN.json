@@ -128,5 +128,10 @@
     "id": "wechat-bot",
     "name": "微信 Bot",
     "description": "通过微信 iLink 连接微信到 Finch，支持扫码登录、收件箱会话、主动消息、媒体收发与 Space 任务。"
+  },
+  {
+    "id": "xiaojia-marketing",
+    "name": "小加营销",
+    "description": "把产品想法变成营销方案、社媒图文、推广文案和营销图片。"
   }
 ]
