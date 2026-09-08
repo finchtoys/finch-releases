@@ -186,7 +186,7 @@ Important points:
 - Finch owns the window shell
 - the canvas script registers with `finch.canvas.define(...)`
 - the host can send messages to the canvas and receive messages back
-- use `allowOffscreen: true` only when a window must extend beyond the work-area edge
+- new code uses `constraint: 'none'` only when a window must extend beyond the work-area edge; deprecated `allowOffscreen: true` remains compatible with the Finch 1.6.1 API baseline
 - use the read-only `finch.window.getDisplays()` for multi-display geometry; it stays current when displays are added/removed or rearranged, so re-read it instead of caching long-term
 - overlay-style windows (desktop pets etc.) can opt in to `hiddenInMissionControl` (stay out of Mission Control) and `visibleOnAllWorkspaces` (follow every Space, including fullscreen ones); both default to false and are macOS-only
 - `visibleOnAllWorkspaces` controls Space visibility independently from the native window level
@@ -201,6 +201,10 @@ Important points:
 - implement `render(ctx2d)` instead of `frame(dt)` for static or event-driven content, then call `finch.canvas.invalidate()` after state changes
 - hidden windows automatically pause drawing; do not build a second visibility loop
 - do not call `setPosition()` every animation frame for autonomous movement; use Host-side `startMotion()` so Main performs one bounded native movement loop
+- Canvas 2D is Chromium-compatible (`Path2D`, gradients/patterns, `ImageData`, 3/5/9-argument `drawImage`, `measureText`); backing-store `canvas.width/height` differs from logical `clientWidth/clientHeight` by effective DPR
+- input callbacks include `onPointer`, `onWheel`, `onKeyDown`, `onKeyUp`, `onContextMenu`, and `onInputReset`; clear pressed-key state on reset and call `finch.input.setKeyboardCapture(true)` only for an interactive game
+- load package-relative resources with `finch.assets.loadImage()` / `loadScript()` and audio with `finch.audio.create()`; paths cannot escape the mini tool package, image cancellation uses `AbortSignal`, and every audio handle must be disposed
+- use `getBounds()` plus `onDidChangeBounds` / focus / fullscreen events, and prefer `constrainTo('display-work-area')` so display removal can rescue the window; `onDidMove` / `onDidResize` remain compatible but are deprecated
 - decode images and create gradients/paths outside hot `frame()` callbacks; keep transparent windows tightly sized to visible content
 
 ```ts
@@ -212,6 +216,8 @@ const overlayWindow = ctx.ui.createCanvasWindow({
   alwaysOnTopLevel: 'floating',
   frameRate: 30,
   maxDevicePixelRatio: 2,
+  minimumSize: { width: 240, height: 135 },
+  constraint: 'display-work-area',
 });
 
 await overlayWindow.ready;
@@ -446,9 +452,9 @@ document.getElementById('delete-btn').addEventListener('click', async () => {
 - Do not use `onDidChangeVisibility(true)` as a page-ready signal. It can fire before a newly created/recreated guest has installed its listener. If backend state must be restored, install `window.finch.onMessage` first and then have the page send an explicit `ready`/`init` message; reply with the current snapshot. Treat a failed `postMessage()` during navigation as transient, not as permanent panel disposal.
 - Dispose the panel or push it to `ctx.subscriptions` so disabling the mini tool closes it.
 
-### 7.5 App View host previews and Diff
+### 7.5 App View navigation stack and breadcrumb
 
-An App View page may open Finch's native preview surfaces from a real user gesture:
+An App View page may push Finch's native surfaces as the next breadcrumb level from a real user gesture:
 
 ```ts
 await window.finch.appView.openPreview('/workspace/report.md');
@@ -465,9 +471,32 @@ await window.finch.appView.openDiff({
 });
 ```
 
-`openPreview()` and `openDiff()` do not accept a presentation option. Finch follows the user's global「改动与文件预览」setting and opens the same native component in either the right Panel or a modal. File Diff requires two absolute paths. Git Diff resolves both commit/refs inside the absolute `repoPath` and may display added, modified, deleted, and renamed files in one multi-file view. The mini tool receives no file contents from these calls.
+`openPreview()` and `openDiff()` do not accept a presentation option: inside an App View they always drill down in place and resolve `{ id }` for the pushed level. The user's global「改动与文件预览」Panel/modal setting only applies where a Panel actually exists (Session/Composer routes), because an App View has no Panel anchor of its own. Image files are the one exception — they open the shared look-once lightbox instead and resolve with an empty `id`. File Diff requires two absolute paths. Git Diff resolves both commit/refs inside the absolute `repoPath` and may display added, modified, deleted, and renamed files in one multi-file view. The mini tool receives no file contents from these calls.
 
-`openBrowser()` and `openApp()` are different: they remain child levels in the App View breadcrumb navigation stack. `openApp()` still requires the target's `embeddable: true` declaration.
+`openBrowser()` and `openApp()` push child levels the same way. `openApp()` still requires the target's `embeddable: true` declaration.
+
+A page can also register its **own** in-page routes as breadcrumb levels, so an SPA's 首页 → 详情 reads like the rest of Finch:
+
+```ts
+const { id } = await window.finch.appView.breadcrumb.push({ title: '2026 年度报告' });
+
+// The user clicked an earlier crumb — the host already truncated the levels,
+// now put the page's own router back where it belongs.
+window.finch.appView.breadcrumb.onNavigate(({ id }) => {
+  if (!id) router.goHome();            // empty id = back at the page root
+  else router.goTo(id);
+});
+
+// ⌘[ or a relaunch restored the labels; only the page can re-enter the route.
+window.finch.appView.breadcrumb.onRestore(({ levels }) => {
+  if (!router.canRestore(levels)) return void window.finch.appView.breadcrumb.set([]);
+  router.restore(levels);
+});
+```
+
+The two fixed leading crumbs (`小程序` and your app's own title/icon, set via `window.finch.panel.setTitle()`/`setIcon()`) are **not** individually clickable hooks — clicking either one just clears every level your page pushed, exactly like clicking any earlier level does. There is no per-segment click handler to register for them; both surface through the same `onNavigate({ id: '' })` call above. Do not expect a reload or navigation to happen to your webview when this fires — nothing does, until your own router code does it.
+
+Page levels and host levels share one stack capped at 5 — going over rejects with an explicit error instead of silently dropping a level. Only the topmost on-screen page may edit its own levels; a page covered by a preview/Diff/browser/another mini tool gets a rejection, because the crumb the user sees at the end is no longer its own.
 
 ## 9. UI best practices
 

@@ -540,7 +540,9 @@ declare module 'finch' {
     /** 插件安装目录绝对路径。 */
     readonly extensionPath: string;
     readonly isActive: boolean;
-    readonly scope: 'global' | 'space';
+    /** 当前运行时使用 global/personal；space 仅保留旧版类型兼容。 */
+    readonly scope: 'global' | 'personal' | 'space';
+    /** @deprecated 项目级/Space 级安装已不再支持，删除版本未定。 */
     readonly spaceId?: string;
   }
 
@@ -585,6 +587,8 @@ declare module 'finch' {
      * 无 Space 上下文的会话为 `undefined`。
      */
     readonly contextSpaceId?: string;
+    /** 回传创建时传入的 `topic`（如有），见 `SessionCreateOptions.topic`。 */
+    readonly topic?: string;
     readonly state: { readonly pinned: boolean; readonly archived: boolean };
     readonly createdAt: string;
     readonly updatedAt: string;
@@ -615,17 +619,30 @@ declare module 'finch' {
      * 用户为该容器选择了默认模型，Finch 会自动用于新会话；否则回退全局默认。
      * 与 `space` 互斥。`containerId` 和 `space` 都不传时，创建一个既无容器也
      * 无 Space 的普通对话（`chat` placement），使用全局默认 cwd/模型——效果
-     * 等同于用户点「新对话」，但会话仍归本 mini tool 所有。
+     * 等同于用户点「新对话」，但会话仍归本 mini tool 所有。该 placement 同样
+     * 支持 `activity: 'background'`，效果与 `space` 一致：不出现在普通对话
+     * 列表里，完成时也不弹通知，只能由本 mini tool 自行跳转打开；仅在等待
+     * 用户授权/回答/表单时才会提醒。
      */
     readonly containerId?: string;
     /**
-     * 把会话创建到某个具体 Space，而非小工具容器。会话会出现在该 Space 的
-     * 普通会话列表中（交互式，非隐藏于容器），同时仍归本 mini tool 所有。
-     * 与 `containerId` 互斥。可先用 `ctx.spaces.list()` 获取可用 Space 的
-     * id/name 列表。
+     * 把会话创建到某个具体 Space，而非小工具容器。会话默认会出现在该 Space
+     * 的普通会话列表中（非隐藏于容器），同时仍归本 mini tool 所有。与
+     * `containerId` 互斥。可先用 `ctx.spaces.list()` 获取可用 Space 的
+     * id/name 列表。若同时传入 `activity: 'background'`，该会话会从空间的
+     * 普通会话列表、置顶区、首页最近等处隐藏——只能由本 mini tool 自己跳转
+     * 打开；完成时不弹系统通知/Dock 角标，仅在等待用户授权、回答或表单时才
+     * 会照常提醒——适合"悄悄跑、卡住才叫人"的场景。
      */
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
+    /**
+     * 给一批兄弟会话打上统一的主题标签——同一批 fan-out 的每次 `create()`
+     * 都传相同字符串，发起会话的子任务下拉就会把它们归为一组展示，而不是
+     * 混在一起只看标题。服务端会按显示宽度裁剪到 40（CJK 记 2，约等于中文
+     * 20 字 / 英文 40 字符）；不传则落入下拉的默认「其他」分组。
+     */
+    readonly topic?: string;
     /**
      * @deprecated 已废弃且被忽略。Agent 角色由目标容器的
      * `contributes.sessionContainers[].agentProfile` 声明决定并自动生效，
@@ -637,7 +654,10 @@ declare module 'finch' {
     readonly context?: 'caller';
     /**
      * `background` 容器会话在完成或等待时不弹系统通知，只在所属
-     * session container 入口显示提醒红点。
+     * session container 入口显示提醒红点。`background` + `space` 或
+     * `background` + `chat`（不传 `containerId`/`space`）会话则会从对应的
+     * 普通会话列表、置顶区、首页最近等处隐藏，只能由本 mini tool 自己跳转
+     * 打开：完成时静默，但等待用户授权/回答/表单时仍会照常提醒。
      */
     readonly activity?: MinitoolSessionActivity;
     /** 默认 acceptCalls；可显式设为 ask。 */
@@ -834,6 +854,15 @@ declare module 'finch' {
     get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
     list(options?: SessionListOptions): Promise<MinitoolSessionDescriptor[]>;
     send(sessionId: string, message: SessionUserMessage, options?: SessionSendOptions): Promise<SessionSendReceipt>;
+    /**
+     * 取消一个 turn，只影响这一个 turn，不影响同一 Session 里其他排队中的 turn。
+     * 若目标 turn 仍在排队，直接从队列移除并标记为失败；若正在运行，向对应
+     * Runner 发起协作式停止（与 UI 上第一次按 Esc / 点击停止按钮相同），需要
+     * Runner 响应后才会落定终态，不会立即强制杀死进程。可配合
+     * `waitForTurn()` 等待中断后的终态。已完成/已失败/不存在的 turn 返回
+     * `false`。
+     */
+    cancelTurn(sessionId: string, turnId: string): Promise<boolean>;
     /**
      * 动态修改当前 mini tool 自己拥有的 Session 权限模式并持久化。
      * acceptCalls 仍不会自动批准危险操作；不支持 auto。
@@ -1968,6 +1997,19 @@ declare module 'finch' {
     | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string }
     | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string };
 
+  /** App View 面包屑中由页面自己拥有的一层（一条内部路由）。 */
+  export interface AppViewPageLevel {
+    /**
+     * 页面自定的层级 ID，`onNavigate` 会原样回传，用它决定退回哪条路由。
+     * 省略时由宿主生成；同一页面内应保持唯一。
+     */
+    readonly id?: string;
+    /** 面包屑上显示的标题，超长会被截断。 */
+    readonly title: string;
+    /** 可选图标，与 `panel.setIcon()` 同一套写法（含 `ext:` 资源）。 */
+    readonly icon?: string;
+  }
+
   /** 选择 Finch 原生文件预览打开 HTML 的方式。 */
   export type HtmlPreviewMode = 'browser' | 'code';
 
@@ -2034,18 +2076,16 @@ declare module 'finch' {
      */
     readonly navigation: Navigation;
     /**
-     * 可信本地小程序页面均可调用。文件预览仅在 `contributes.appView` 页面
-     * 内可用；Diff 可在 App View 或 Panel App 中调用，二者都交给 Finch 宿主
-     * 打开并遵循用户的「改动与文件预览」Panel/弹窗设置；浏览器或另一个
-     * 已声明 `embeddable: true` 的小程序 `appView` 页面
-     * 才作为下一层级压入 Appview 导航栈。栈会显示为多级面包屑
-     * （`小程序 > 当前小程序 > 浏览器 > ...`）；点击面包屑中的某一级会
-     * 关闭它右侧（含自身）的所有层级，回到该级 —— 这是唯一的返回方式，
-     * 没有单独的"关闭"调用。
+     * 可信本地小程序页面均可调用。文件预览、Diff、内置浏览器、另一个已声明
+     * `embeddable: true` 的小程序 `appView` 页面，都作为下一层级压入 App View
+     * 导航栈（图片预览是唯一例外，仍然是「看一眼就关」的弹窗，不占层级）。
+     * 栈显示为多级面包屑（`小程序 > 当前小程序 > 预览 > ...`）；点击其中某一级
+     * 会关闭它右侧（含自身）的所有层级，回到该级 —— 这是唯一的返回方式。
      *
-     * 浏览器/小程序栈深度有限（当前上限 3 层），超出会 reject；`openApp` 额外做防环检测
-     * ——不能把已经在当前栈路径上的小程序再打开一次。不做状态保留：某一层
-     * 被关闭后会被销毁，不保留滚动位置等内部状态，下次重新打开会重新加载。
+     * `breadcrumb` 让页面把自己的内部路由也登记成面包屑层级，与上面这些
+     * 宿主层级共用同一条栈和同一个深度上限（当前 5 层，超出会 reject）。
+     * `openApp` 额外做防环检测——不能把已经在当前栈路径上的小程序再打开一次。
+     * 宿主层级不做状态保留：被关闭后即销毁，不保留滚动位置等内部状态。
      *
      * @example
      * document.getElementById('open-report').addEventListener('click', async () => {
@@ -2053,22 +2093,56 @@ declare module 'finch' {
      * });
      */
     readonly appView: {
-      /** 用 Finch 内置文件预览展示本地文件；展示位置遵循用户设置。 */
+      /**
+       * 用 Finch 内置文件预览压入下一层级，返回该层级的句柄 ID。
+       * 图片走「看一眼就关」的弹窗，不占层级，此时 `id` 为空串。
+       */
       openPreview(path: string, options?: FilePreviewOptions): Promise<{ id: string }>;
       /**
-       * 用 Finch 内置 Diff 展示两个本地文件，或 Git repository 中两个 commit/ref
-       * 的多文件差异；App View 和 Panel App 都可调用。展示位置遵循用户设置，
-       * 调用方不能指定 Panel/弹窗。允许异步准备本地快照后调用。
+       * 用 Finch 内置 Diff 压入下一层级，展示两个本地文件，或 Git repository 中
+       * 两个 commit/ref 的多文件差异。允许异步准备本地快照后调用。
        */
       openDiff(request: AppViewDiffRequest): Promise<{ id: string }>;
-      /** 压入内置浏览器面板，加载给定的 http(s) 地址。 */
-      openBrowser(url: string): Promise<{ id: string }>;
+      /** 压入内置浏览器面板，加载给定的 http(s) 地址，并返回子层句柄 ID。 */
+      openBrowser(url: string): Promise<string>;
       /**
        * 压入另一个小程序的 `contributes.appView` 页面。目标小程序必须在自己
        * 的 manifest 中声明 `contributes.appView.embeddable: true`，否则会
-       * reject；默认拒绝，需要显式声明才能被其他小程序嵌入。
+       * reject；默认拒绝，需要显式声明才能被其他小程序嵌入。返回子层句柄 ID。
        */
-      openApp(extensionId: string): Promise<{ id: string }>;
+      openApp(extensionId: string): Promise<string>;
+      /**
+       * 把页面自己的路由登记成面包屑层级。这些层级只是标签：宿主不会改动页面
+       * 内容，也不会替页面导航，页面停在哪由页面自己决定。
+       *
+       * 只有位于栈顶、当前真正显示在屏幕上的那个页面才能改自己的层级；被
+       * 预览/Diff/浏览器/另一个小程序盖住时调用会 reject（此时用户看到的
+       * 面包屑末端不是你）。这些调用不需要用户手势——SPA 里的重定向、恢复、
+       * deep link 本来就不是点出来的。
+       */
+      readonly breadcrumb: {
+        /** 用一组层级整体替换当前页面已登记的层级；传空数组即回到页面首页。 */
+        set(levels: AppViewPageLevel[]): Promise<void>;
+        /** 追加一层，返回该层级 ID（未提供 `id` 时由宿主生成）。 */
+        push(level: AppViewPageLevel): Promise<{ id: string }>;
+        /** 弹出末尾若干层，默认 1 层；超出已有层数时按已有层数处理。 */
+        pop(count?: number): Promise<void>;
+        /**
+         * 用户点了更靠前的面包屑。宿主已经把后面的层级截断，页面负责把自己的
+         * 路由退回 `id` 对应的位置；`id` 为空串表示回到页面首页——包括用户
+         * 点击最前面固定的「小程序」段，或点击 `panel.setTitle()`/`setIcon()`
+         * 设置的本页固定标题段，这两段都不接受自定义点击行为，效果都是清空
+         * 本页已 push 的所有层级并触发这条空 `id` 回调。宿主不会重载或改动
+         * 页面自己的 webview，回首页完全要靠这里的回调自己实现。
+         */
+        onNavigate(listener: (payload: { id: string; index: number }) => void): () => void;
+        /**
+         * 返回/前进或重启后恢复现场。宿主只能恢复面包屑标签，具体路由要页面
+         * 自己走回去；若走不回去，调用 `set([])` 把这些层级清掉即可。
+         * 订阅时会补发最近一次快照，晚注册也不会漏。
+         */
+        onRestore(listener: (payload: { levels: AppViewPageLevel[] }) => void): () => void;
+      };
     };
   }
 
@@ -2078,14 +2152,24 @@ declare module 'finch' {
   /** CanvasWindow 的显式生命周期；`disposed` 是不可逆终态。 */
   export type CanvasWindowState = 'creating' | 'ready' | 'visible' | 'hidden' | 'disposing' | 'disposed';
 
+  export interface CanvasBounds { x: number; y: number; width: number; height: number; }
+  export type CanvasWindowConstraint = 'display-work-area' | 'all-displays' | 'none';
+
   /** 在一次主进程控制中提交的窗口模式更新。 */
   export interface CanvasWindowUpdate {
-    bounds?: { x?: number; y?: number; width?: number; height?: number };
+    bounds?: Partial<CanvasBounds>;
     alwaysOnTop?: boolean;
     alwaysOnTopLevel?: AlwaysOnTopLevel;
     alwaysOnTopRelativeLevel?: number;
     clickThrough?: boolean;
     visible?: boolean;
+    opacity?: number;
+    resizable?: boolean;
+    minimumSize?: { width: number; height: number };
+    maximumSize?: { width: number; height: number };
+    fullscreen?: boolean;
+    constraint?: CanvasWindowConstraint;
+    keyboardCapture?: boolean;
   }
 
   /**
@@ -2113,7 +2197,10 @@ declare module 'finch' {
     resizable?: boolean;
     /** 是否鼠标穿透（点击透传到下层窗口），默认 false。 */
     clickThrough?: boolean;
-    /** 允许窗口越出屏幕工作区，默认 false。 */
+    /**
+     * @deprecated 兼容提示：请改用 `constraint: 'none'`；旧接口删除版本未定。
+     * 允许窗口越出屏幕工作区，默认 false。
+     */
     allowOffscreen?: boolean;
     /** 不在 Mission Control（调度中心）中显示，默认 false。仅 macOS，其他平台忽略。 */
     hiddenInMissionControl?: boolean;
@@ -2129,6 +2216,11 @@ declare module 'finch' {
     alwaysOnTopRelativeLevel?: number;
     /** 传给脚本 `init({ initialData })` 的初始数据（会 JSON 序列化）。 */
     initialData?: unknown;
+    /** 初始透明度，范围 0～1。 */
+    opacity?: number;
+    minimumSize?: { width: number; height: number };
+    maximumSize?: { width: number; height: number };
+    constraint?: CanvasWindowConstraint;
   }
 
   /**
@@ -2143,7 +2235,10 @@ declare module 'finch' {
    *   frame(dt) {},                 // 可选：连续动画，受 frameRate 限制
    *   render(ctx2d) {},             // 可选：按需绘制；与 frame 二选一
    *   resize(width, height) {},
-   *   onPointer(e) {},              // { type:'move'|'down'|'up'|'cancel', pointerId, x, y, screenX, screenY, button, buttons, pointerType }
+   *   onPointer(e) {},              // Pointer 坐标、按钮、修饰键、pointerType、pressure
+   *   onWheel(e) {},                // deltaX/deltaY/deltaZ/deltaMode 与逻辑坐标
+   *   onKeyDown(e) {}, onKeyUp(e) {},
+   *   onContextMenu(e) {}, onInputReset() {},
    *   onMessage(msg) {},            // 来自 Host 段 postMessage
    *   suspend(reason) {},           // hidden/system/sleep 时暂停
    *   resume(reason) {},            // visible/system/wake 时恢复；首帧 dt 已重置
@@ -2154,7 +2249,8 @@ declare module 'finch' {
    * 外壳注入的 `finch` 桥（Canvas 段可调用）：
    * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v, level?, relativeLevel?)` /
    * `finch.window.setPosition(x,y)` / `finch.window.getDisplays()` / `finch.window.setClickThrough(v)` /
-   * `finch.window.close()`；按需绘制可调用 `finch.canvas.invalidate()`。
+   * `finch.window.constrainTo(mode)` / `finch.input.setKeyboardCapture(v)` / `finch.assets.loadImage(path)` /
+   * `finch.audio.create(path)` / `finch.window.close()`；按需绘制可调用 `finch.canvas.invalidate()`。
    */
   export interface CanvasWindowMotion {
     kind: 'linear' | 'spring';
@@ -2165,6 +2261,72 @@ declare module 'finch' {
     bounds?: 'display-work-area' | 'all-displays';
     /** Main 侧原生移动频率，默认 30。 */
     frameRate?: 30 | 60;
+  }
+
+  export interface CanvasDisplayRect {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  }
+
+  export interface CanvasDisplay {
+    readonly id: string;
+    readonly bounds: CanvasDisplayRect;
+    readonly workArea: CanvasDisplayRect;
+    readonly scaleFactor?: number;
+  }
+
+  export interface CanvasPointerEvent {
+    type: 'move' | 'down' | 'up' | 'cancel';
+    pointerId: number; x: number; y: number; screenX: number; screenY: number;
+    button: number; buttons: number; pointerType: string; pressure: number;
+    altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean;
+  }
+  export interface CanvasWheelEvent {
+    deltaX: number; deltaY: number; deltaZ: number; deltaMode: number; x: number; y: number;
+    altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean;
+  }
+  export interface CanvasKeyEvent {
+    key: string; code: string; location: number; repeat: boolean;
+    altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean;
+  }
+  export interface CanvasAudioHandle extends Disposable {
+    play(): Promise<void>;
+    pause(): void;
+    stop(): void;
+    setVolume(value: number): void;
+  }
+  export interface CanvasRuntimeApi {
+    postMessage(message: unknown): void;
+    window: {
+      startDrag(): void; endDrag(): void; setAlwaysOnTop(value: boolean, level?: AlwaysOnTopLevel, relativeLevel?: number): void;
+      setPosition(x: number, y: number): void; setOpacity(value: number): void; setResizable(value: boolean): void;
+      setMinimumSize(width: number, height: number): void; setMaximumSize(width: number, height: number): void;
+      setFullscreen(value: boolean): void; constrainTo(constraint: CanvasWindowConstraint): void;
+      getDisplays(): readonly CanvasDisplay[]; onDidChangeDisplays: Event<readonly CanvasDisplay[]>;
+      setClickThrough(value: boolean): void; close(): void;
+    };
+    input: { setKeyboardCapture(enabled: boolean): void; focus(): void; blur(): void };
+    assets: { resolve(path: string): string; loadScript(path: string): Promise<void>; loadImage(path: string, options?: { signal?: AbortSignal }): Promise<HTMLImageElement> };
+    audio: { create(path: string, options?: { loop?: boolean; volume?: number }): CanvasAudioHandle };
+    canvas: { define(definition: CanvasRuntimeDefinition): void; invalidate(): void };
+  }
+  export interface CanvasRuntimeDefinition {
+    init?(context: { canvas: HTMLCanvasElement; ctx2d: CanvasRenderingContext2D; width: number; height: number; dpr: number; finch: CanvasRuntimeApi; initialData: unknown }): void;
+    frame?(dt: number): void;
+    render?(ctx2d: CanvasRenderingContext2D): void;
+    resize?(width: number, height: number): void;
+    onPointer?(event: CanvasPointerEvent): void;
+    onWheel?(event: CanvasWheelEvent): void;
+    onKeyDown?(event: CanvasKeyEvent): void;
+    onKeyUp?(event: CanvasKeyEvent): void;
+    onContextMenu?(event: { x: number; y: number }): void;
+    onInputReset?(): void;
+    onMessage?(message: unknown): void;
+    suspend?(reason: 'hidden'): void;
+    resume?(reason: 'visible'): void;
+    dispose?(): void;
   }
 
   export interface CanvasWindow {
@@ -2180,6 +2342,19 @@ declare module 'finch' {
     setPosition(x: number, y: number): void;
     setSize(width: number, height: number): void;
     setClickThrough(value: boolean): void;
+    getBounds(): Promise<CanvasBounds>;
+    setOpacity(value: number): void;
+    setResizable(value: boolean): void;
+    setMinimumSize(width: number, height: number): void;
+    setMaximumSize(width: number, height: number): void;
+    setFullscreen(value: boolean): void;
+    constrainTo(constraint: CanvasWindowConstraint): void;
+    setKeyboardCapture(enabled: boolean): void;
+    /** 显示器新增、移除或布局指标变化后的完整快照。 */
+    readonly onDidChangeDisplays: Event<readonly CanvasDisplay[]>;
+    readonly onDidChangeBounds: Event<CanvasBounds>;
+    readonly onDidChangeFocus: Event<boolean>;
+    readonly onDidChangeFullscreen: Event<boolean>;
     /** 原子更新单个窗口；bounds 在原生层只调用一次 setBounds。 */
     update(options: CanvasWindowUpdate): Promise<void>;
     /** Main 侧执行持续移动，新 motion 会覆盖旧 motion。 */
@@ -2189,9 +2364,15 @@ declare module 'finch' {
     postMessage(message: unknown): Promise<void>;
     /** Canvas 段 → Host 段：脚本内 `finch.postMessage()` 触发。 */
     readonly onDidReceiveMessage: Event<unknown>;
-    /** 窗口被移动（拖动结束或 setPosition）时触发。 */
+    /**
+     * @deprecated 兼容提示：请改用 `onDidChangeBounds`；旧接口删除版本未定。
+     * 窗口被移动（拖动结束或 setPosition）时触发。
+     */
     readonly onDidMove: Event<{ x: number; y: number }>;
-    /** 窗口尺寸变化时触发。 */
+    /**
+     * @deprecated 兼容提示：请改用 `onDidChangeBounds`；旧接口删除版本未定。
+     * 窗口尺寸变化时触发。
+     */
     readonly onDidResize: Event<{ width: number; height: number }>;
     /** 实际可见性变化时触发。 */
     readonly onDidChangeVisibility: Event<boolean>;
@@ -2306,26 +2487,108 @@ declare module 'finch' {
     readonly cacheReadTokens: number;
   }
 
+  export interface AgentEventErrorDetail {
+    readonly provider?: string;
+    readonly api?: string;
+    readonly model?: string;
+    readonly httpStatus?: number;
+    readonly providerCode?: string;
+    readonly providerType?: string;
+    readonly sdkCode?: string | number;
+    readonly requestId?: string;
+    readonly retryAfterMs?: number;
+    readonly origin?: 'provider' | 'gateway' | 'unknown';
+    readonly transport?: 'http' | 'sse' | 'websocket';
+    readonly phase?: 'connect' | 'headers' | 'stream' | 'response';
+  }
+
+  export type AgentEventExecutionPhase =
+    | 'starting'
+    | 'requesting'
+    | 'streaming'
+    | 'tool_running'
+    | 'waiting_user'
+    | 'retry_wait'
+    | 'interrupting'
+    | 'completed'
+    | 'interrupted'
+    | 'failed';
+
+  export interface AgentEventRetryState {
+    readonly attempt: number;
+    readonly maxAttempts: number;
+    readonly retryAt: string;
+    readonly delayMs: number;
+    readonly reason: string;
+    readonly interruptible: true;
+  }
+
+  export type AgentEventToolSource =
+    | { readonly type: 'builtin' }
+    | { readonly type: 'extension'; readonly extensionId: string; readonly extensionName: string };
+
+  export type AgentEventAttachmentKind = 'image' | 'pdf' | 'text' | 'file';
+
+  export interface AgentEventAttachment {
+    readonly id: string;
+    readonly name: string;
+    readonly mimeType: string;
+    readonly size: number;
+    readonly kind: AgentEventAttachmentKind;
+    readonly content?: string;
+    readonly path?: string;
+  }
+
   /**
-   * Finch Agent 运行事件的插件可见只读快照。
-   * 仅包含状态元数据；用户文本、工具输入、工具结果等内容字段会在主进程侧清洗掉。
+   * Finch Agent 运行事件的只读快照。
+   * 默认只包含清洗后的状态元数据；声明并获准
+   * `permissions.agentEvents: "full"` 后可读取完整内容字段。
    */
   export interface AgentEvent {
     readonly id: string;
     readonly kind: AgentEventKind;
-    readonly createdAt: string;
-    readonly sessionId?: string;
+    readonly compactionPhase?: 'start' | 'end';
+    readonly text?: string;
     readonly toolName?: string;
     readonly toolUseId?: string;
+    readonly toolInput?: unknown;
+    readonly toolProgress?: ToolProgressUpdate;
+    readonly toolResult?: unknown;
+    readonly toolResultOverflow?: boolean;
     readonly isToolError?: boolean;
     readonly isRetryable?: boolean;
     readonly errorCategory?: string;
+    readonly errorDetail?: AgentEventErrorDetail;
+    readonly retryAfterMs?: number;
+    readonly executionPhase?: AgentEventExecutionPhase;
+    readonly retryState?: AgentEventRetryState;
     readonly permissionGranted?: boolean;
     readonly permissionDangerous?: boolean;
-    readonly runStatus?: string;
+    readonly permissionDestructive?: boolean;
+    readonly toolSource?: AgentEventToolSource;
+    readonly toolTitle?: string;
+    readonly toolDisplay?: ToolCallDisplay;
+    readonly toolProgressMode?: 'indeterminate';
+    readonly parentId?: string;
+    readonly entryId?: string;
+    readonly clientMessageId?: string;
+    readonly internal?: boolean;
+    readonly assistantMessageId?: string;
+    readonly createdAt: string;
+    readonly sessionId?: string;
+    readonly costUsd?: number;
+    readonly durationMs?: number;
     readonly usage?: AgentTokenUsage;
     readonly modelProvider?: string;
     readonly modelId?: string;
+    readonly attachments?: readonly AgentEventAttachment[];
+    readonly preTokens?: number;
+    readonly postTokens?: number;
+    readonly runStatus?: string;
+    /** Runner attempt id；仅完整事件权限可见。 */
+    readonly runId?: string;
+    /** 本次运行的实际工作目录；仅完整事件权限可见。 */
+    readonly cwd?: string;
   }
 
   export interface Events {
@@ -3036,6 +3299,11 @@ declare module 'finch' {
     readonly network?: boolean;
     /** 是否允许执行 shell 命令。 */
     readonly shell?: boolean;
+    /**
+     * 是否允许读取所有 Agent Session 的完整运行事件。
+     * 完整事件可能包含对话、thinking、工具输入、工具结果和附件信息。
+     */
+    readonly agentEvents?: 'full';
     /** 可访问的密钥 key 或末尾通配符前缀；通过系统安全存储加密。 */
     readonly secrets?: string[];
     /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */

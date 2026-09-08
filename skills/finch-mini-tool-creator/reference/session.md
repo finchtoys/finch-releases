@@ -301,6 +301,26 @@ if (receipt.state !== 'rejected') {
 - Calling it after a turn already completed or failed returns immediately.
 - Use it for request/response orchestration. Use `onDidReceiveEvent()` for long-lived observation across many Sessions and turns.
 
+### Cancelling one turn
+
+Use the exact `turnId` returned by `send()` to cancel a queued or running Turn:
+
+```ts
+const accepted = await ctx.sessions.cancelTurn(session.sessionId, receipt.turnId);
+if (accepted) {
+  const terminal = await ctx.sessions.waitForTurn(session.sessionId, receipt.turnId);
+  console.log(terminal.state); // failed after cancellation
+}
+```
+
+- `true` means a queued Turn was cancelled immediately or Finch accepted the stop request for a running Turn.
+- `false` means the Turn does not exist, does not match `sessionId`, or already reached a terminal state.
+- A queued Turn emits `turn.failed` with code `cancelled_by_minitool` immediately.
+- A running Turn uses Finch's normal stop path. Use `waitForTurn()` when the caller needs to wait for its deterministic terminal event.
+- Only the specified Turn is cancelled. Later queued Turns remain in FIFO order.
+- The Session must be owned by the calling mini tool and `permissions.sessions` is required.
+- Prefer this precise API over a Session-only stop: a delayed timeout handler cannot accidentally stop a newer Turn in the same Session.
+
 ---
 
 ## 6. Receiving events
@@ -514,6 +534,7 @@ When the queue is full, `send()` returns a `rejected` receipt with `retryAfterMs
 - Use `background` activity and `acceptCalls` permission mode for unattended work so the user is not interrupted.
 - Keep `initialMessage` short. Large first messages count against the same text and attachment limits as `send()`.
 - Do not poll `listEvents()` in a tight loop. Use `onDidReceiveEvent()` for live updates, `waitForTurn()` when one operation needs one exact terminal result, and `listEvents()` only for history/recovery.
+- If a caller timeout should also stop work, call `cancelTurn(sessionId, turnId)` explicitly; `waitForTurn()` timeout alone never cancels execution.
 - Use `agentProfiles` for fixed personas instead of trying to pass arbitrary system prompts at runtime, and bind them on the container via `sessionContainers[].agentProfile` rather than per `create()` call. Declaring a profile without pointing a container at it means no Session ever uses it. Profile prompts are supplements, not overrides.
 - If you need a Space-placed Session, resolve `spaceId` with `ctx.spaces.list()` (or obtain it from a tool call's `spaceId`); do not guess Space ids.
 - Prefer plain chat placement (omit both `containerId` and `space`) for one-off conversations that do not need to live inside your own container or a specific Space.
@@ -529,6 +550,7 @@ When the queue is full, `send()` returns a `rejected` receipt with `retryAfterMs
 - Assuming `assistant.delta` events are persisted. They are not.
 - Blocking on `send()` without handling the `rejected` queue-full case.
 - Implementing `sleep` + repeated `listEvents()` calls instead of `waitForTurn()` or `waitForWait()`.
+- Treating a `waitForTurn()` timeout as cancellation, or stopping by Session id without retaining the exact `turnId` returned by `send()`.
 - Auto-approving every permission card from code. That defeats the point of the prompt; relay it to a human instead.
 - Retrying the same answer after `stale` or `forbidden`. `stale` means the card is already settled; `forbidden` means that exact response is blocked. In particular, do not retry destructive approval—send the user to Finch for approval, or submit a rejection if that is their decision.
 - Trying to read or write the user's normal Composer Sessions. `ctx.sessions` only owns Sessions created by this mini tool.
