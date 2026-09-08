@@ -192,10 +192,10 @@ MCP Client 仍然支持用户手写 `servers.json`，用于本地高级配置和
 路径：
 
 ```text
-~/.finch/extension-data/mcp/servers.json
+~/.finch/mcp/servers.json
 ```
 
-开发模式下根目录为 `~/.finch-dev/`。
+开发模式下路径为 `~/.finch-dev/mcp/servers.json`。配置与业务密钥迁移后保留历史数据，OAuth 凭据归属保持不变。
 
 ### stdio server
 

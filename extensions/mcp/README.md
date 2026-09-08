@@ -192,10 +192,10 @@ MCP Client still supports a user-owned `servers.json` file for manual local conf
 Path:
 
 ```text
-~/.finch/extension-data/mcp/servers.json
+~/.finch/mcp/servers.json
 ```
 
-In dev mode, the root is `~/.finch-dev/`.
+In dev mode, the path is `~/.finch-dev/mcp/servers.json`. Configuration and business secrets are migrated without deleting historical data; OAuth credential ownership remains unchanged.
 
 ### stdio server
 

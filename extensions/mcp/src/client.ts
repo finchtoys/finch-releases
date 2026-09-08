@@ -50,6 +50,36 @@ export interface McpTool {
   inputSchema?: Record<string, unknown>;
 }
 
+export interface McpResource {
+  uri: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface McpPrompt {
+  name: string;
+  title?: string;
+  description?: string;
+  arguments?: Array<{ name: string; description?: string; required?: boolean }>;
+}
+
+export interface McpResourceResult {
+  contents: Array<{
+    uri: string;
+    mimeType?: string;
+    text?: string;
+    blob?: string;
+    [key: string]: unknown;
+  }>;
+}
+
+export interface McpPromptResult {
+  description?: string;
+  messages: Array<Record<string, unknown>>;
+}
+
 export interface McpToolResult {
   content?: Array<{
     type: string;
@@ -76,7 +106,11 @@ export interface McpClient {
   onclose?: () => void;
   connect(timeoutMs?: number): Promise<void>;
   listTools(timeoutMs?: number): Promise<McpTool[]>;
-  callTool(name: string, args: Record<string, unknown>, timeoutMs?: number): Promise<McpToolResult>;
+  listResources(timeoutMs?: number): Promise<McpResource[]>;
+  readResource(uri: string, timeoutMs?: number): Promise<McpResourceResult>;
+  listPrompts(timeoutMs?: number): Promise<McpPrompt[]>;
+  getPrompt(name: string, args?: Record<string, string>, timeoutMs?: number): Promise<McpPromptResult>;
+  callTool(name: string, args: Record<string, unknown>, timeoutMs?: number, signal?: AbortSignal): Promise<McpToolResult>;
   /**
    * Register a handler for server-sent notifications.
    * `method` is the full notification method name, e.g. "notifications/tools/list_changed".
@@ -188,11 +222,40 @@ class SdkBackedMcpClient implements McpClient {
     }));
   }
 
-  async callTool(name: string, args: Record<string, unknown>, timeoutMs = 60_000): Promise<McpToolResult> {
+  async listResources(timeoutMs = 15_000): Promise<McpResource[]> {
+    const client = this.requireClient();
+    const result = await client.listResources(undefined, { timeout: timeoutMs, maxTotalTimeout: timeoutMs });
+    return result.resources as McpResource[];
+  }
+
+  async readResource(uri: string, timeoutMs = 60_000): Promise<McpResourceResult> {
+    const client = this.requireClient();
+    const result = await client.readResource({ uri }, { timeout: timeoutMs, maxTotalTimeout: timeoutMs });
+    return result as McpResourceResult;
+  }
+
+  async listPrompts(timeoutMs = 15_000): Promise<McpPrompt[]> {
+    const client = this.requireClient();
+    const result = await client.listPrompts(undefined, { timeout: timeoutMs, maxTotalTimeout: timeoutMs });
+    return result.prompts as McpPrompt[];
+  }
+
+  async getPrompt(name: string, args: Record<string, string> = {}, timeoutMs = 60_000): Promise<McpPromptResult> {
+    const client = this.requireClient();
+    const result = await client.getPrompt({ name, arguments: args }, { timeout: timeoutMs, maxTotalTimeout: timeoutMs });
+    return result as McpPromptResult;
+  }
+
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    timeoutMs = 60_000,
+    signal?: AbortSignal,
+  ): Promise<McpToolResult> {
     const client = this.requireClient();
     const result = await client.callTool(
       { name, arguments: args },
-      { timeout: timeoutMs, maxTotalTimeout: timeoutMs },
+      { timeout: timeoutMs, maxTotalTimeout: timeoutMs, signal },
     );
     if ('toolResult' in result) {
       return {
