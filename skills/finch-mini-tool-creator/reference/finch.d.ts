@@ -484,6 +484,28 @@ declare module 'finch' {
 
     /** 当前 Space / Workspace 信息（只读）。 */
     readonly workspace: WorkspaceInfo;
+
+    /**
+     * 修改 App 级外观（主题/皮肤/字体）与首页背景。需要在 manifest 声明并被
+     * 授予 `permissions.appearance`。
+     *
+     * @example
+     * ctx.subscriptions.push(
+     *   ctx.tools.register({
+     *     name: 'apply_mint_skin',
+     *     title: 'Apply Mint Skin',
+     *     description: '应用薄荷绿深色皮肤。',
+     *     inputSchema: { type: 'object', properties: {} },
+     *     async execute() {
+     *       await ctx.appearance.setTheme({
+     *         customTheme: { name: '薄荷夜', base: 'dark', colors: { bgRoot: '#0f1214', accent: '#22c55e' } },
+     *       });
+     *       return { content: [{ type: 'text', text: 'applied' }] };
+     *     },
+     *   }),
+     * );
+     */
+    readonly appearance: Appearance;
   }
 
   /** Finch App 运行平台。 */
@@ -513,6 +535,93 @@ declare module 'finch' {
   export interface App {
     /** 获取当前 Finch App 基本信息。 */
     getInfo(): Promise<AppInfo>;
+  }
+
+  // ── Appearance（ctx.appearance，需要 permissions.appearance）───────────────
+
+  export type AppearanceThemePreference = 'light' | 'dark' | 'system' | 'custom';
+
+  /**
+   * 自定义皮肤的最终颜色 token；只设置需要的字段，其余继承自 `base`。
+   * 分组：表面（bgRoot=app/窗口外层背景兼 bgMain 兜底，bgMain=主聊天/页面背景，
+   * bgSidebar=悬浮侧栏专用；停靠态侧栏透明并复用 appShell/main 背景，
+   * bgElevated=卡片/弹层/输入框表面），交互高亮（bgHover=列表/按钮 hover，
+   * bgActive=按下/选中态），文字（textPrimary=正文，textSecondary=次要/元信息，
+   * textTertiary=弱化提示/图标），强调色（accent=品牌/操作色——必须够深/够饱和，
+   * 使其上的白色文字仍清晰可读；accentDim=浅色强调底纹），border=描边。颜色接受
+   * `#hex`/`rgb()`/`hsl()`/`oklch()`/`color-mix()`，但 `bgRoot`/`bgMain`
+   * 建议写 `#hex` 或 `rgb()`——它们还会绘制原生 OS 窗口控制按钮，无法解析
+   * `oklch()`/`color-mix()` 时会回退到默认浅色/深色。
+   */
+  export interface AppearanceCustomThemeColors {
+    bgRoot?: string;
+    bgMain?: string;
+    bgSidebar?: string;
+    bgElevated?: string;
+    bgHover?: string;
+    bgActive?: string;
+    textPrimary?: string;
+    textSecondary?: string;
+    textTertiary?: string;
+    accent?: string;
+    accentDim?: string;
+    border?: string;
+  }
+
+  export interface AppearanceCustomTheme {
+    /** 皮肤展示名称，如「赛博朋克」「莫兰迪暖灰」。 */
+    name: string;
+    /** 未指定的 token 继承的内置预设。 */
+    base: 'light' | 'dark';
+    colors: AppearanceCustomThemeColors;
+  }
+
+  export interface AppearanceSetThemeOptions {
+    /** 传 `'custom'` 需同时提供 `customTheme`；省略则只切换到已保存的皮肤。 */
+    theme?: AppearanceThemePreference;
+    /** 提供即设计并应用一个皮肤（自动令 theme 变为 `'custom'`）。 */
+    customTheme?: AppearanceCustomTheme;
+    fontSize?: 'small' | 'medium' | 'large';
+    uiFontFamily?: string;
+    monoFontFamily?: string;
+    showThinking?: boolean;
+  }
+
+  export type AppearanceBackgroundPlacement = 'fill' | 'tile';
+  export type AppearanceBackgroundTone = 'brightest' | 'bright' | 'balanced' | 'dark' | 'darkest';
+
+  export interface AppearanceSetHomeBackgroundOptions {
+    /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。首页尚未配置背景时必填。 */
+    imagePath?: string;
+    placement?: AppearanceBackgroundPlacement;
+    tone?: AppearanceBackgroundTone;
+    /** 移除首页背景，恢复为纯色主题底。 */
+    clear?: boolean;
+  }
+
+  /**
+   * 修改 App 级外观（主题/皮肤/字体）与首页背景。需要在 manifest 声明并被授予
+   * `permissions.appearance`。效果等同于用户自己在「外观设置」里操作。
+   *
+   * @example
+   * await ctx.appearance.setTheme({
+   *   customTheme: {
+   *     name: '薄荷夜',
+   *     base: 'dark',
+   *     colors: { bgRoot: '#0f1214', accent: '#22c55e' },
+   *   },
+   * });
+   * await ctx.appearance.setHomeBackground({
+   *   imagePath: '/Users/alice/Pictures/mint-gradient.png',
+   *   placement: 'fill',
+   *   tone: 'dark',
+   * });
+   */
+  export interface Appearance {
+    /** 至少传一项：theme、customTheme、fontSize、uiFontFamily、monoFontFamily、showThinking。 */
+    setTheme(options: AppearanceSetThemeOptions): Promise<void>;
+    /** 只支持首页背景；Chat/Space 背景已在内部实现但尚未对外开放。 */
+    setHomeBackground(options: AppearanceSetHomeBackgroundOptions): Promise<void>;
   }
 
   /** 当前 Finch 暴露的小程序 API surface 探针。 */
@@ -3316,6 +3425,11 @@ declare module 'finch' {
      * destructive 权限卡可由程序拒绝以安全继续，但永远只能由真人批准。
      */
     readonly sessionInteractions?: boolean;
+    /**
+     * 是否允许通过 `ctx.appearance` 修改 App 级外观（主题/皮肤/字体）与首页
+     * 背景。效果等同于用户自己在「外观设置」里操作，因此单独声明为一项权限。
+     */
+    readonly appearance?: boolean;
   }
 
 } // end declare module 'finch'
