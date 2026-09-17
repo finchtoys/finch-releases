@@ -16,13 +16,29 @@ Supported forms:
 | `lucide:<id>` | `'lucide:clipboard-check'` | Explicit prefix, always safe |
 | `ext:<iconId>` | `'ext:my-logo'` | **Recommended for an icon owned by this mini tool.** Finch resolves its pack automatically. |
 | `ext:<packId>/<iconId>` | `'ext:my-pack/my-logo'` | Fully qualified runtime SVG; use only when a foreign pack must be explicit. |
+| `model:<key>` | `'model:claude'` | Finch's built-in model brand icon (Claude/Codex/DeepSeek/etc). Don't hand-pick a key — read it off `ModelSummary.icon` from `ctx.models.list()` and pass it straight through; an unrecognized key renders nothing. |
 
-> **If a string is not in the built-in list and not prefixed `lucide:` / `ext:`, Finch renders it as plain text.**
+> **If a string is not in the built-in list and not prefixed `lucide:` / `ext:` / `model:`, Finch renders it as plain text.**
 > This is the most common mistake — always verify the id is in the table below before shipping.
 
 ### Own-pack shorthand
 
 Register your custom SVG pack normally, but do **not** repeat its id at every call site. Within the same mini tool, write `ext:<iconId>`; Finch expands it to `ext:<packId>/<iconId>` before it reaches the renderer. Use the full form only for an icon from another mini tool or when deliberately disambiguating multiple packs.
+
+### Model brand icons
+
+Building your own model picker (e.g. a Composer-style menu)? Don't ship your own Claude/Codex/DeepSeek SVGs — `ctx.models.list()` already returns an `icon?: IconRef` (`"model:<key>"`) per model, resolved from the same brand mapping Finch's own model menu uses. Drop it straight into any IconRef field:
+
+```ts
+const models = await ctx.models.list();
+const menu = models.map((m) => ({
+  id: m.modelKey,
+  label: m.name,
+  iconName: m.icon, // e.g. 'model:claude' — falls back to no icon when undefined
+}));
+```
+
+`icon` is `undefined` for a custom/uncommon model with no recognized brand — fall back to a generic icon (e.g. a Lucide `'cpu'`) in that case.
 
 ---
 

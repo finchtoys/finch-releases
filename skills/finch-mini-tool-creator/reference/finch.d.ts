@@ -449,6 +449,10 @@ declare module 'finch' {
     /** 当前 session 信息（只读快照）。 */
     readonly session: SessionInfo;
 
+    /** 发布与读取当前小工具拥有的不可变快照。需要 permissions.artifacts。 */
+    readonly artifacts: Artifacts;
+    /** 协调当前小工具拥有的 Scope、Document、Task 与 Handoff。需要 permissions.collaboration。 */
+    readonly collaboration: Collaboration;
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
     /**
@@ -457,6 +461,13 @@ declare module 'finch' {
      * `sessions.create({ space })`。
      */
     readonly spaces: Spaces;
+    /**
+     * 用户已启用、可用模型的只读列表（modelKey、别名、provider 名称）。需要
+     * permissions.sessions（与 `ctx.sessions` 共用同一权限门），主要用途是
+     * 在创建 Session 前找到一个合法的 `modelKey` 传给
+     * `sessions.create({ model })`。
+     */
+    readonly models: Models;
     readonly sessionContainers: {
       /**
        * @deprecated 旧版容器级设置菜单，只会出现在该容器的会话页头部。
@@ -722,6 +733,12 @@ declare module 'finch' {
     readonly idempotencyKey: string;
   }
 
+  /**
+   * 模型思考/推理档位。与内部 `ReasoningEffort` 一致，这里单独声明为字面量
+   * 联合类型，使本文件保持自包含（不跨包引用 Finch 内部类型）。
+   */
+  export type SessionReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
   export interface SessionCreateOptions {
     /**
      * 会话所在容器，须在 manifest contributes.sessionContainers 中声明。若
@@ -753,6 +770,14 @@ declare module 'finch' {
      */
     readonly topic?: string;
     /**
+     * 显式把新会话挂到本小程序自己拥有的某个父 Session 下，以便在父会话的
+     * 子任务树中显示。它只改变会话树归属，不继承 cwd、模型、权限或对话历史；
+     * 若要继承调用者的运行上下文，请使用 `context: 'caller'`。当本次调用正
+     * 处于一个可信的 Agent 调用上下文时，Finch 自动记录该调用者为父节点，
+     * 并优先于这里指定的值。传入未知、其它小程序或用户拥有的 Session 会报错。
+     */
+    readonly parentSessionId?: string;
+    /**
      * @deprecated 已废弃且被忽略。Agent 角色由目标容器的
      * `contributes.sessionContainers[].agentProfile` 声明决定并自动生效，
      * 不再由调用方逐个会话指定。传入不会报错（仅打印一条废弃警告，
@@ -771,6 +796,20 @@ declare module 'finch' {
     readonly activity?: MinitoolSessionActivity;
     /** 默认 acceptCalls；可显式设为 ask。 */
     readonly permissionMode?: 'ask' | 'acceptCalls';
+    /**
+     * 显式指定本次会话使用的模型，例如小程序自己的设置界面让用户选好的模型。
+     * 优先级高于其它所有来源（容器默认模型、`context: 'caller'` 继承的模型、
+     * Space/全局默认模型）。`modelKey` 必须是已启用的 `provider:model` 键
+     * （与 `AppCall listModels` 展示的格式一致）；未知或已禁用的键会直接
+     * 抛错。不传 `model` 时行为与之前完全一致——沿用容器配置的模型，
+     * 再回退 Space/全局默认。
+     */
+    readonly model?: {
+      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      readonly modelKey: string;
+      /** 思考/推理档位，仅当模型支持时生效。 */
+      readonly reasoningEffort?: SessionReasoningEffort;
+    };
     /** 提供时，与 Session 创建原子接收；失败不会留下 ghost Session。 */
     readonly initialMessage?: SessionUserMessage;
   }
@@ -800,9 +839,69 @@ declare module 'finch' {
     list(): Promise<SpaceSummary[]>;
   }
 
+  /**
+   * 一个已启用、可用模型的只读摘要——与用户在 Composer 模型菜单里能选到的
+   * 集合一致。用于在调用 `sessions.create({ model: { modelKey } })` 之前
+   * 发现一个合法的 `modelKey`。
+   */
+  export interface ModelSummary {
+    /** `provider:model` 键，可直接传给 `sessions.create({ model })`。 */
+    readonly modelKey: string;
+    /** 稳定的 provider id（与 `modelKey` 的前缀一致）。 */
+    readonly providerId: string;
+    /** provider 的可读展示名称，例如 "Anthropic"、"OpenAI"。 */
+    readonly providerName: string;
+    /** 原始 model id（与 `modelKey` 的后缀一致）。 */
+    readonly modelId: string;
+    /** 展示名称——用户设置了别名时用别名，否则用模型默认名称。 */
+    readonly name: string;
+    /** 用户设置的别名（如有；已经折叠进上面的 `name`）。 */
+    readonly alias?: string;
+    /** 该模型是否支持扩展思考/推理。 */
+    readonly supportsThinking: boolean;
+    /** 轻量快速模型，适合「快速对话」模式。 */
+    readonly instant?: boolean;
+    /** 该模型在「思考」模式下被选中时应用的默认推理档位。 */
+    readonly defaultReasoningEffort?: SessionReasoningEffort;
+    /** 该模型支持的推理档位子集；未设置表示支持全部档位。 */
+    readonly reasoningLevels?: SessionReasoningEffort[];
+    /**
+     * 该模型品牌图标的 {@link IconRef}（形如 `"model:claude"`），与 Finch
+     * 自己 Composer 模型菜单展示的图标完全一致——可以原样填进任意接受
+     * IconRef 的字段（`ComposerActionMenuItem.iconName`、
+     * `AppPanelMenuItem.icon`、`ctx.ui` 菜单项的 `icon` 等），小程序自建的
+     * 模型选择菜单就能复用 Finch 内置的 Claude/Codex/DeepSeek 等品牌 SVG，
+     * 不需要自己维护一份图标资源。未识别出品牌（自定义/小众模型）时为
+     * `undefined`，此时应显示一个通用兜底图标。
+     */
+    readonly icon?: IconRef;
+  }
+
+  export interface Models {
+    /** 列出用户已启用、可用的全部模型（别名、id、provider 名称）。 */
+    list(): Promise<ModelSummary[]>;
+  }
+
   export interface SessionSendOptions {
     /** Phase 1 仅支持严格 FIFO queue。 */
     readonly delivery?: 'queue';
+    /**
+     * 为这一条消息切换 Session 使用的模型——例如小程序自带一个模型选择器，
+     * 用户随时切换模型后，下一条消息就该换到新模型，而不必重建 Session。
+     * 语义与 `SessionCreateOptions.model` 一致：`modelKey` 必须是已启用的
+     * `provider:model` 键（参考 `ctx.models.list()`），未知或已禁用会直接
+     * 抛错，整条 `send()` 调用失败、不入队。校验通过后立刻持久化为该
+     * Session 的当前模型，对本条及之后的消息生效，直到下次显式传入新值。
+     * 不传 `model` 时完全不改变现状——沿用 Session 当前配置的模型，也就是
+     * 沿用上一条消息实际生效的模型（若上一条消息也没传，则一路回溯到
+     * `create()` 时决定的模型）。
+     */
+    readonly model?: {
+      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      readonly modelKey: string;
+      /** 思考/推理档位，仅当模型支持时生效；省略则清除已设置的档位。 */
+      readonly reasoningEffort?: SessionReasoningEffort;
+    };
   }
 
   export type SessionSendReceipt =
@@ -828,9 +927,52 @@ declare module 'finch' {
         readonly retryAfterMs: number;
       };
 
+  /** 单个 turn 的 token 用量。字段与 {@link AgentTokenUsage} 一致。 */
+  export interface SessionTurnUsage {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheCreationTokens: number;
+    readonly cacheReadTokens: number;
+  }
+
   export type SessionDurableEvent =
     | { readonly sequence: number; readonly type: 'assistant.message'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly text: string; readonly createdAt: string }
-    | { readonly sequence: number; readonly type: 'turn.completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly createdAt: string }
+    /**
+     * 某个 turn 真正被派发给 Runner 开始执行。`send()` 只表示进入队列，这条事件
+     * 才表示「这个 Agent 开始干活了」——看板类小程序可用它把卡片从「排队中」
+     * 切到「进行中」，并知道实际生效的模型与思考档位（可能来自容器默认或
+     * Space/全局默认，而非调用方显式指定的值）。
+     */
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.started';
+        readonly sessionId: string;
+        readonly turnId: string;
+        /** 本次实际派发使用的 `provider:model` 键。 */
+        readonly modelKey: string;
+        /** 本次实际生效的思考/推理档位（未设置时省略）。 */
+        readonly reasoningEffort?: SessionReasoningEffort;
+        /** 该 turn 从入队到派发的排队时长（毫秒）。 */
+        readonly queuedMs: number;
+        readonly createdAt: string;
+      }
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.completed';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly outputText: string;
+        readonly messageIds: string[];
+        /** 本次 turn 的 token 用量；Runner 未上报时为 undefined。 */
+        readonly usage?: SessionTurnUsage;
+        /** 本次 turn 的估算费用（美元）；Runner 未上报时为 undefined。 */
+        readonly costUsd?: number;
+        /** 本次 turn 的执行耗时（毫秒）；Runner 未上报时为 undefined。 */
+        readonly durationMs?: number;
+        /** 实际使用的 `provider:model` 键；Runner 未上报时为 undefined。 */
+        readonly modelKey?: string;
+        readonly createdAt: string;
+      }
     | { readonly sequence: number; readonly type: 'turn.failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly createdAt: string }
     | {
         readonly sequence: number;
@@ -876,7 +1018,19 @@ declare module 'finch' {
   }
 
   export type SessionTurnWaitResult =
-    | { readonly state: 'completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly completedAt: string }
+    | {
+        readonly state: 'completed';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly outputText: string;
+        readonly messageIds: string[];
+        /** 与 `turn.completed` 事件同源的用量/成本/耗时统计。 */
+        readonly usage?: SessionTurnUsage;
+        readonly costUsd?: number;
+        readonly durationMs?: number;
+        readonly modelKey?: string;
+        readonly completedAt: string;
+      }
     | { readonly state: 'failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly failedAt: string }
     | { readonly state: 'timeout'; readonly sessionId: string; readonly turnId: string };
 
@@ -1741,6 +1895,117 @@ declare module 'finch' {
   /** 可安全跨进程传递与持久化的 JSON 值。 */
   export type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
 
+  export type ArtifactSource = { readonly type: 'text'; readonly text: string }
+    | { readonly type: 'json'; readonly value: JsonValue }
+    | { readonly type: 'file'; readonly path: string };
+  export interface ArtifactProducer { readonly sessionId: string; readonly turnId?: string; }
+  export interface ArtifactRef {
+    readonly artifactId: string; readonly scopeId?: string; readonly name: string;
+    readonly contentHash: string; readonly mediaType: string; readonly size: number;
+    readonly sourceType: ArtifactSource['type']; readonly metadata?: JsonValue;
+    readonly producer?: ArtifactProducer; readonly createdAt: string;
+  }
+  export interface ArtifactPublishOptions {
+    readonly scopeId?: string; readonly name: string; readonly source: ArtifactSource;
+    readonly mediaType?: string; readonly metadata?: JsonValue; readonly producer?: ArtifactProducer;
+    readonly idempotencyKey: string;
+  }
+  export interface ArtifactListOptions { readonly scopeId?: string; readonly limit?: number; }
+  export type ArtifactContent = { readonly type: 'text'; readonly text: string; readonly mediaType: string }
+    | { readonly type: 'json'; readonly value: JsonValue; readonly mediaType: string }
+    | { readonly type: 'file'; readonly path: string; readonly mediaType: string };
+  export interface Artifacts {
+    publish(options: ArtifactPublishOptions): Promise<ArtifactRef>;
+    get(artifactId: string): Promise<ArtifactRef | undefined>;
+    list(options?: ArtifactListOptions): Promise<ArtifactRef[]>;
+    read(artifactId: string): Promise<ArtifactContent>;
+  }
+
+  export type CollaborationRetention = 'session' | 'project' | 'persistent';
+  export interface CollaborationScope {
+    readonly scopeId: string; readonly label: string; readonly retention: CollaborationRetention;
+    readonly metadata?: JsonValue; readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationScopeCreateOptions {
+    readonly label: string; readonly retention?: CollaborationRetention; readonly metadata?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationDocument {
+    readonly documentId: string; readonly scopeId: string; readonly name: string; readonly kind: string;
+    readonly revision: number; readonly artifactId: string; readonly summary?: string;
+    readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationDocumentCreateOptions {
+    readonly scopeId: string; readonly name: string; readonly kind: string; readonly initialArtifactId: string;
+    readonly summary?: string; readonly idempotencyKey: string;
+  }
+  export interface CollaborationDocumentUpdateOptions {
+    readonly documentId: string; readonly baseRevision: number; readonly artifactId: string;
+    readonly summary?: string; readonly idempotencyKey: string;
+  }
+  export type CollaborationDocumentUpdateResult = { readonly state: 'updated'; readonly document: CollaborationDocument }
+    | { readonly state: 'conflict'; readonly current: CollaborationDocument };
+  export type CollaborationTaskState = 'open' | 'claimed' | 'blocked' | 'completed' | 'cancelled';
+  export interface CollaborationTask {
+    readonly taskId: string; readonly scopeId: string; readonly title: string; readonly summary?: string;
+    readonly state: CollaborationTaskState; readonly version: number; readonly assigneeSessionId?: string;
+    readonly leaseExpiresAt?: string; readonly refs?: JsonValue; readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationTaskCreateOptions {
+    readonly scopeId: string; readonly title: string; readonly summary?: string; readonly refs?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationTaskUpdateOptions {
+    readonly taskId: string; readonly expectedVersion: number; readonly state?: Exclude<CollaborationTaskState, 'claimed'>;
+    readonly summary?: string; readonly refs?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationTaskClaimOptions {
+    readonly taskId: string; readonly assignee: { readonly sessionId: string }; readonly expectedVersion: number;
+    readonly leaseMs: number; readonly idempotencyKey: string;
+  }
+  export interface CollaborationTaskRenewLeaseOptions {
+    readonly taskId: string; readonly assignee: { readonly sessionId: string }; readonly expectedVersion: number; readonly leaseMs: number;
+  }
+  export type CollaborationTaskMutationResult = { readonly state: 'updated'; readonly task: CollaborationTask }
+    | { readonly state: 'conflict'; readonly current: CollaborationTask };
+  export type CollaborationHandoffState = 'created' | 'accepted' | 'rejected' | 'superseded' | 'expired';
+  export interface CollaborationDocumentRef { readonly documentId: string; readonly revision: number; }
+  export interface CollaborationHandoff {
+    readonly handoffId: string; readonly scopeId: string; readonly from: ArtifactProducer;
+    readonly to: { readonly sessionId: string }; readonly taskId?: string; readonly summary: string;
+    readonly artifactIds: string[]; readonly documentRefs: CollaborationDocumentRef[]; readonly data?: JsonValue;
+    readonly state: CollaborationHandoffState; readonly version: number; readonly decisionSummary?: string;
+    readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationHandoffCreateOptions {
+    readonly scopeId: string; readonly from: ArtifactProducer; readonly to: { readonly sessionId: string };
+    readonly taskId?: string; readonly summary: string; readonly artifactIds?: string[];
+    readonly documentRefs?: CollaborationDocumentRef[]; readonly data?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationHandoffDecisionOptions { readonly handoffId: string; readonly expectedVersion: number; readonly summary?: string; }
+  export type CollaborationHandoffMutationResult = { readonly state: 'updated'; readonly handoff: CollaborationHandoff }
+    | { readonly state: 'conflict'; readonly current: CollaborationHandoff };
+  export interface Collaboration {
+    readonly scopes: {
+      create(options: CollaborationScopeCreateOptions): Promise<CollaborationScope>; get(scopeId: string): Promise<CollaborationScope | undefined>; list(): Promise<CollaborationScope[]>;
+    };
+    readonly documents: {
+      create(options: CollaborationDocumentCreateOptions): Promise<CollaborationDocument>; get(documentId: string): Promise<CollaborationDocument | undefined>;
+      list(scopeId: string): Promise<CollaborationDocument[]>; update(options: CollaborationDocumentUpdateOptions): Promise<CollaborationDocumentUpdateResult>;
+    };
+    readonly tasks: {
+      create(options: CollaborationTaskCreateOptions): Promise<CollaborationTask>; get(taskId: string): Promise<CollaborationTask | undefined>;
+      list(scopeId: string): Promise<CollaborationTask[]>; update(options: CollaborationTaskUpdateOptions): Promise<CollaborationTaskMutationResult>;
+      claim(options: CollaborationTaskClaimOptions): Promise<CollaborationTaskMutationResult>; renewLease(options: CollaborationTaskRenewLeaseOptions): Promise<CollaborationTaskMutationResult>;
+    };
+    readonly handoffs: {
+      create(options: CollaborationHandoffCreateOptions): Promise<CollaborationHandoff>; get(handoffId: string): Promise<CollaborationHandoff | undefined>;
+      list(scopeId: string): Promise<CollaborationHandoff[]>; accept(options: CollaborationHandoffDecisionOptions): Promise<CollaborationHandoffMutationResult>;
+      reject(options: CollaborationHandoffDecisionOptions): Promise<CollaborationHandoffMutationResult>;
+    };
+  }
+  export type DeliveryTarget = { readonly kind: 'scope'; readonly scopeId: string }
+    | { readonly kind: 'artifact'; readonly artifactId: string }
+    | { readonly kind: 'document'; readonly documentId: string; readonly revision?: number };
+
   export interface DeliverySetOptions {
     readonly title: string;
     /**
@@ -1751,6 +2016,8 @@ declare module 'finch' {
      */
     readonly detail?: string;
     readonly icon?: string;
+    /** 指向当前小工具拥有的 Artifact、Scope 或 Document。 */
+    readonly target?: DeliveryTarget;
     /** 点击此 Delivery 行打开 Panel App 时带入的上下文。 */
     readonly payload?: JsonValue;
   }
@@ -3417,6 +3684,10 @@ declare module 'finch' {
     readonly secrets?: string[];
     /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */
     readonly oauth?: string[];
+    /** 是否允许发布与读取当前小工具拥有的不可变 Artifact。 */
+    readonly artifacts?: boolean;
+    /** 是否允许使用当前小工具拥有的 Collaboration 数据。 */
+    readonly collaboration?: boolean;
     /** 是否允许创建并收发当前小工具自己拥有的 Session。 */
     readonly sessions?: boolean;
     /**

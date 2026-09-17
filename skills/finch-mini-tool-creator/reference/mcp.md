@@ -197,6 +197,10 @@ interface McpClientCapability {
   disconnectServerOAuth(name: string): Promise<{ ok: boolean }>;
   listTools(name: string): Promise<Array<{ name: string; description?: string }>>;
   callTool(name: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
+  listResources(name: string): Promise<Array<{ uri: string; name?: string; mimeType?: string }>>;
+  readResource(name: string, uri: string): Promise<{ contents: Array<Record<string, unknown>> }>;
+  listPrompts(name: string): Promise<Array<{ name: string; description?: string }>>;
+  getPrompt(name: string, prompt: string, args?: Record<string, string>): Promise<{ messages: Array<Record<string, unknown>> }>;
   unregisterServer(name: string): Promise<{ ok: boolean }>;
 }
 

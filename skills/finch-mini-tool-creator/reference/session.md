@@ -278,6 +278,23 @@ const receipt = await ctx.sessions.send(session.sessionId, {
 
 `kind` is optional and can be `image`, `pdf`, `text`, or `file`. Finch infers it from `mimeType` when omitted.
 
+Switching the model for a turn (your own model picker):
+
+```ts
+// Third argument rebinds the Session's model for this message onward —
+// same validation as create()'s model: an unknown/disabled modelKey throws
+// and nothing is queued. Omit `model` to keep following whatever model the
+// Session is currently set to (i.e. the model the previous message used).
+await ctx.sessions.send(session.sessionId, {
+  text: 'Explain this crash log in Chinese.',
+  idempotencyKey: 'crash-001',
+}, {
+  model: { modelKey: 'anthropic:claude-sonnet-4-5', reasoningEffort: 'high' },
+});
+```
+
+Pick the `modelKey` from `ctx.models.list()` (each entry also carries an `icon` IconRef you can reuse in your picker UI) instead of hardcoding one, so the Session validation can never reject a model the user doesn't have.
+
 ### Waiting for one turn
 
 When the current operation needs the final result of the turn it just sent, use `waitForTurn()` instead of sleeping or polling `listEvents()`:
