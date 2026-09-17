@@ -64,6 +64,7 @@
     "network": true,
     "sessions": true,
     "sessionInteractions": true,
+    "destructiveInteractions": true,
     "filesystem": "read"
   }
 }

@@ -28,6 +28,8 @@
   "runtime": {
     "wait": {
       "operation": "操作：{operation}",
+      "command": "命令：{command}",
+      "arguments": "参数：{arguments}",
       "fieldLabel": "【{field}】",
       "fieldOptions": "：{options}",
       "optionDescription": "：{description}",
@@ -37,15 +39,16 @@
         "options": "、"
       },
       "permission": {
+        "deadline": "⏳ 若 {minutes} 分钟内未回复，将自动拒绝。",
         "title": "⏳ {assistantName} 需要权限",
         "reply": "回复“允许”或“拒绝”。",
         "invalidReply": "请回复“允许”或“拒绝”。"
       },
       "destructive": {
         "title": "⚠️ {assistantName} 请求执行不可逆操作",
-        "reply": "微信仅支持拒绝。回复“拒绝”可跳过并继续；批准请在 {appName} 桌面端处理。",
+        "reply": "这是不可逆操作。回复“允许”将立即执行，回复“拒绝”可跳过并继续。",
         "approveBlocked": "不可逆操作不能通过微信批准。回复“拒绝”可跳过并继续。",
-        "invalidReply": "此操作只能通过微信拒绝。请回复“拒绝”。"
+        "invalidReply": "请回复“允许”或“拒绝”。"
       },
       "question": {
         "title": "💬 {assistantName} 等待你的回答",
@@ -55,6 +58,7 @@
         "missingFields": "请逐行填写全部字段：{fields}"
       },
       "form": {
+        "deadline": "⏳ 若 {minutes} 分钟内未填写，将自动取消。",
         "title": "📝 {assistantName} 等待填写表单",
         "reply": "逐行回复“字段=内容”，或回复“取消”。",
         "invalidReply": "请按“字段=内容”格式回复。",
@@ -66,7 +70,7 @@
       "accepted": "✅ 已提交。",
       "expired": "ℹ️ 此等待已失效。",
       "parseFailed": "无法识别这条回答，请按提示重试。",
-      "forbidden": "⚠️ 无法通过微信批准不可逆操作，请在 {appName} 桌面端处理。"
+      "forbidden": "⚠️ 无法批准：该小程序尚未获得「批准不可逆操作」授权。请在小程序面板重新启用它并确认该项授权，或改为在 {appName} 桌面端批准。"
     }
   }
 }

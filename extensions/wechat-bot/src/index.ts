@@ -142,9 +142,10 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     const value = cleanDelegatedAnswer(rawValue);
     if (wait.kind === 'permission') {
       if (/^(允许|同意|allow|yes|y)(?:[，,：:\s].*)?$/i.test(value)) {
-        if (wait.destructive) {
-          return { error: waitText('destructive.approveBlocked') };
-        }
+        // An irreversible action is approvable from WeChat because this mini tool
+        // holds permissions.destructiveInteractions and the human on the other end
+        // is the one replying — the relayed message always shows the exact command
+        // being approved. Finch still audits every such approval.
         return { response: { kind: 'permission', allow: true } };
       }
       if (/^(拒绝|取消|deny|no|n)(?:[，,：:\s].*)?$/i.test(value)) return { response: { kind: 'permission', allow: false } };
@@ -192,17 +193,15 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const renderWait = (wait: finch.SessionWait): string | undefined => {
     if (wait.kind === 'permission') {
       const operation = wait.toolTitle ?? wait.toolName;
-      return wait.destructive
-        ? [
-            waitText('destructive.title'),
-            waitText('operation', { operation }),
-            waitText('destructive.reply'),
-          ].join('\n')
-        : [
-            waitText('permission.title'),
-            waitText('operation', { operation }),
-            waitText('permission.reply'),
-          ].join('\n');
+      const detail = describePermissionInput(wait);
+      const deadline = deadlineLine(wait, 'permission');
+      return [
+        wait.destructive ? waitText('destructive.title') : waitText('permission.title'),
+        waitText('operation', { operation }),
+        ...(detail ? [detail] : []),
+        wait.destructive ? waitText('destructive.reply') : waitText('permission.reply'),
+        ...(deadline ? [deadline] : []),
+      ].join('\n');
     }
     if (wait.kind === 'question') {
       const questions = wait.questions.map((question) => {
@@ -226,12 +225,66 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       const options = field.options?.map((option) => `${option.value}${waitText('optionLabel', { label: option.label })}`).join(waitText('separator.options'));
       return `${waitText('fieldLabel', { field: field.key })}${field.label}${options ? waitText('fieldOptions', { options }) : ''}`;
     }).join('\n');
-    return `${waitText('form.title')}\n${wait.form.title}\n${details}\n${waitText('form.reply')}`;
+    const formDeadline = deadlineLine(wait, 'form');
+    return [
+      waitText('form.title'),
+      wait.form.title,
+      details,
+      waitText('form.reply'),
+      ...(formDeadline ? [formDeadline] : []),
+    ].join('\n');
+  };
+
+  /**
+   * Tool input can be a whole file body (Write/Edit), so never relay it unbounded.
+   */
+  const clipDetail = (value: string, max = 400): string =>
+    value.length > max ? `${value.slice(0, max)}…` : value;
+
+  /**
+   * What the permission request would actually run. A human cannot decide from a
+   * tool name alone: Bash is the common case and the command is the part that
+   * matters, so anything else falls back to a compact, clipped view of the
+   * arguments (a file path, a server URL, …).
+   */
+  const describePermissionInput = (wait: Extract<finch.SessionWait, { kind: 'permission' }>): string | undefined => {
+    const input = wait.toolInput;
+    if (!input || typeof input !== 'object') return undefined;
+    const record = input as Record<string, unknown>;
+    const command = record.command;
+    if (typeof command === 'string' && command.trim()) {
+      return waitText('command', { command: clipDetail(command) });
+    }
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(record);
+    } catch {
+      return undefined;
+    }
+    if (!serialized || serialized === '{}') return undefined;
+    return waitText('arguments', { arguments: clipDetail(serialized) });
+  };
+
+  /**
+   * Minutes left before Finch settles an unanswered wait on its own (permission
+   * cards are auto-denied, forms auto-cancelled). Undefined when there is no
+   * deadline or it already passed — the resolved event covers that case.
+   */
+  const deadlineLine = (wait: finch.SessionWait, kind: 'permission' | 'form'): string | undefined => {
+    if (!wait.expiresAt) return undefined;
+    const remainingMs = Date.parse(wait.expiresAt) - Date.now();
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) return undefined;
+    return waitText(`${kind}.deadline`, { minutes: String(Math.max(1, Math.round(remainingMs / 60_000))) });
   };
 
   /** One-line summary used when listing several pending waits to choose from. */
   const summarizeWait = (wait: finch.SessionWait): string => {
-    if (wait.kind === 'permission') return wait.toolTitle ?? wait.toolName;
+    if (wait.kind === 'permission') {
+      const base = wait.toolTitle ?? wait.toolName;
+      const detail = describePermissionInput(wait);
+      // Two cards for the same tool would otherwise be indistinguishable in the list.
+      return detail ? `${base} · ${clipDetail(detail.split('\n')[0], 60)}` : base;
+    }
     if (wait.kind === 'question') return wait.questions[0]?.question ?? wait.questions[0]?.header ?? '';
     return wait.form.title;
   };

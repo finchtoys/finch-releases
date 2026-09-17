@@ -28,6 +28,8 @@
   "runtime": {
     "wait": {
       "operation": "Action: {operation}",
+      "command": "Command: {command}",
+      "arguments": "Arguments: {arguments}",
       "fieldLabel": "[{field}] ",
       "fieldOptions": ": {options}",
       "optionDescription": ": {description}",
@@ -37,15 +39,16 @@
         "options": ", "
       },
       "permission": {
+        "deadline": "⏳ It is denied automatically unless you reply within {minutes} min.",
         "title": "⏳ {assistantName} needs permission",
         "reply": "Reply “Allow” or “Deny”.",
         "invalidReply": "Please reply “Allow” or “Deny”."
       },
       "destructive": {
         "title": "⚠️ {assistantName} requests an irreversible action",
-        "reply": "WeChat can only deny this action. Reply “Deny” to skip it and continue; approve it in the {appName} desktop app.",
+        "reply": "This cannot be undone. Reply “Allow” to run it now, or “Deny” to skip and continue.",
         "approveBlocked": "Irreversible actions cannot be approved through WeChat. Reply “Deny” to skip and continue.",
-        "invalidReply": "This action can only be denied through WeChat. Please reply “Deny”."
+        "invalidReply": "Please reply “Allow” or “Deny”."
       },
       "question": {
         "title": "💬 {assistantName} is waiting for your answer",
@@ -55,6 +58,7 @@
         "missingFields": "Please fill every field: {fields}"
       },
       "form": {
+        "deadline": "⏳ It is cancelled automatically unless you fill it within {minutes} min.",
         "title": "📝 {assistantName} is waiting for a form",
         "reply": "Reply one per line as “field=value”, or reply “Cancel”.",
         "invalidReply": "Please reply in “field=value” format.",
@@ -66,7 +70,7 @@
       "accepted": "✅ Submitted.",
       "expired": "ℹ️ This request has expired.",
       "parseFailed": "That answer was not recognized. Please follow the prompt and try again.",
-      "forbidden": "⚠️ Irreversible actions cannot be approved through WeChat. Use the {appName} desktop app."
+      "forbidden": "⚠️ Cannot approve: this mini tool has not been granted “Approve irreversible actions”. Re-enable it in the mini tool panel and confirm that grant, or approve it in the {appName} desktop app."
     }
   }
 }
