@@ -15,10 +15,16 @@
 import type * as finch from 'finch';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServerConfig, type McpServerConfig, type McpTool, type McpToolResult } from './client.js';
+import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServerConfig, type McpPrompt, type McpPromptResult, type McpResource, type McpResourceResult, type McpServerConfig, type McpTool, type McpToolResult } from './client.js';
 import { authorizeMcpOAuth, clearMcpOAuth, createMcpOAuthProvider, type McpOAuthConfig } from './oauth.js';
-import { createOAuthCustody, migrateLegacyOAuthStorage } from './oauthCustody.js';
+import { createOAuthCustody, migrateLegacyOAuthStorage, migrateLegacyOAuthStorageFile } from './oauthCustody.js';
 import { migrateMcpData } from './dataMigration.js';
+
+interface InternalMcpMigrationContext {
+  capabilityMigration?: {
+    sources(capability: string): Array<{ id: string; storagePath: string }>;
+  };
+}
 
 type ManagedMcpServerConfig = McpServerConfig & {
   /** Maps environment variable names to extension-scoped encrypted secret keys. */
@@ -868,13 +874,29 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   // before loading configs. Failed entries remain untouched for retry.
   await migrateLegacySecrets(ctx);
 
-  // Earlier versions also kept MCP OAuth tokens in plaintext extension storage.
-  // Move them into Main-owned encrypted custody without blocking activation.
-  void migrateLegacyOAuthStorage(ctx.storage, ctx.oauth, ctx.logger)
-    .then((migrated) => {
-      if (migrated > 0) ctx.logger.info(`Migrated ${migrated} MCP OAuth credentials into Finch secure storage`);
-    })
-    .catch(() => { /* Logged per key; the plaintext copy stays and retries next activation. */ });
+  // 先完成 OAuth 加密托管迁移，再开放工具与能力，避免连接或退出登录与迁移竞争。
+  // 成功后沿用现有明文清理策略；任一步失败都停止激活，保留未迁移源供重试。
+  const migrationSources = (ctx as finch.MiniToolContext & InternalMcpMigrationContext)
+    .capabilityMigration?.sources('mcp.client') ?? [];
+  const migrationStartedAt = Date.now();
+  let migrated = 0;
+  try {
+    // 低优先级历史身份先执行，当前身份最后执行，保持已有覆盖顺序。
+    for (const source of [...migrationSources].reverse()) {
+      migrated += await migrateLegacyOAuthStorageFile(source.storagePath, ctx.oauth, ctx.logger);
+    }
+    migrated += await migrateLegacyOAuthStorage(ctx.storage, ctx.oauth, ctx.logger);
+    ctx.logger.info('mcp.oauth.migration.completed', {
+      migratedCount: migrated,
+      durationMs: Date.now() - migrationStartedAt,
+    });
+  } catch {
+    ctx.logger.error('mcp.oauth.migration.failed', {
+      migratedCount: migrated,
+      durationMs: Date.now() - migrationStartedAt,
+    });
+    throw new Error('MCP OAuth migration failed; activation stopped for retry');
+  }
 
   // Load server configs and register them.
   // Connections are established lazily the first time a server is actually used
@@ -1511,6 +1533,34 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         await connectIfNeeded(server, ctx.logger);
         const client = clients.get(server)!;
         return client.callTool(name, args ?? {});
+      },
+      async listResources(server: string): Promise<McpResource[]> {
+        refreshServerConfigs(ctx);
+        await connectIfNeeded(server, ctx.logger);
+        const client = clients.get(server)!;
+        if (!client.capabilities.resources) throw new Error(`MCP server "${server}" does not expose resources`);
+        return client.listResources();
+      },
+      async readResource(server: string, uri: string): Promise<McpResourceResult> {
+        refreshServerConfigs(ctx);
+        await connectIfNeeded(server, ctx.logger);
+        const client = clients.get(server)!;
+        if (!client.capabilities.resources) throw new Error(`MCP server "${server}" does not expose resources`);
+        return client.readResource(uri);
+      },
+      async listPrompts(server: string): Promise<McpPrompt[]> {
+        refreshServerConfigs(ctx);
+        await connectIfNeeded(server, ctx.logger);
+        const client = clients.get(server)!;
+        if (!client.capabilities.prompts) throw new Error(`MCP server "${server}" does not expose prompts`);
+        return client.listPrompts();
+      },
+      async getPrompt(server: string, name: string, args: Record<string, string> = {}): Promise<McpPromptResult> {
+        refreshServerConfigs(ctx);
+        await connectIfNeeded(server, ctx.logger);
+        const client = clients.get(server)!;
+        if (!client.capabilities.prompts) throw new Error(`MCP server "${server}" does not expose prompts`);
+        return client.getPrompt(name, args);
       },
       async connectServer(server: string): Promise<{ ok: boolean }> {
         const result = await connectMcpServerOAuth({ name: server });

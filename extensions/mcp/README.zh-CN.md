@@ -178,6 +178,10 @@ interface McpClientCapability {
   listServers(): Promise<string[]>;
   getServerStatuses?(): Promise<Array<{ name: string; status: string; toolCount: number; ownerExtensionId?: string; qualifiedName?: string }>>;
   listTools(server: string): Promise<Array<{ name: string; title?: string; description?: string; inputSchema?: Record<string, unknown> }>>;
+  listResources(server: string): Promise<Array<{ uri: string; name?: string; title?: string; description?: string; mimeType?: string }>>;
+  readResource(server: string, uri: string): Promise<{ contents: Array<{ uri: string; mimeType?: string; text?: string; blob?: string }> }>;
+  listPrompts(server: string): Promise<Array<{ name: string; title?: string; description?: string; arguments?: Array<{ name: string; description?: string; required?: boolean }> }>>;
+  getPrompt(server: string, name: string, args?: Record<string, string>): Promise<{ description?: string; messages: Array<Record<string, unknown>> }>;
   registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
   unregisterServer(name: string): Promise<{ ok: boolean }>;
 }

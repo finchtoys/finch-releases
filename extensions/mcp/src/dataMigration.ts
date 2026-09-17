@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path';
 import { normalizeMcpServerAlias } from './serverOwnership.js';
 
-export const MCP_DATA_MIGRATION_VERSION = 1;
+export const MCP_DATA_MIGRATION_VERSION = 2;
 
 type ServerConfig = Record<string, unknown> & {
   name: string;
@@ -131,12 +131,30 @@ export function mergeMcpServerSources(
   return { servers: merged, conflicts };
 }
 
-function markerCompleted(dataPath: string): boolean {
+interface MigrationMarker {
+  version?: number;
+  completed?: boolean;
+  sources?: string[];
+}
+
+function readMarker(dataPath: string): MigrationMarker | undefined {
   try {
-    const marker = JSON.parse(readFileSync(join(dataPath, 'migration.json'), 'utf8')) as { version?: number; completed?: boolean };
-    return marker.version === MCP_DATA_MIGRATION_VERSION && marker.completed === true;
+    return JSON.parse(readFileSync(join(dataPath, 'migration.json'), 'utf8')) as MigrationMarker;
   } catch {
-    return false;
+    return undefined;
+  }
+}
+
+function markerCompleted(marker: MigrationMarker | undefined): boolean {
+  return marker?.version === MCP_DATA_MIGRATION_VERSION && marker.completed === true;
+}
+
+function readConflicts(dataPath: string): MigrationConflict[] {
+  try {
+    const parsed = JSON.parse(readFileSync(join(dataPath, 'migration-conflicts.json'), 'utf8')) as { conflicts?: unknown };
+    return Array.isArray(parsed.conflicts) ? parsed.conflicts as MigrationConflict[] : [];
+  } catch {
+    return [];
   }
 }
 
@@ -160,7 +178,8 @@ async function runMcpDataMigration(ctx: finch.MiniToolContext): Promise<McpMigra
   const internal = ctx as finch.MiniToolContext & InternalMcpContext;
   const dataPath = internal.capabilityStoragePaths?.['mcp.client'];
   if (!dataPath) return { state: 'failed', error: 'Stable MCP storage is unavailable' };
-  if (markerCompleted(dataPath)) {
+  const previousMarker = readMarker(dataPath);
+  if (markerCompleted(previousMarker)) {
     const conflicts = existsSync(join(dataPath, 'migration-conflicts.json'))
       ? (JSON.parse(readFileSync(join(dataPath, 'migration-conflicts.json'), 'utf8')) as { conflicts?: unknown[] }).conflicts?.length ?? 0
       : 0;
@@ -170,11 +189,29 @@ async function runMcpDataMigration(ctx: finch.MiniToolContext): Promise<McpMigra
   const migration = internal.capabilityMigration;
   if (!migration) return { state: 'failed', error: 'MCP migration access is unavailable' };
   const historical = migration.sources('mcp.client');
+  const stableServers = readServers(dataPath);
+  const upgradingCompletedV1 = previousMarker?.version === 1 && previousMarker.completed === true;
+  const stableNames = new Set(stableServers.map((server) => normalizedName(server.name)));
+  const failedNames = new Set(stableServers
+    .filter((server) => server.credentialMigrationFailed === true)
+    .map((server) => normalizedName(server.name)));
+  const retainedStable = upgradingCompletedV1
+    ? stableServers.filter((server) => !failedNames.has(normalizedName(server.name)))
+    : stableServers;
   const sources = [
-    { id: 'stable', servers: readServers(dataPath) },
-    ...historical.map((source) => ({ id: source.id, servers: readServers(source.storagePath) })),
+    { id: 'stable', servers: retainedStable },
+    ...historical.map((source) => ({
+      id: source.id,
+      servers: readServers(source.storagePath).filter((server) => (
+        !upgradingCompletedV1
+        || failedNames.has(normalizedName(server.name))
+        || !stableNames.has(normalizedName(server.name))
+      )),
+    })),
   ];
   const result = mergeMcpServerSources(sources);
+  const priorConflicts = upgradingCompletedV1 ? readConflicts(dataPath) : [];
+  const allConflicts = [...priorConflicts, ...result.conflicts];
 
   try {
     const prepared: ServerConfig[] = [];
@@ -211,19 +248,20 @@ async function runMcpDataMigration(ctx: finch.MiniToolContext): Promise<McpMigra
     rmSync(tmpPath, { recursive: true, force: true });
     mkdirSync(tmpPath, { recursive: true, mode: 0o700 });
     atomicWrite(tmpPath, 'servers.json', { servers: prepared });
-    if (result.conflicts.length) atomicWrite(tmpPath, 'migration-conflicts.json', { conflicts: result.conflicts });
+    if (allConflicts.length) atomicWrite(tmpPath, 'migration-conflicts.json', { conflicts: allConflicts });
     mkdirSync(dataPath, { recursive: true, mode: 0o700 });
     renameSync(join(tmpPath, 'servers.json'), join(dataPath, 'servers.json'));
-    if (result.conflicts.length) renameSync(join(tmpPath, 'migration-conflicts.json'), join(dataPath, 'migration-conflicts.json'));
+    if (allConflicts.length) renameSync(join(tmpPath, 'migration-conflicts.json'), join(dataPath, 'migration-conflicts.json'));
+    else rmSync(join(dataPath, 'migration-conflicts.json'), { force: true });
     rmSync(tmpPath, { recursive: true, force: true });
     atomicWrite(dataPath, 'migration.json', {
       version: MCP_DATA_MIGRATION_VERSION,
       completed: true,
       completedAt: new Date().toISOString(),
       sources: historical.map((source) => source.id),
-      conflictCount: result.conflicts.length,
+      conflictCount: allConflicts.length,
     });
-    return { state: result.conflicts.length ? 'conflict' : 'completed', conflictCount: result.conflicts.length };
+    return { state: allConflicts.length ? 'conflict' : 'completed', conflictCount: allConflicts.length };
   } catch {
     return { state: 'failed', error: 'MCP data migration failed; source data was preserved' };
   }

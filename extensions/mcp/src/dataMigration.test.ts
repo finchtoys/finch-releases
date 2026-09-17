@@ -86,7 +86,7 @@ describe('mergeMcpServerSources', () => {
         'mcp.oauth.notion': { access_token: 'oauth-secret' },
         'mcp.oauth.notion.verifier': 'ephemeral',
       });
-      expect(JSON.parse(readFileSync(join(stable, 'migration.json'), 'utf8'))).toMatchObject({ completed: true, version: 1 });
+      expect(JSON.parse(readFileSync(join(stable, 'migration.json'), 'utf8'))).toMatchObject({ completed: true, version: 2 });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -135,6 +135,61 @@ describe('迁移失败保护', () => {
     ]);
     expect(result.servers).toHaveLength(2);
     expect(result.servers[1]).toMatchObject({ enabled: false });
+  });
+
+  it('v1 完成标记会触发保守重合并且不复制已有服务', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'finch-mcp-v2-'));
+    const legacy = join(root, 'legacy');
+    const stable = join(root, 'stable');
+    mkdirSync(legacy);
+    mkdirSync(stable);
+    writeFileSync(join(legacy, 'servers.json'), JSON.stringify({
+      servers: [{ name: 'existing', url: 'https://legacy.example.test' }, { name: 'new', command: 'node' }],
+    }));
+    writeFileSync(join(stable, 'servers.json'), JSON.stringify({
+      servers: [{ name: 'existing', url: 'https://stable.example.test' }],
+    }));
+    writeFileSync(join(stable, 'migration.json'), JSON.stringify({ version: 1, completed: true }));
+    try {
+      const result = await migrateMcpData({
+        capabilityStoragePaths: { 'mcp.client': stable },
+        capabilityMigration: { sources: () => [{ id: 'legacy', storagePath: legacy }], readSecret: vi.fn() },
+        secrets: { set: vi.fn() },
+      } as never);
+      expect(result.state).toBe('completed');
+      const saved = JSON.parse(readFileSync(join(stable, 'servers.json'), 'utf8')).servers;
+      expect(saved.map((server: { name: string }) => server.name)).toEqual(['existing', 'new']);
+      expect(saved[0].url).toBe('https://stable.example.test');
+      expect(JSON.parse(readFileSync(join(stable, 'migration.json'), 'utf8')).version).toBe(2);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('v1 中失败的业务密钥会在 v2 重试', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'finch-mcp-retry-'));
+    const legacy = join(root, 'legacy');
+    const stable = join(root, 'stable');
+    mkdirSync(legacy);
+    mkdirSync(stable);
+    writeFileSync(join(legacy, 'servers.json'), JSON.stringify({
+      servers: [{ name: 'remote', url: 'https://example.test', secretRefs: { TOKEN: 'old.ref' } }],
+    }));
+    writeFileSync(join(stable, 'servers.json'), JSON.stringify({
+      servers: [{ name: 'remote', url: 'https://example.test', enabled: false, credentialMigrationFailed: true, secretRefs: {} }],
+    }));
+    writeFileSync(join(stable, 'migration.json'), JSON.stringify({ version: 1, completed: true }));
+    const set = vi.fn(async () => {});
+    try {
+      await migrateMcpData({
+        capabilityStoragePaths: { 'mcp.client': stable },
+        capabilityMigration: { sources: () => [{ id: 'legacy', storagePath: legacy }], readSecret: async () => 'secret' },
+        secrets: { set },
+      } as never);
+      expect(set).toHaveBeenCalledWith('mcp.remote.env.token', 'secret');
+      expect(JSON.parse(readFileSync(join(stable, 'servers.json'), 'utf8')).servers[0]).toMatchObject({
+        name: 'remote', secretRefs: { TOKEN: 'mcp.remote.env.token' },
+      });
+      expect(JSON.parse(readFileSync(join(stable, 'servers.json'), 'utf8')).servers[0].credentialMigrationFailed).toBeUndefined();
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   it('密钥读取失败时停用服务并移除无效的新目录引用，保留原文件', async () => {
