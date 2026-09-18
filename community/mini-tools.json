@@ -329,7 +329,7 @@
     "categories": [
       "creative"
     ],
-    "featured": true,
+    "featured": false,
     "npm": "finch-pjblog"
   },
   {
