@@ -123,8 +123,21 @@
     "featured": true
   },
   {
+    "id": "finch-chan",
+    "version": "0.2.5",
+    "name": "FinchChan",
+    "author": "PuterJam",
+    "description": "Send privacy-safe Finch activity states to a paired StackChan pet on your local network.",
+    "repo": "puterjam/finch-tools",
+    "npm": "finch-chan",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ]
+  },
+  {
     "id": "finch-delivery",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "name": "Artifacts",
     "author": "puterjam",
     "description": "Track and browse deliverables (Markdown, Word, PPT, PDF, Excel, web pages, images) produced by the AI assistant across all sessions.",
@@ -221,7 +234,7 @@
   },
   {
     "id": "markdown-editor",
-    "version": "0.2.12",
+    "version": "0.2.22",
     "name": "Writing",
     "author": "PuterJam",
     "description": "Edit Markdown and preview it as a WeChat Official Account article, with selection-based AI edits and AI-designed custom styles.",
@@ -259,6 +272,20 @@
     "version": "0.1.6",
     "extensionType": "official",
     "categories": [
+      "developer"
+    ]
+  },
+  {
+    "id": "multi-agent",
+    "version": "0.2.1",
+    "name": "Multi-Agent",
+    "author": "PuterJam",
+    "description": "Turn one goal into a team of sub-agents that run in parallel and hand off immutable artifacts.",
+    "repo": "puterjam/finch-tools",
+    "npm": "finch-multi-agent",
+    "extensionType": "community",
+    "categories": [
+      "productivity",
       "developer"
     ]
   },

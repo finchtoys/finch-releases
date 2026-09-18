@@ -45,6 +45,11 @@
     "description": "让 Finch 在独立的 Ego Lite 任务空间中浏览网页，你可以随时查看、接管或关闭 Agent 打开的页面。"
   },
   {
+    "id": "finch-chan",
+    "name": "FinchChan",
+    "description": "将 Finch 的隐私安全活动状态发送给本地网络中已配对的 StackChan 宠物。"
+  },
+  {
     "id": "finch-delivery",
     "name": "成果库",
     "description": "跟踪并浏览 AI 助手产出的交付物（Markdown、Word、PPT、PDF、Excel、网页、图片）。"
@@ -93,6 +98,11 @@
     "id": "mini-tool-demo",
     "name": "小工具演示",
     "description": "全功能演示扩展，覆盖 Finch 小工具的所有核心能力：表单、弹框、自定义图标、工具栏按钮、国际化。"
+  },
+  {
+    "id": "multi-agent",
+    "name": "多智能体",
+    "description": "将一个目标拆解为并行运行的子智能体团队，并通过不可变产物交接结果。"
   },
   {
     "id": "notion",
