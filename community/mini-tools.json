@@ -287,7 +287,8 @@
     "categories": [
       "productivity",
       "developer"
-    ]
+    ],
+    "featured": true
   },
   {
     "id": "notion",
