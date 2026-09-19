@@ -1,10 +1,5 @@
 [
   {
-    "id": "agent-team",
-    "name": "智能体团队",
-    "description": "通过事件驱动看板规划、分派和监督多模型智能体项目。"
-  },
-  {
     "id": "agently-mail",
     "name": "QQ Agent 邮箱",
     "description": "通过官方 CLI 和 MCP 工具连接 QQ Agent 邮箱。"

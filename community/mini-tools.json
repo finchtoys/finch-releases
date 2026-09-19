@@ -1,21 +1,5 @@
 [
   {
-    "id": "agent-team",
-    "version": "0.1.3",
-    "name": "Agent Team",
-    "author": "Finch Team",
-    "description": "Plan, dispatch, and supervise multi-model agent projects from an event-driven board.",
-    "repo": "finchtoys/finch-releases",
-    "npm": "finch-agent-team",
-    "extensionType": "official",
-    "installScope": "global",
-    "categories": [
-      "productivity",
-      "developer"
-    ],
-    "featured": true
-  },
-  {
     "id": "agently-mail",
     "version": "0.1.7",
     "name": "QQ Agent Mail",
