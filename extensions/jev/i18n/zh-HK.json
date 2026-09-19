@@ -1,0 +1,42 @@
+{
+  "name": "TypeSafe AI",
+  "description": "用 Jev（TypeSafe AI System One）做結構化評估：走 TypeSafe 官方 API，或走 OpenRouter。",
+  "systemPrompt": "當請求可以歸結為「對一段自然語言做判斷」——分類、路由、評分、是／否檢測、核驗或欄位抽取——而你要的是帶概率與置信度的答案而不是一段文字時，用 finch_jev_evaluate。把返回的答案、概率與置信度按原樣彙報，不要編造介面沒有返回的數值。",
+  "contributes": {
+    "settingsMenu": {
+      "tooltip": "Jev 的 API Key 與連線設定"
+    }
+  },
+  "tool": {
+    "title": "評估"
+  },
+  "form": {
+    "title": "連接 {provider}",
+    "description": "貼上你的 {provider} API Key。它會存到系統鑰匙圈，不會寫入日誌或工具輸出。",
+    "apiKeyLabel": "API Key",
+    "getKey": "去取得 Key",
+    "submit": "儲存",
+    "cancel": "取消"
+  },
+  "menu": {
+    "status": {
+      "configured": "已設定（{hint}）",
+      "missing": "未設定"
+    },
+    "setKey": "設定 {provider} API Key",
+    "updateKey": "更新 {provider} API Key",
+    "test": "測試 {provider} 連線",
+    "clearKey": "移除 {provider} API Key",
+    "switch": "切換 Provider"
+  },
+  "toast": {
+    "keySaved": "{provider} API Key 已儲存",
+    "keySavedBody": "現在可以直接做 Jev 評估了。",
+    "keyCleared": "{provider} API Key 已移除",
+    "testOk": "{provider} 連線正常",
+    "testOkBody": "目前帳號可用模型 {count} 個。",
+    "testOkKeyOnly": "{provider} 已接受該 API Key。",
+    "testFailed": "{provider} 連線失敗",
+    "providerSwitched": "已切換到 {provider}"
+  }
+}

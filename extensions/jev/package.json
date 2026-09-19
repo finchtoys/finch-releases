@@ -1,0 +1,44 @@
+{
+  "name": "finch-jev",
+  "version": "0.1.0",
+  "description": "Structured evaluation with Jev (TypeSafe AI System One) — via TypeSafe's own API or OpenRouter.",
+  "author": {
+    "name": "PuterJam"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/jev"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "keywords": [
+    "finch",
+    "mini-tool",
+    "typesafe",
+    "jev",
+    "evaluation",
+    "classification",
+    "decisions"
+  ],
+  "files": [
+    "dist/",
+    "i18n/",
+    "icon.png",
+    "finch.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "icon": "magick -background none -density 600 assets/typesafe-mark.svg -resize 300x300 -background '#111111' -alpha remove -alpha off -depth 8 -colorspace sRGB PNG24:icon.png",
+    "test": "node scripts/smoke.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "^0.3.14",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

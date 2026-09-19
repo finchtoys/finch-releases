@@ -1,0 +1,25 @@
+{
+  "manifestVersion": 1,
+  "minVersion": "1.6.0",
+  "name": "TypeSafe AI",
+  "description": "Structured evaluation with Jev (TypeSafe AI System One) — through TypeSafe's own API or OpenRouter.",
+  "main": "dist/index.js",
+  "activationEvents": ["onStartup"],
+  "toolMeta": {
+    "name": "TypeSafe"
+  },
+  "systemPrompt": "Use finch_jev_evaluate whenever a request reduces to a judgment over natural-language text — classification, routing, scoring, yes/no detection, verification or field extraction — and the answer should come back as calibrated probabilities and confidence instead of prose. Report the answers, probabilities and confidence exactly as returned; never invent values the API did not return.",
+  "contributes": {
+    "tools": true,
+    "settingsMenu": {
+      "icon": "sliders-horizontal",
+      "tooltip": "Jev API keys and connection settings"
+    }
+  },
+  "permissions": {
+    "network": true,
+    "secrets": ["apiKey", "openrouterApiKey"]
+  },
+  "miniToolType": "official",
+  "categories": ["ai", "developer"]
+}

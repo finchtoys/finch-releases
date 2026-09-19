@@ -1,0 +1,42 @@
+{
+  "name": "TypeSafe AI",
+  "description": "Structured evaluation with Jev (TypeSafe AI System One) — through TypeSafe's own API or OpenRouter.",
+  "systemPrompt": "Use finch_jev_evaluate whenever a request reduces to a judgment over natural-language text — classification, routing, scoring, yes/no detection, verification or field extraction — and the answer should come back as calibrated probabilities and confidence instead of prose. Report the answers, probabilities and confidence exactly as returned; never invent values the API did not return.",
+  "contributes": {
+    "settingsMenu": {
+      "tooltip": "Jev API keys and connection settings"
+    }
+  },
+  "tool": {
+    "title": "Evaluate"
+  },
+  "form": {
+    "title": "Connect {provider}",
+    "description": "Paste your {provider} API key. It is stored in the system keychain and never written to logs or tool output.",
+    "apiKeyLabel": "API Key",
+    "getKey": "Get a key",
+    "submit": "Save",
+    "cancel": "Cancel"
+  },
+  "menu": {
+    "status": {
+      "configured": "configured ({hint})",
+      "missing": "not configured"
+    },
+    "setKey": "Set {provider} API Key",
+    "updateKey": "Update {provider} API Key",
+    "test": "Test {provider} connection",
+    "clearKey": "Remove {provider} API Key",
+    "switch": "Switch provider"
+  },
+  "toast": {
+    "keySaved": "{provider} API key saved",
+    "keySavedBody": "Jev evaluation is ready to use.",
+    "keyCleared": "{provider} API key removed",
+    "testOk": "{provider} is reachable",
+    "testOkBody": "{count} model(s) available to this account.",
+    "testOkKeyOnly": "{provider} accepted the API key.",
+    "testFailed": "{provider} connection failed",
+    "providerSwitched": "Switched to {provider}"
+  }
+}
