@@ -246,6 +246,21 @@
     "repo": "npm:finch-glm-vision"
   },
   {
+    "id": "jev",
+    "version": "0.1.0",
+    "name": "TypeSafe AI",
+    "author": "Finch Team",
+    "description": "Evaluate text with Jev (TypeSafe AI System One): classification, routing, scoring, and yes/no judgments returned as typed answers with probabilities and confidence — via the TypeSafe API or OpenRouter.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "finch-jev",
+    "extensionType": "official",
+    "categories": [
+      "developer",
+      "research"
+    ],
+    "featured": true
+  },
+  {
     "id": "markdown-editor",
     "version": "0.2.22",
     "name": "Writing",

@@ -90,6 +90,11 @@
     "description": "基于智谱 GLM-4V 的图像理解——通用分析、OCR 文字提取、视觉描述与技术图表理解。"
   },
   {
+    "id": "jev",
+    "name": "TypeSafe AI",
+    "description": "用 Jev（TypeSafe AI System One）评估文本：分类、路由、打分、是/否判断都以带概率与置信度的结构化答案返回，可走 TypeSafe 官方 API 或 OpenRouter。"
+  },
+  {
     "id": "markdown-editor",
     "name": "写字",
     "description": "编辑 Markdown 并预览为微信公众号文章，支持选区 AI 修改与 AI 设计自定义排版。"
