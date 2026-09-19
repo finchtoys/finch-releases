@@ -1,19 +1,20 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "declaration": false,
     "outDir": "dist",
     "rootDir": "src",
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "finch": ["./node_modules/@finchtoys/minitool-api/finch.d.ts"]
     }
   },
-  "include": ["src"],
+  "include": ["src/backend/**/*.ts", "src/backend/**/*.d.ts", "src/shared/**/*.ts"],
   "exclude": ["src/**/*.test.ts"]
 }

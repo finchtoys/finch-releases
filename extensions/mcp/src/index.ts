@@ -16,9 +16,14 @@ import type * as finch from 'finch';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServerConfig, type McpPrompt, type McpPromptResult, type McpResource, type McpResourceResult, type McpServerConfig, type McpTool, type McpToolResult } from './client.js';
-import { authorizeMcpOAuth, clearMcpOAuth, createMcpOAuthProvider, type McpOAuthConfig } from './oauth.js';
+import { authorizeMcpOAuth, clearMcpOAuth, createMcpOAuthProvider, requiresMcpOAuthAuthorization, type McpOAuthConfig } from './oauth.js';
 import { createOAuthCustody, migrateLegacyOAuthStorage, migrateLegacyOAuthStorageFile } from './oauthCustody.js';
-import { migrateMcpData } from './dataMigration.js';
+import { mcpOAuthIconUrl } from './oauthIcon.js';
+import { migrateMcpData, type McpMigrationState } from './dataMigration.js';
+import { sameMcpServerConfiguration } from './serverConfigEquality.js';
+import { McpServerIconResolver, normalizeMcpServerIcons } from './serverIcons.js';
+import { normalizeMcpServerAlias, withoutContributedOwnership } from './serverOwnership.js';
+import { UNCONFIGURED_SERVER_STATUS, unconfiguredContributedServers } from './contributedPlaceholders.js';
 
 interface InternalMcpMigrationContext {
   capabilityMigration?: {
@@ -27,10 +32,20 @@ interface InternalMcpMigrationContext {
 }
 
 type ManagedMcpServerConfig = McpServerConfig & {
+  /** User-managed servers default to enabled when this field is absent. */
+  enabled?: boolean;
+  /** Non-secret metadata needed to reconstruct the dedicated auth editor. */
+  authConfig?: {
+    method: 'bearer' | 'basic' | 'apiKey';
+    username?: string;
+    placement?: 'header' | 'query';
+    keyName?: string;
+  };
   /** Maps environment variable names to extension-scoped encrypted secret keys. */
   secretRefs?: Record<string, string>;
   ownerExtensionId?: string;
   ownerExtensionName?: string;
+  description?: string;
   qualifiedName?: string;
   toolMeta?: {
     titles?: Record<string, string>;
@@ -95,7 +110,11 @@ interface ServersFile {
 }
 
 /** Connection state for each configured server. */
-export type ServerStatus = 'pending' | 'connecting' | 'connected' | 'failed' | 'reconnecting';
+export type ServerStatus = 'disabled' | 'pending' | 'connecting' | 'connected' | 'failed' | 'reconnecting';
+
+function isServerEnabled(config: ManagedMcpServerConfig | undefined): boolean {
+  return config?.enabled !== false;
+}
 
 /** All configured MCP servers (populated on activate, requires no connection). */
 const configs = new Map<string, ManagedMcpServerConfig>();
@@ -112,10 +131,15 @@ const runtimeServers = new Map<string, ManagedMcpServerConfig>();
 const clients = new Map<string, McpClient>();
 /** Cached tool lists for connected servers. */
 const serverTools = new Map<string, McpTool[]>();
+/** MCP 服务图标仅用于列表展示，不替换授权弹窗的受信任图标。 */
+const serverIcons = new Map<string, { endpoint: string; iconUrl: string }>();
+const serverIconResolver = new McpServerIconResolver();
+
 /** In-flight connection promises — prevents duplicate parallel connects. */
 const connecting = new Map<string, Promise<void>>();
 /** Current connection status for each configured server. */
 const serverStatus = new Map<string, ServerStatus>();
+
 /** Last user-visible connection error for each configured server. */
 const serverLastError = new Map<string, string>();
 /** Pending reconnect timers (stdio only, exponential backoff). */
@@ -130,6 +154,12 @@ const reconnectTimers = new Map<string, NodeJS.Timeout>();
 const registeredTools = new Map<string, Map<string, finch.Disposable>>();
 /** Active MiniToolContext — stored so module-level helpers can register tools dynamically. */
 let activeCtx: finch.MiniToolContext | null = null;
+let migrationState: McpMigrationState = { state: 'idle' };
+
+function mcpStoragePath(ctx: finch.MiniToolContext): string {
+  return (ctx as finch.MiniToolContext & { capabilityStoragePaths?: Record<string, string> })
+    .capabilityStoragePaths?.['mcp.client'] ?? ctx.storagePath;
+}
 
 // Reconnection constants (stdio only — httpStream heals naturally per-request).
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -143,7 +173,7 @@ const LIST_TOOLS_TIMEOUT_MS = 20_000;
  * Used to derive `mcp__<server>__<tool>` names from arbitrary server/tool names.
  */
 function sanitizeSegment(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  return normalizeMcpServerAlias(s);
 }
 
 function mcpModelToolName(serverName: string, toolName: string): string {
@@ -331,14 +361,15 @@ function disconnectServer(name: string): void {
 }
 
 /**
- * Soft-apply an add/upsert: update in-memory config and eagerly start connecting.
- * Called by MCP action=add/edit after writing servers.json,
- * so the new server is available immediately without a host-process restart.
+ * Soft-apply an add/upsert and optionally start connecting immediately.
+ * The Toolcase save flow disables eager connection so it can run OAuth first
+ * and await one definitive connection result before reporting success.
  */
 function applyServerUpsert(
   oldName: string | null,
   server: ManagedMcpServerConfig,
   logger: finch.Logger,
+  eagerConnect = true,
 ): void {
   // If renaming, tear down the old connection first.
   if (oldName && oldName !== server.name) {
@@ -348,10 +379,11 @@ function applyServerUpsert(
     // Same name but config changed — reconnect.
     disconnectServer(oldName);
   }
-  configs.set(server.name, mergeServerWithContribution(server, configs.get(server.name)));
-  serverStatus.set(server.name, 'pending');
+  const userServer = withoutContributedOwnership(server);
+  configs.set(server.name, userServer);
+  serverStatus.set(server.name, isServerEnabled(userServer) ? 'pending' : 'disabled');
   serverLastError.delete(server.name);
-  void connectIfNeeded(server.name, logger);
+  if (eagerConnect && isServerEnabled(userServer)) void connectIfNeeded(server.name, logger);
 }
 
 /**
@@ -394,6 +426,47 @@ async function resolveServerSecrets(config: ManagedMcpServerConfig, ctx: finch.M
   return { ...config, env: { ...config.env, ...secretEnv } };
 }
 
+/**
+ * Consent-dialog icon for an OAuth authorization.
+ *
+ * A contributing Mini Tool (e.g. the Notion client) declares its own logo in
+ * `contributes.mcpServers[].oauth.providerIcon`. That declaration is the only
+ * logo this bridge may display on the tool's behalf — the main process re-checks
+ * the ownership before the dialog renders. The bundled PNG is only a fallback
+ * for servers that declare nothing (user-defined ones), and a remote logo
+ * supplied by the MCP service itself is never used.
+ */
+function oauthConsentProviderIcon(oauth: McpOAuthConfig, extensionId: string): string {
+  const declared = oauth.providerIcon?.trim();
+  if (declared?.startsWith('finch-ext-icon://')) return declared;
+  return mcpOAuthIconUrl(extensionId);
+}
+
+async function authorizeConfiguredMcpOAuth(
+  name: string,
+  config: McpHttpStreamServerConfig,
+  ctx: finch.MiniToolContext,
+  forceAuthorization: boolean,
+): Promise<void> {
+  const oauth = config.oauth;
+  if (!oauth) throw new Error(`MCP server "${name}" is not configured for OAuth`);
+  const mode = forceAuthorization ? 'reauthorize' : 'connect';
+  ctx.logger.info('MCP OAuth requested', { server: name, mode });
+  try {
+    await authorizeMcpOAuth(
+      config.url,
+      { ...oauth, providerIcon: oauthConsentProviderIcon(oauth, ctx.minitool.id) },
+      createOAuthCustody(ctx.oauth, oauth),
+      ctx.oauth,
+      forceAuthorization,
+    );
+    ctx.logger.info('MCP OAuth completed', { server: name, mode });
+  } catch (error) {
+    ctx.logger.warn('MCP OAuth failed', { server: name, mode, errorName: error instanceof Error ? error.name : typeof error });
+    throw error;
+  }
+}
+
 /** Migrate legacy plaintext env values before the config is rewritten without them. */
 async function sealServerSecrets(ctx: finch.MiniToolContext, server: ManagedMcpServerConfig): Promise<ManagedMcpServerConfig> {
   const env = server.env ?? {};
@@ -418,7 +491,7 @@ async function removeServerSecrets(
 }
 
 async function migrateLegacySecrets(ctx: finch.MiniToolContext): Promise<void> {
-  const servers = readUserServers(ctx.storagePath);
+  const servers = readUserServers(mcpStoragePath(ctx));
   let changed = false;
   const migrated: ManagedMcpServerConfig[] = [];
   for (const server of servers) {
@@ -440,8 +513,8 @@ async function migrateLegacySecrets(ctx: finch.MiniToolContext): Promise<void> {
     }
   }
   if (changed) {
-    mkdirSync(ctx.storagePath, { recursive: true });
-    writeFileSync(join(ctx.storagePath, 'servers.json'), JSON.stringify({ servers: migrated }, null, 2), 'utf-8');
+    mkdirSync(mcpStoragePath(ctx), { recursive: true });
+    writeFileSync(join(mcpStoragePath(ctx), 'servers.json'), JSON.stringify({ servers: migrated }, null, 2), 'utf-8');
   }
 }
 
@@ -450,30 +523,171 @@ async function migrateLegacySecrets(ctx: finch.MiniToolContext): Promise<void> {
  * referencing `${MCP_AUTH_TOKEN}`) and whether a token is already stored. Used
  * to prefill the edit form. Defaults to the standard `Authorization` header.
  */
-function describeHttpAuth(config: McpHttpStreamServerConfig & { secretRefs?: Record<string, string> }): { headerName: string; hasToken: boolean } {
+function describeHttpAuth(config: ManagedMcpServerConfig & McpHttpStreamServerConfig): {
+  method: 'none' | 'oauth' | 'bearer' | 'basic' | 'apiKey';
+  headerName: string;
+  queryParam: string;
+  placement: 'header' | 'query';
+  username: string;
+  hasToken: boolean;
+  primaryHeaderName?: string;
+} {
   const hasToken = Boolean(config.env?.[AUTH_TOKEN_ENV] ?? config.secretRefs?.[AUTH_TOKEN_ENV]);
-  const entry = Object.entries(config.headers ?? {}).find(([, value]) => value.includes(`\${${AUTH_TOKEN_ENV}}`));
-  return { headerName: entry?.[0] ?? 'Authorization', hasToken };
+  if (config.oauth) {
+    return { method: 'oauth', headerName: 'X-Api-Key', queryParam: 'apiKey', placement: 'header', username: '', hasToken: false, primaryHeaderName: 'Authorization' };
+  }
+  if (config.authConfig) {
+    const placement = config.authConfig.placement ?? 'header';
+    const keyName = config.authConfig.keyName ?? (placement === 'query' ? 'apiKey' : 'X-Api-Key');
+    return {
+      method: config.authConfig.method,
+      headerName: placement === 'header' ? keyName : 'X-Api-Key',
+      queryParam: placement === 'query' ? keyName : 'apiKey',
+      placement,
+      username: config.authConfig.username ?? '',
+      hasToken,
+      primaryHeaderName: config.authConfig.method === 'apiKey'
+        ? placement === 'header' ? keyName : undefined
+        : 'Authorization',
+    };
+  }
+  const legacy = Object.entries(config.headers ?? {}).find(([, value]) => value.includes(`\${${AUTH_TOKEN_ENV}}`));
+  if (!legacy || !hasToken) {
+    return { method: 'none', headerName: 'X-Api-Key', queryParam: 'apiKey', placement: 'header', username: '', hasToken: false };
+  }
+  const method = legacy[0].toLowerCase() === 'authorization' ? 'bearer' : 'apiKey';
+  return {
+    method,
+    headerName: method === 'apiKey' ? legacy[0] : 'X-Api-Key',
+    queryParam: 'apiKey',
+    placement: 'header',
+    username: '',
+    hasToken,
+    primaryHeaderName: legacy[0],
+  };
 }
 
-/**
- * Build the `{ headers, env }` pair for an httpStream server from a single token
- * plus an optional header name. The secret is stored in `env[AUTH_TOKEN_ENV]`
- * and the header carries the `${MCP_AUTH_TOKEN}` placeholder, expanded at connect
- * time. For the standard `Authorization` header we emit the canonical
- * `Bearer <token>` scheme; any other header carries the raw token value.
- * When `token` is blank an existing stored token is preserved (edit case).
- */
+function userServerDraft(config: ManagedMcpServerConfig): Record<string, unknown> {
+  if (isHttpConfig(config)) {
+    const auth = describeHttpAuth(config);
+    const primary = auth.primaryHeaderName?.toLowerCase();
+    const headers = Object.keys(config.headers ?? {})
+      .filter((name) => name.toLowerCase() !== primary)
+      .map((name) => ({ name, hasValue: true }));
+    return {
+      name: config.name,
+      transport: 'httpStream',
+      url: config.url,
+      authMethod: auth.method,
+      authHeader: auth.headerName,
+      authQueryParam: auth.queryParam,
+      authApiKeyPlacement: auth.placement,
+      authUsername: auth.username,
+      hasAuthToken: auth.hasToken,
+      headers,
+    };
+  }
+  return {
+    name: config.name,
+    transport: 'stdio',
+    command: config.command,
+    args: (config.args ?? []).join(' '),
+    cwd: config.cwd ?? '',
+    envKeys: [...new Set([...Object.keys(config.env ?? {}), ...Object.keys(config.secretRefs ?? {})])],
+  };
+}
+
+/** Build structured HTTP authentication while keeping every credential in env
+ * until sealServerSecrets moves it into extension-scoped credential custody. */
+type BuiltHttpFields = Pick<ManagedMcpServerConfig, 'authConfig'> & {
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  env?: Record<string, string>;
+};
+
 function buildHttpAuth(
-  headerName: string,
-  token: string,
+  method: string,
+  input: Record<string, unknown>,
   existingToken: string | undefined,
+): BuiltHttpFields {
+  const submitted = String(input.authToken ?? '');
+  let secret = submitted || existingToken || '';
+  if (method === 'none' || method === 'oauth') return {};
+  if (!secret) throw new Error('Authentication credentials are required.');
+  if (method === 'basic') {
+    const username = String(input.authUsername ?? '').trim();
+    if (!username || username.includes(':')) throw new Error('Basic authentication requires a username without a colon.');
+    if (submitted) {
+      secret = Buffer.from(`${username}:${submitted}`, 'utf8').toString('base64');
+    } else if (existingToken) {
+      const decoded = Buffer.from(existingToken, 'base64').toString('utf8');
+      const password = decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : '';
+      secret = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
+    }
+    return {
+      authConfig: { method: 'basic', username },
+      headers: { Authorization: `Basic \${${AUTH_TOKEN_ENV}}` },
+      env: { [AUTH_TOKEN_ENV]: secret },
+    };
+  }
+  if (method === 'apiKey') {
+    const placement = input.authApiKeyPlacement === 'query' ? 'query' : 'header';
+    const keyName = String(placement === 'query' ? input.authQueryParam : input.authHeader).trim();
+    if (!keyName) throw new Error('API key name is required.');
+    return {
+      authConfig: { method: 'apiKey', placement, keyName },
+      ...(placement === 'query'
+        ? { queryParams: { [keyName]: `\${${AUTH_TOKEN_ENV}}` } }
+        : { headers: { [keyName]: `\${${AUTH_TOKEN_ENV}}` } }),
+      env: { [AUTH_TOKEN_ENV]: secret },
+    };
+  }
+  return {
+    authConfig: { method: 'bearer' },
+    headers: { Authorization: `Bearer \${${AUTH_TOKEN_ENV}}` },
+    env: { [AUTH_TOKEN_ENV]: secret },
+  };
+}
+
+function resolvedTemplateValue(template: string, env: Record<string, string> | undefined): string {
+  return template.replace(/\$\{([A-Z0-9_]+)\}/gi, (_, key: string) => env?.[key] ?? '');
+}
+
+function hasInlineCredential(url: string): boolean {
+  const parsed = new URL(url);
+  return [...parsed.searchParams].some(([name, value]) => value && /api[-_]?key|access[-_]?token|token|secret/i.test(name));
+}
+
+function buildAdditionalHttpHeaders(
+  input: Record<string, unknown>,
+  existing: (ManagedMcpServerConfig & McpHttpStreamServerConfig) | undefined,
+  reservedHeaderName?: string,
 ): { headers?: Record<string, string>; env?: Record<string, string> } {
-  const secret = token || existingToken || '';
-  if (!secret) return {};
-  const name = (headerName || 'Authorization').trim() || 'Authorization';
-  const value = name.toLowerCase() === 'authorization' ? `Bearer \${${AUTH_TOKEN_ENV}}` : `\${${AUTH_TOKEN_ENV}}`;
-  return { headers: { [name]: value }, env: { [AUTH_TOKEN_ENV]: secret } };
+  if (!Array.isArray(input.headers)) return {};
+  const headers: Record<string, string> = {};
+  const env: Record<string, string> = {};
+  const seen = new Set<string>();
+  for (const [index, raw] of input.headers.entries()) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as { name?: unknown; value?: unknown };
+    const name = String(row.name ?? '').trim();
+    if (!name) continue;
+    const normalized = name.toLowerCase();
+    if (seen.has(normalized) || normalized === reservedHeaderName?.toLowerCase()) {
+      throw new Error(`Duplicate HTTP header: ${name}`);
+    }
+    seen.add(normalized);
+    const existingEntry = Object.entries(existing?.headers ?? {}).find(([key]) => key.toLowerCase() === normalized);
+    const value = String(row.value ?? '') || (existingEntry ? resolvedTemplateValue(existingEntry[1], existing?.env) : '');
+    if (!value) throw new Error(`HTTP header "${name}" requires a value.`);
+    const envKey = `MCP_HTTP_HEADER_${index + 1}`;
+    headers[name] = `\${${envKey}}`;
+    env[envKey] = value;
+  }
+  return {
+    ...(Object.keys(headers).length ? { headers } : {}),
+    ...(Object.keys(env).length ? { env } : {}),
+  };
 }
 
 /** Read all user-defined servers from servers.json (unfiltered). */
@@ -482,7 +696,9 @@ function readUserServers(storagePath: string): ManagedMcpServerConfig[] {
   if (!existsSync(file)) return [];
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf-8')) as ServersFile;
-    return (parsed.servers ?? []).filter((s): s is ManagedMcpServerConfig => Boolean(s && typeof s.name === 'string'));
+    return (parsed.servers ?? [])
+      .filter((s): s is ManagedMcpServerConfig => Boolean(s && typeof s.name === 'string'))
+      .map(withoutContributedOwnership);
   } catch {
     return [];
   }
@@ -533,7 +749,7 @@ function readServersFile(file: string, logger: finch.Logger): ManagedMcpServerCo
   if (!existsSync(file)) return [];
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf-8')) as ServersFile;
-    return (parsed.servers ?? []).filter(isServerConfig);
+    return (parsed.servers ?? []).filter(isServerConfig).map(withoutContributedOwnership);
   } catch (err) {
     logger.error(`failed to read ${file}`, err);
     return [];
@@ -564,28 +780,62 @@ function readContributedServers(ctx: finch.MiniToolContext): ContributedServerMe
   });
 }
 
-/** Preserve ownership metadata when a user config overrides an extension-contributed server.
- * This lets users provide local secrets/transport details while the UI still attributes
- * dependency-only MCP services to the extension that declared them, not the MCP bridge.
- *
- * Presentation metadata (titles + ToolCallCard display templates) is owned by the
- * extension, so the contributed values take priority over any stale copy the user's
- * servers.json picked up from an earlier setup run. This way upgrading the extension
- * updates tool titles/inline summaries immediately without re-running setup. */
-function mergeServerWithContribution(
-  server: ManagedMcpServerConfig,
-  contributed: ContributedServerMeta | undefined,
-): ManagedMcpServerConfig {
-  if (!contributed) return server;
-  if (server.ownerExtensionId) return withContributedProviderIcon(server, contributed);
-  return withContributedProviderIcon({
-    ...server,
-    ownerExtensionId: contributed.ownerExtensionId,
-    ownerExtensionName: contributed.ownerExtensionName,
-    qualifiedName: contributed.qualifiedName,
-    toolMeta: contributed.toolMeta ?? server.toolMeta,
-    toolDisplay: contributed.toolDisplay ?? server.toolDisplay,
-  }, contributed);
+/** One row of the Toolcase / extension-detail service list exposed through `getServerStatuses`. */
+type McpServerStatusRow = {
+  name: string;
+  status: string;
+  enabled: boolean;
+  userConfigured: boolean;
+  builtIn: boolean;
+  transport?: 'httpStream' | 'stdio';
+  endpoint?: string;
+  description?: string;
+  iconUrl?: string;
+  error?: string;
+  toolCount: number;
+  tools: Array<McpTool & { title?: string }>;
+  draft?: Record<string, unknown>;
+  ownerExtensionId?: string;
+  qualifiedName?: string;
+};
+
+type ServerAliasConflict =
+  | { source: 'user' }
+  | { source: 'extension'; ownerName: string };
+
+/**
+ * Finch uses the normalized server alias in model-facing tool names. Two aliases
+ * that normalize to the same segment would make tool routing ambiguous, so new
+ * user configs must not collide with either user-managed or Mini Tool-provided
+ * servers. Existing legacy collisions may still edit without renaming.
+ */
+function findServerAliasConflict(
+  ctx: finch.MiniToolContext,
+  name: string,
+  originalName = '',
+): ServerAliasConflict | undefined {
+  const normalizedName = sanitizeSegment(name);
+  if (originalName && sanitizeSegment(originalName) === normalizedName) return undefined;
+
+  const userConflict = readUserServers(mcpStoragePath(ctx))
+    .some((server) => sanitizeSegment(server.name) === normalizedName);
+  if (userConflict) return { source: 'user' };
+
+  const contribution = readContributedServers(ctx)
+    .find((server) => sanitizeSegment(server.name) === normalizedName);
+  if (contribution) {
+    return {
+      source: 'extension',
+      ownerName: contribution.ownerExtensionName ?? contribution.ownerExtensionId ?? contribution.name,
+    };
+  }
+
+  const runtime = [...runtimeServers.values()].find(
+    (server) => server.ownerExtensionId && sanitizeSegment(server.name) === normalizedName,
+  );
+  return runtime
+    ? { source: 'extension', ownerName: runtime.ownerExtensionName ?? runtime.ownerExtensionId ?? runtime.name }
+    : undefined;
 }
 
 /** Validate and coerce an untrusted runtime server config received over the
@@ -641,6 +891,7 @@ function mergeRuntimeWithContribution(
     ...runtime,
     ownerExtensionId: runtime.ownerExtensionId ?? contributed.ownerExtensionId,
     ownerExtensionName: runtime.ownerExtensionName ?? contributed.ownerExtensionName,
+    description: contributed.description ?? runtime.description,
     qualifiedName: contributed.qualifiedName ?? runtime.qualifiedName,
     toolMeta: contributed.toolMeta ?? runtime.toolMeta,
     toolDisplay: contributed.toolDisplay ?? runtime.toolDisplay,
@@ -650,12 +901,12 @@ function mergeRuntimeWithContribution(
 /**
  * Merge the three server sources. Precedence low→high: static contributions
  * (presentation only) < runtime registrations (resolved transport, lifecycle
- * bound) < user file config (explicit user edits win). Extension ownership and
- * presentation are preserved across tiers so dependency-only MCP services stay
- * attributed to the contributing extension.
+ * bound) < user file config (explicit user edits win). Ownership is source-based:
+ * a user server that shares a name with a contribution remains user-owned instead
+ * of inheriting the contribution's identity or presentation metadata.
  */
 function loadServerConfigs(ctx: finch.MiniToolContext): ManagedMcpServerConfig[] {
-  const storagePath = ctx.storagePath;
+  const storagePath = mcpStoragePath(ctx);
   const fileServers = readServersFile(join(storagePath, 'servers.json'), ctx.logger);
   const contributed = readContributedServers(ctx);
   // Match contributions to runtime/file servers by a NORMALIZED key, not the raw
@@ -688,11 +939,15 @@ function loadServerConfigs(ctx: finch.MiniToolContext): ManagedMcpServerConfig[]
         ...(meta?.toolMeta ? { toolMeta: meta.toolMeta } : {}),
         ...(meta?.toolDisplay ? { toolDisplay: meta.toolDisplay } : {}),
       };
-      byName.set(entry.name, withContributedProviderIcon(entry, meta));
+      byName.set(sanitizeSegment(entry.name), withContributedProviderIcon(entry, meta));
     }
   }
-  for (const s of runtimeServers.values()) byName.set(s.name, mergeRuntimeWithContribution(s, contributedByName.get(sanitizeSegment(s.name))));
-  for (const s of fileServers) byName.set(s.name, mergeServerWithContribution(s, contributedByName.get(sanitizeSegment(s.name))));
+  for (const s of runtimeServers.values()) {
+    byName.set(sanitizeSegment(s.name), mergeRuntimeWithContribution(s, contributedByName.get(sanitizeSegment(s.name))));
+  }
+  for (const s of fileServers) {
+    byName.set(sanitizeSegment(s.name), s);
+  }
   return [...byName.values()];
 }
 
@@ -708,13 +963,13 @@ function refreshServerConfigs(ctx: finch.MiniToolContext): void {
     const prev = configs.get(name);
     if (!prev) {
       configs.set(name, config);
-      serverStatus.set(name, 'pending');
+      serverStatus.set(name, isServerEnabled(config) ? 'pending' : 'disabled');
       continue;
     }
     if (JSON.stringify(prev) !== JSON.stringify(config)) {
       disconnectServer(name);
       configs.set(name, config);
-      serverStatus.set(name, 'pending');
+      serverStatus.set(name, isServerEnabled(config) ? 'pending' : 'disabled');
     }
   }
 }
@@ -725,7 +980,7 @@ function refreshServerConfigs(ctx: finch.MiniToolContext): void {
  */
 function scheduleReconnect(name: string, attempt: number, logger: finch.Logger): void {
   const config = configs.get(name);
-  if (!config || isHttpConfig(config)) return; // httpStream heals naturally per-request, no reconnect needed
+  if (!config || !isServerEnabled(config) || isHttpConfig(config)) return; // httpStream heals naturally per-request, no reconnect needed
 
   if (attempt > MAX_RECONNECT_ATTEMPTS) {
     serverStatus.set(name, 'failed');
@@ -766,6 +1021,7 @@ async function connectIfNeeded(name: string, logger: finch.Logger, reconnectAtte
 
   const config = configs.get(name);
   if (!config) throw new Error(`Unknown MCP server: "${name}"`);
+  if (!isServerEnabled(config)) throw new Error(`MCP server "${name}" is disabled`);
 
   serverStatus.set(name, reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
 
@@ -804,6 +1060,13 @@ async function connectIfNeeded(name: string, logger: finch.Logger, reconnectAtte
 
       clients.set(name, client);
       serverTools.set(name, tools);
+      const icons = normalizeMcpServerIcons(client.serverInfo?.icons);
+      const iconUrl = await serverIconResolver.resolve(icons);
+      if (iconUrl) {
+        serverIcons.set(name, { endpoint: isHttpConfig(config) ? config.url : config.command, iconUrl });
+      } else {
+        serverIcons.delete(name);
+      }
       serverStatus.set(name, 'connected');
       serverLastError.delete(name);
       registerServerTools(name, tools); // register mcp__<server>__<tool> tools
@@ -862,16 +1125,24 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   // extensions/mcp/i18n/<locale>.json. Tool-result text stays English on purpose —
   // it is model-facing guidance, not user UI.
   const t = (key: string, values?: Record<string, string | number | boolean>): string => ctx.i18n.t(key, values);
+  const serverAliasConflictMessage = (name: string, conflict: ServerAliasConflict): string =>
+    conflict.source === 'extension'
+      ? t('error.nameConflict.extension', { name, owner: conflict.ownerName })
+      : t('error.nameConflict.user', { name });
 
-  // 先迁移到稳定目录，再读取配置；失败时停止激活，避免按空配置继续运行。
-  const migration = await migrateMcpData(ctx);
-  if (migration.state === 'failed') {
-    ctx.logger.error('MCP data migration failed', { state: migration.state });
+  // Migrate both historical provider identities into the stable capability-owned
+  // directory before any server configuration is loaded or connected.
+  // 失败时停止激活，避免按空配置继续运行；结果保留在 module 级 `migrationState`，
+  // 供工具箱展示「迁移中 / 已迁移但有冲突」状态。
+  migrationState = { state: 'running' };
+  migrationState = await migrateMcpData(ctx);
+  if (migrationState.state === 'failed') {
+    ctx.logger.error('MCP data migration failed', { state: migrationState.state, error: migrationState.error });
     throw new Error('MCP data migration failed; existing data was preserved');
   }
-  ctx.logger.info('MCP data migration ready', { state: migration.state, conflictCount: migration.conflictCount ?? 0 });
-  // Move legacy plaintext environment values into the encrypted extension store
-  // before loading configs. Failed entries remain untouched for retry.
+  ctx.logger.info('MCP data migration ready', { state: migrationState.state, conflictCount: migrationState.conflictCount ?? 0 });
+  // Move any plaintext environment values in the stable file into encrypted storage.
+  // Failed entries remain untouched for retry.
   await migrateLegacySecrets(ctx);
 
   // 先完成 OAuth 加密托管迁移，再开放工具与能力，避免连接或退出登录与迁移竞争。
@@ -941,7 +1212,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   // single cheap handshake, so prewarming is safe. stdio servers stay lazy —
   // eagerly spawning every stdio process at startup risks orphaned processes.
   for (const [name, config] of configs) {
-    if (isHttpConfig(config) && !config.oauth) {
+    if (isServerEnabled(config) && isHttpConfig(config) && !config.oauth) {
       void connectIfNeeded(name, ctx.logger).catch(() => {
         // Status map + extension logs retain the user-visible error; lazy retry on use.
       });
@@ -974,7 +1245,8 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     refreshServerConfigs(ctx);
     const servers = [...configs.keys()].map((name) => ({
       name,
-      status: serverStatus.get(name) ?? 'pending',
+      status: isServerEnabled(configs.get(name)) ? (serverStatus.get(name) ?? 'pending') : 'disabled',
+      enabled: isServerEnabled(configs.get(name)),
       toolCount: serverTools.get(name)?.length ?? 0,
       connected: clients.has(name),
       error: serverLastError.get(name),
@@ -982,28 +1254,32 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     return { content: [{ type: 'text', text: JSON.stringify({ servers }, null, 2) }] };
   }
 
-  async function addMcpServer(input: Record<string, unknown>, exec: finch.ToolExecutionContext): Promise<finch.ToolResult> {
+  async function addMcpServer(input: Record<string, unknown>, exec: Pick<finch.ToolExecutionContext, 'ui'>): Promise<finch.ToolResult> {
     const args = input as {
       name?: string;
       command?: string;
       args?: string;
       url?: string;
+      authMethod?: 'none' | 'oauth' | 'bearer' | 'basic' | 'apiKey';
       authHeader?: string;
+      authUsername?: string;
+      apiKeyPlacement?: 'header' | 'query';
+      apiKeyName?: string;
+      headerNames?: string[];
       oauth?: boolean;
       secretEnvKeys?: string[];
       plainEnvKeys?: string[];
     };
-    // Infer transport from provided fields: url → httpStream, command → stdio
+
+    // Infer transport from provided fields: url → httpStream, command → stdio.
     const isHttp = typeof args.url === 'string' && args.url.length > 0;
-    const useOAuth = isHttp && args.oauth === true;
+    const requestedAuthMethod = args.oauth === true ? 'oauth' : args.authMethod ?? (args.authHeader ? 'apiKey' : 'none');
+    const useOAuth = isHttp && requestedAuthMethod === 'oauth';
+    const apiKeyPlacement = args.apiKeyPlacement === 'query' ? 'query' : 'header';
+    const apiKeyName = (args.apiKeyName ?? args.authHeader ?? (apiKeyPlacement === 'query' ? 'apiKey' : 'X-Api-Key')).trim();
+    const headerNames = [...new Set((args.headerNames ?? []).map((name) => String(name).trim()).filter(Boolean))];
     const secretKeys = (args.secretEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     const plainKeys = (args.plainEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
-
-    // httpStream auth: optional custom header name (rare); defaults to the
-    // standard Authorization: Bearer scheme. Provided by the model only when a
-    // server needs a non-standard header (e.g. X-Api-Key).
-    const httpHeaderName = (args.authHeader ?? '').trim() || 'Authorization';
-    const isBearer = httpHeaderName.toLowerCase() === 'authorization';
 
     const fields: finch.MiniToolFormField[] = [];
     if (isHttp) {
@@ -1012,16 +1288,33 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         { key: 'name', label: t('field.name'), type: 'text', required: true, default: args.name ?? '', width: '1/3' },
         { key: 'url', label: t('field.url'), type: 'text', required: true, placeholder: 'https://…', default: args.url ?? '', width: '2/3' },
       );
-      if (!useOAuth) {
-        fields.push({
-          key: 'authToken',
-          label: isBearer ? t('field.token.bearer') : t('field.token.customValue', { header: httpHeaderName }),
-          type: 'password',
-          secret: true,
-          description: isBearer
-            ? t('field.token.desc.bearerAdd')
-            : t('field.token.desc.customAdd', { header: httpHeaderName }),
-        });
+      if (requestedAuthMethod === 'bearer') {
+        fields.push({ key: 'authToken', label: t('field.token.bearer'), type: 'password', secret: true, required: true, description: t('field.token.desc.bearerAdd') });
+      } else if (requestedAuthMethod === 'basic') {
+        fields.push(
+          { key: 'authUsername', label: t('field.auth.username'), type: 'text', required: true, default: args.authUsername ?? '', width: '1/2' },
+          { key: 'authToken', label: t('field.auth.password'), type: 'password', secret: true, required: true, width: '1/2' },
+        );
+      } else if (requestedAuthMethod === 'apiKey') {
+        fields.push(
+          {
+            key: 'apiKeyPlacement',
+            label: t('field.auth.apiKeyPlacement'),
+            type: 'select',
+            required: true,
+            default: apiKeyPlacement,
+            options: [
+              { value: 'header', label: t('field.auth.apiKeyHeader') },
+              { value: 'query', label: t('field.auth.apiKeyQuery') },
+            ],
+            width: '1/2',
+          },
+          { key: 'apiKeyName', label: t('field.auth.apiKeyName'), type: 'text', required: true, default: apiKeyName, width: '1/2' },
+          { key: 'authToken', label: t('field.auth.apiKeyValue'), type: 'password', secret: true, required: true },
+        );
+      }
+      for (const header of headerNames) {
+        fields.push({ key: `header:${header}`, label: header, type: 'password', secret: true, required: true, description: t('field.header.description') });
       }
     } else {
       // stdio: name (1/2) + command (1/2) on one row; args textarea below.
@@ -1056,21 +1349,54 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     if (!name) {
       return { content: [{ type: 'text', text: 'No server name provided; nothing was saved.' }], isError: true };
     }
+    const nameConflict = findServerAliasConflict(ctx, name);
+    if (nameConflict) {
+      return { content: [{ type: 'text', text: serverAliasConflictMessage(name, nameConflict) }], isError: true };
+    }
 
-    let server: McpServerConfig;
+    let server: ManagedMcpServerConfig;
     let summary: string;
     if (isHttp) {
-      const url = String(v.url ?? '').trim();
+      let url = String(v.url ?? '').trim();
       if (!url) return { content: [{ type: 'text', text: 'No URL provided; nothing was saved.' }], isError: true };
-      const auth = useOAuth ? {} : buildHttpAuth(httpHeaderName, String(v.authToken ?? ''), undefined);
+      const placement = v.apiKeyPlacement === 'query' ? 'query' : apiKeyPlacement;
+      const keyName = String(v.apiKeyName ?? apiKeyName).trim();
+      let submittedToken = String(v.authToken ?? '');
+      if (requestedAuthMethod === 'apiKey' && placement === 'query') {
+        const parsedUrl = new URL(url);
+        submittedToken ||= parsedUrl.searchParams.get(keyName) ?? '';
+        parsedUrl.searchParams.delete(keyName);
+        url = parsedUrl.toString();
+      }
+      if (hasInlineCredential(url)) {
+        return { content: [{ type: 'text', text: t('error.inlineCredential') }], isError: true };
+      }
+      const auth = buildHttpAuth(requestedAuthMethod, {
+        authToken: submittedToken,
+        authUsername: v.authUsername,
+        authHeader: keyName,
+        authQueryParam: keyName,
+        authApiKeyPlacement: placement,
+      }, undefined);
+      const reservedHeader = requestedAuthMethod === 'apiKey' && placement === 'header'
+        ? keyName
+        : requestedAuthMethod === 'oauth' || requestedAuthMethod === 'bearer' || requestedAuthMethod === 'basic'
+          ? 'Authorization'
+          : undefined;
+      const additional = buildAdditionalHttpHeaders({
+        headers: headerNames.map((header) => ({ name: header, value: v[`header:${header}`] })),
+      }, undefined, reservedHeader);
       server = {
         name,
+        enabled: true,
         url,
         ...(useOAuth ? { oauth: { id: sanitizeSegment(name), providerName: name, clientName: 'Finch', clientUri: 'https://finchwork.app' } } : {}),
-        ...(auth.headers ? { headers: auth.headers } : {}),
-        ...(auth.env ? { env: auth.env } : {}),
+        ...(auth.authConfig ? { authConfig: auth.authConfig } : {}),
+        ...(auth.queryParams ? { queryParams: auth.queryParams } : {}),
+        ...((auth.headers || additional.headers) ? { headers: { ...auth.headers, ...additional.headers } } : {}),
+        ...((auth.env || additional.env) ? { env: { ...auth.env, ...additional.env } } : {}),
       };
-      summary = `httpStream → ${url}${useOAuth ? ' (OAuth)' : auth.headers ? ' (authenticated)' : ''}`;
+      summary = `httpStream → ${url}${useOAuth ? ' (OAuth)' : requestedAuthMethod !== 'none' ? ' (authenticated)' : ''}`;
     } else {
       // env-key fields apply to stdio servers only.
       const env: Record<string, string> = {};
@@ -1081,37 +1407,56 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       const command = String(v.command ?? '').trim();
       if (!command) return { content: [{ type: 'text', text: 'No command provided; nothing was saved.' }], isError: true };
       const argList = parseArgs(String(v.args ?? ''));
-      server = { name, command, ...(argList.length ? { args: argList } : {}), ...(Object.keys(env).length ? { env } : {}) };
+      server = { name, enabled: true, command, ...(argList.length ? { args: argList } : {}), ...(Object.keys(env).length ? { env } : {}) };
       summary = `stdio → ${command}${argList.length ? ' ' + argList.join(' ') : ''}`;
     }
 
     try {
       server = await sealServerSecrets(ctx, server as ManagedMcpServerConfig);
-      upsertServer(ctx.storagePath, server);
+      upsertServer(mcpStoragePath(ctx), server);
     } catch (err) {
       ctx.logger.error('failed to write servers.json', err);
       return { content: [{ type: 'text', text: `Failed to save server config: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
     }
 
     const secretNote = !isHttp && secretKeys.length ? ` Secret values for ${secretKeys.join(', ')} were stored locally and not shared.` : '';
-    ctx.logger.info(`saved MCP server "${name}" (${summary}); connecting in background`);
-    applyServerUpsert(null, server, ctx.logger);
+    ctx.logger.info(`saved MCP server "${name}" (${summary}); connecting`);
+    applyServerUpsert(null, server, ctx.logger, false);
+    try {
+      const activeConfig = configs.get(name)!;
+      serverStatus.set(name, 'connecting');
+      if (isHttpConfig(activeConfig) && activeConfig.oauth) {
+        await authorizeConfiguredMcpOAuth(name, activeConfig, ctx, true);
+      }
+      serverStatus.set(name, 'pending');
+      await connectIfNeeded(name, ctx.logger);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      serverStatus.set(name, 'failed');
+      serverLastError.set(name, message);
+      return { content: [{ type: 'text', text: `Saved MCP server "${name}", but connection failed: ${message}` }], isError: true };
+    }
     return {
       content: [{
         type: 'text',
-        text: `The user already submitted the setup form for MCP server "${name}" (${summary}). Now connecting in background — its tools will appear shortly.${secretNote}`,
+        text: `The user submitted the setup form and MCP server "${name}" connected successfully (${summary}).${secretNote}`,
       }],
     };
   }
 
-  async function editMcpServer(input: Record<string, unknown>, exec: finch.ToolExecutionContext): Promise<finch.ToolResult> {
+  async function editMcpServer(input: Record<string, unknown>, exec: Pick<finch.ToolExecutionContext, 'ui'>): Promise<finch.ToolResult> {
     const args = input as {
       name?: string;
       newName?: string;
       command?: string;
       args?: string;
       url?: string;
+      authMethod?: 'none' | 'oauth' | 'bearer' | 'basic' | 'apiKey';
       authHeader?: string;
+      authUsername?: string;
+      apiKeyPlacement?: 'header' | 'query';
+      apiKeyName?: string;
+      headerNames?: string[];
       oauth?: boolean;
       secretEnvKeys?: string[];
       plainEnvKeys?: string[];
@@ -1123,7 +1468,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     // the current name on a rename request.
     const requestedNewName = String(args.newName ?? '').trim();
 
-    const existing = readUserServers(ctx.storagePath).find((s) => s.name === name);
+    const existing = readUserServers(mcpStoragePath(ctx)).find((s) => s.name === name);
     if (!existing) {
       return {
         content: [{ type: 'text', text: `No user-configured MCP server named "${name}". Use MCP action=list to see editable servers (extension-injected servers cannot be edited).` }],
@@ -1138,14 +1483,23 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       : typeof args.command === 'string' && args.command.length > 0
         ? false
         : existingIsHttp;
-    const useOAuth = isHttp && (args.oauth === true || (args.oauth === undefined && existingIsHttp && Boolean(existing.oauth)));
-    const existingEnv = (await resolveServerSecrets(existing, ctx)).env ?? {};
+    const existingAuth = existingIsHttp
+      ? describeHttpAuth(existing as ManagedMcpServerConfig & McpHttpStreamServerConfig)
+      : { method: 'none' as const, headerName: 'X-Api-Key', queryParam: 'apiKey', placement: 'header' as const, username: '', hasToken: false };
+    const requestedAuthMethod = args.oauth === true ? 'oauth' : args.authMethod ?? existingAuth.method;
+    const useOAuth = isHttp && requestedAuthMethod === 'oauth';
+    const apiKeyPlacement = args.apiKeyPlacement ?? existingAuth.placement;
+    const apiKeyName = (args.apiKeyName ?? args.authHeader ?? (apiKeyPlacement === 'query' ? existingAuth.queryParam : existingAuth.headerName)).trim();
+    const existingResolved = await resolveServerSecrets(existing, ctx);
+    const existingEnv = existingResolved.env ?? {};
+    const existingPrimary = existingAuth.primaryHeaderName?.toLowerCase();
+    const existingHeaderNames = existingIsHttp
+      ? Object.keys(existing.headers ?? {}).filter((header) => header.toLowerCase() !== existingPrimary)
+      : [];
+    const requestedHeaderNames = args.headerNames === undefined ? existingHeaderNames : args.headerNames;
+    const headerNames = [...new Set(requestedHeaderNames.map((header) => String(header).trim()).filter(Boolean))];
     const secretKeys = (args.secretEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     const plainKeys = (args.plainEnvKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
-    const existingAuth = existingIsHttp ? describeHttpAuth(existing as McpHttpStreamServerConfig) : { headerName: 'Authorization', hasToken: false };
-    // Keep the prior header unless the model explicitly overrides it.
-    const httpHeaderName = (args.authHeader ?? '').trim() || existingAuth.headerName || 'Authorization';
-    const isBearer = httpHeaderName.toLowerCase() === 'authorization';
 
     const existingCmd = !existingIsHttp ? (existing as { command: string }).command : '';
     const existingArgs = !existingIsHttp ? ((existing as { args?: string[] }).args ?? []).join(' ') : '';
@@ -1157,18 +1511,33 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         { key: 'name', label: t('field.name'), type: 'text', required: true, default: requestedNewName || name, width: '1/3' },
         { key: 'url', label: t('field.url'), type: 'text', required: true, placeholder: 'https://…', default: args.url ?? (existingIsHttp ? (existing as { url: string }).url : ''), width: '2/3' },
       );
-      if (!useOAuth) {
-        fields.push({
-          key: 'authToken',
-          label: isBearer ? t('field.token.bearer') : t('field.token.customValue', { header: httpHeaderName }),
-          type: 'password',
-          secret: true,
-          description: existingAuth.hasToken
-            ? t('field.token.desc.keep')
-            : isBearer
-              ? t('field.token.desc.bearerEdit')
-              : t('field.token.desc.customEdit', { header: httpHeaderName }),
-        });
+      if (requestedAuthMethod === 'bearer') {
+        fields.push({ key: 'authToken', label: t('field.token.bearer'), type: 'password', secret: true, description: existingAuth.hasToken ? t('field.token.desc.keep') : t('field.token.desc.bearerEdit') });
+      } else if (requestedAuthMethod === 'basic') {
+        fields.push(
+          { key: 'authUsername', label: t('field.auth.username'), type: 'text', required: true, default: args.authUsername ?? existingAuth.username, width: '1/2' },
+          { key: 'authToken', label: t('field.auth.password'), type: 'password', secret: true, description: existingAuth.hasToken ? t('field.token.desc.keep') : undefined, width: '1/2' },
+        );
+      } else if (requestedAuthMethod === 'apiKey') {
+        fields.push(
+          {
+            key: 'apiKeyPlacement',
+            label: t('field.auth.apiKeyPlacement'),
+            type: 'select',
+            required: true,
+            default: apiKeyPlacement,
+            options: [
+              { value: 'header', label: t('field.auth.apiKeyHeader') },
+              { value: 'query', label: t('field.auth.apiKeyQuery') },
+            ],
+            width: '1/2',
+          },
+          { key: 'apiKeyName', label: t('field.auth.apiKeyName'), type: 'text', required: true, default: apiKeyName, width: '1/2' },
+          { key: 'authToken', label: t('field.auth.apiKeyValue'), type: 'password', secret: true, description: existingAuth.hasToken ? t('field.token.desc.keep') : undefined },
+        );
+      }
+      for (const header of headerNames) {
+        fields.push({ key: `header:${header}`, label: header, type: 'password', secret: true, description: existingHeaderNames.includes(header) ? t('field.token.desc.keep') : t('field.header.description') });
       }
     } else {
       // stdio: name (1/2) + command (1/2) on one row; args textarea below.
@@ -1213,23 +1582,57 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
     const v = result.values;
     const nextName = String(v.name ?? name).trim() || name;
+    const nameConflict = findServerAliasConflict(ctx, nextName, name);
+    if (nameConflict) {
+      return { content: [{ type: 'text', text: serverAliasConflictMessage(nextName, nameConflict) }], isError: true };
+    }
 
-    let server: McpServerConfig;
+    let server: ManagedMcpServerConfig;
     let summary: string;
     if (isHttp) {
-      const url = String(v.url ?? '').trim();
+      let url = String(v.url ?? '').trim();
       if (!url) return { content: [{ type: 'text', text: 'No URL provided; nothing was saved.' }], isError: true };
-      const auth = useOAuth ? {} : buildHttpAuth(httpHeaderName, String(v.authToken ?? ''), existingEnv[AUTH_TOKEN_ENV]);
+      const placement = v.apiKeyPlacement === 'query' ? 'query' : apiKeyPlacement;
+      const keyName = String(v.apiKeyName ?? apiKeyName).trim();
+      let submittedToken = String(v.authToken ?? '');
+      if (requestedAuthMethod === 'apiKey' && placement === 'query') {
+        const parsedUrl = new URL(url);
+        submittedToken ||= parsedUrl.searchParams.get(keyName) ?? '';
+        parsedUrl.searchParams.delete(keyName);
+        url = parsedUrl.toString();
+      }
+      if (hasInlineCredential(url)) {
+        return { content: [{ type: 'text', text: t('error.inlineCredential') }], isError: true };
+      }
+      const existingToken = requestedAuthMethod === existingAuth.method ? existingEnv[AUTH_TOKEN_ENV] : undefined;
+      const auth = buildHttpAuth(requestedAuthMethod, {
+        authToken: submittedToken,
+        authUsername: v.authUsername,
+        authHeader: keyName,
+        authQueryParam: keyName,
+        authApiKeyPlacement: placement,
+      }, existingToken);
+      const reservedHeader = requestedAuthMethod === 'apiKey' && placement === 'header'
+        ? keyName
+        : requestedAuthMethod === 'oauth' || requestedAuthMethod === 'bearer' || requestedAuthMethod === 'basic'
+          ? 'Authorization'
+          : undefined;
+      const additional = buildAdditionalHttpHeaders({
+        headers: headerNames.map((header) => ({ name: header, value: v[`header:${header}`] })),
+      }, existingIsHttp ? existingResolved as ManagedMcpServerConfig & McpHttpStreamServerConfig : undefined, reservedHeader);
       server = {
         name: nextName,
+        enabled: existing.enabled !== false,
         url,
         ...(useOAuth ? { oauth: existingIsHttp && existing.oauth
           ? existing.oauth
           : { id: sanitizeSegment(nextName), providerName: nextName, clientName: 'Finch', clientUri: 'https://finchwork.app' } } : {}),
-        ...(auth.headers ? { headers: auth.headers } : {}),
-        ...(auth.env ? { env: auth.env } : {}),
+        ...(auth.authConfig ? { authConfig: auth.authConfig } : {}),
+        ...(auth.queryParams ? { queryParams: auth.queryParams } : {}),
+        ...((auth.headers || additional.headers) ? { headers: { ...auth.headers, ...additional.headers } } : {}),
+        ...((auth.env || additional.env) ? { env: { ...auth.env, ...additional.env } } : {}),
       };
-      summary = `httpStream → ${url}${useOAuth ? ' (OAuth)' : auth.headers ? ' (authenticated)' : ''}`;
+      summary = `httpStream → ${url}${useOAuth ? ' (OAuth)' : requestedAuthMethod !== 'none' ? ' (authenticated)' : ''}`;
     } else {
       // Rebuild stdio env from the rendered env fields, preserving prior values
       // when the user leaves a field blank.
@@ -1247,14 +1650,14 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       const command = String(v.command ?? '').trim();
       if (!command) return { content: [{ type: 'text', text: 'No command provided; nothing was saved.' }], isError: true };
       const argList = parseArgs(String(v.args ?? ''));
-      server = { name: nextName, command, ...(argList.length ? { args: argList } : {}), ...(Object.keys(env).length ? { env } : {}) };
+      server = { name: nextName, enabled: existing.enabled !== false, command, ...(argList.length ? { args: argList } : {}), ...(Object.keys(env).length ? { env } : {}) };
       summary = `stdio → ${command}${argList.length ? ' ' + argList.join(' ') : ''}`;
     }
 
     try {
       server = await sealServerSecrets(ctx, server as ManagedMcpServerConfig);
-      if (nextName !== name) removeServer(ctx.storagePath, name);
-      upsertServer(ctx.storagePath, server);
+      if (nextName !== name) removeServer(mcpStoragePath(ctx), name);
+      upsertServer(mcpStoragePath(ctx), server);
       if (nextName !== name) {
         const nextRefs = new Set(Object.values((server as ManagedMcpServerConfig).secretRefs ?? {}));
         await removeServerSecrets(ctx, existing, nextRefs);
@@ -1264,14 +1667,159 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       return { content: [{ type: 'text', text: `Failed to save server config: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
     }
 
-    ctx.logger.info(`updated MCP server "${nextName}" (${summary}); reconnecting in background`);
-    applyServerUpsert(name, server, ctx.logger);
+    ctx.logger.info(`updated MCP server "${nextName}" (${summary}); reconnecting`);
+    applyServerUpsert(name, server, ctx.logger, false);
+    try {
+      const activeConfig = configs.get(nextName)!;
+      if (isServerEnabled(activeConfig)) {
+        serverStatus.set(nextName, 'connecting');
+        if (isHttpConfig(activeConfig) && activeConfig.oauth) {
+          const previousOAuth = isHttpConfig(existingResolved) ? existingResolved : undefined;
+          await authorizeConfiguredMcpOAuth(nextName, activeConfig, ctx, requiresMcpOAuthAuthorization(previousOAuth, activeConfig));
+        }
+        serverStatus.set(nextName, 'pending');
+        await connectIfNeeded(nextName, ctx.logger);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      serverStatus.set(nextName, 'failed');
+      serverLastError.set(nextName, message);
+      return { content: [{ type: 'text', text: `Updated MCP server "${nextName}", but connection failed: ${message}` }], isError: true };
+    }
     return {
       content: [{
         type: 'text',
-        text: `The user already submitted the edit form for MCP server "${nextName}" (${summary}). Now reconnecting in background.`,
+        text: isServerEnabled(server)
+          ? `The user submitted the edit form and MCP server "${nextName}" reconnected successfully (${summary}).`
+          : `The user submitted the edit form and MCP server "${nextName}" was saved and remains disabled (${summary}).`,
       }],
     };
+  }
+
+  async function saveUserMcpServer(input: Record<string, unknown>): Promise<{ ok: boolean }> {
+    const originalName = String(input.originalName ?? '').trim();
+    const name = String(input.name ?? '').trim();
+    const transport = input.transport === 'stdio' ? 'stdio' : 'httpStream';
+    if (!name) throw new Error('MCP server name is required.');
+
+    const existing = originalName
+      ? readUserServers(mcpStoragePath(ctx)).find((server) => server.name === originalName)
+      : undefined;
+    if (originalName && !existing) throw new Error(`No user-configured MCP server named "${originalName}".`);
+    const nameConflict = findServerAliasConflict(ctx, name, originalName);
+    if (nameConflict) throw new Error(serverAliasConflictMessage(name, nameConflict));
+
+    const resolvedExisting = existing ? await resolveServerSecrets(existing, ctx) : undefined;
+    let server: ManagedMcpServerConfig;
+    if (transport === 'httpStream') {
+      let url = String(input.url ?? '').trim();
+      let parsedUrl: URL;
+      try { parsedUrl = new URL(url); } catch { throw new Error(t('error.invalidUrl')); }
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') throw new Error(t('error.invalidUrl'));
+
+      const authMethod = String(input.authMethod ?? 'none');
+      let authInput = input;
+      if (authMethod === 'apiKey' && input.authApiKeyPlacement === 'query') {
+        const queryParam = String(input.authQueryParam ?? '').trim();
+        const embeddedToken = queryParam ? parsedUrl.searchParams.get(queryParam) ?? '' : '';
+        if (embeddedToken) {
+          authInput = { ...input, authToken: String(input.authToken ?? '') || embeddedToken };
+          parsedUrl.searchParams.delete(queryParam);
+          url = parsedUrl.toString();
+        }
+      }
+      if (hasInlineCredential(url)) throw new Error(t('error.inlineCredential'));
+      const existingHttp = resolvedExisting && isHttpConfig(resolvedExisting) ? resolvedExisting : undefined;
+      const existingAuthMethod = existingHttp ? describeHttpAuth(existingHttp).method : 'none';
+      const existingToken = existingAuthMethod === authMethod ? existingHttp?.env?.[AUTH_TOKEN_ENV] : undefined;
+      const auth = buildHttpAuth(authMethod, authInput, existingToken);
+      const reservedHeaderName = authMethod === 'apiKey' && input.authApiKeyPlacement !== 'query'
+        ? String(input.authHeader ?? '').trim()
+        : authMethod === 'bearer' || authMethod === 'basic' || authMethod === 'oauth'
+          ? 'Authorization'
+          : undefined;
+      const additional = buildAdditionalHttpHeaders(input, existingHttp, reservedHeaderName);
+      server = {
+        name,
+        enabled: existing?.enabled !== false,
+        url,
+        ...(authMethod === 'oauth' ? {
+          oauth: existing && isHttpConfig(existing) && existing.oauth
+            ? { ...existing.oauth, providerName: name }
+            : { id: sanitizeSegment(name), providerName: name, clientName: 'Finch', clientUri: 'https://finchwork.app' },
+        } : {}),
+        ...(auth.authConfig ? { authConfig: auth.authConfig } : {}),
+        ...(auth.queryParams ? { queryParams: auth.queryParams } : {}),
+        ...((auth.headers || additional.headers) ? { headers: { ...auth.headers, ...additional.headers } } : {}),
+        ...((auth.env || additional.env) ? { env: { ...auth.env, ...additional.env } } : {}),
+      };
+    } else {
+      const command = String(input.command ?? '').trim();
+      if (!command) throw new Error('MCP command is required.');
+      const existingEnv = !resolvedExisting || isHttpConfig(resolvedExisting) ? {} : (resolvedExisting.env ?? {});
+      const submittedEnvKeys = Array.isArray(input.envKeys)
+        ? new Set(input.envKeys.map(String).map((key) => key.trim()).filter(Boolean))
+        : null;
+      const env = Object.fromEntries(
+        Object.entries(existingEnv).filter(([key]) => !submittedEnvKeys || submittedEnvKeys.has(key)),
+      );
+      if (Array.isArray(input.env)) {
+        for (const raw of input.env) {
+          if (!raw || typeof raw !== 'object') continue;
+          const entry = raw as { key?: unknown; value?: unknown };
+          const key = String(entry.key ?? '').trim();
+          const value = String(entry.value ?? '');
+          if (key && value) env[key] = value;
+        }
+      }
+      const args = parseArgs(String(input.args ?? ''));
+      const cwd = String(input.cwd ?? '').trim();
+      server = {
+        name,
+        enabled: existing?.enabled !== false,
+        command,
+        ...(args.length ? { args } : {}),
+        ...(cwd ? { cwd } : {}),
+        ...(Object.keys(env).length ? { env } : {}),
+      };
+    }
+
+    if (resolvedExisting && sameMcpServerConfiguration(resolvedExisting, server)) {
+      ctx.logger.info(`MCP server "${name}" edit contained no changes; keeping the current connection`);
+      return { ok: true };
+    }
+
+    const sealed = await sealServerSecrets(ctx, server);
+    if (originalName && originalName !== name) removeServer(mcpStoragePath(ctx), originalName);
+    upsertServer(mcpStoragePath(ctx), sealed);
+    if (existing) {
+      const preservedRefs = new Set(Object.values(sealed.secretRefs ?? {}));
+      await removeServerSecrets(ctx, existing, preservedRefs);
+    }
+    applyServerUpsert(originalName || null, sealed, ctx.logger, false);
+
+    const activeConfig = configs.get(name);
+    if (!activeConfig) throw new Error(`Failed to activate MCP server "${name}".`);
+    // 编辑停用服务只保存配置，不能意外发起连接或 OAuth 授权。
+    if (!isServerEnabled(activeConfig)) return { ok: true };
+    try {
+      // Keep status polling from starting a non-interactive OAuth connection
+      // while the browser authorization flow is still in progress.
+      serverStatus.set(name, 'connecting');
+      if (isHttpConfig(activeConfig) && activeConfig.oauth) {
+        const existingOAuth = resolvedExisting && isHttpConfig(resolvedExisting) ? resolvedExisting : undefined;
+        const authorizationContextChanged = requiresMcpOAuthAuthorization(existingOAuth, activeConfig);
+        await authorizeConfiguredMcpOAuth(name, activeConfig, ctx, authorizationContextChanged);
+      }
+      serverStatus.set(name, 'pending');
+      await connectIfNeeded(name, ctx.logger);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      serverStatus.set(name, 'failed');
+      serverLastError.set(name, message);
+      throw error;
+    }
+    return { ok: true };
   }
 
   async function removeMcpServer(input: Record<string, unknown>): Promise<finch.ToolResult> {
@@ -1293,9 +1841,9 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     }
 
     let removed = false;
-    const existing = readUserServers(ctx.storagePath).find((server) => server.name === name);
+    const existing = readUserServers(mcpStoragePath(ctx)).find((server) => server.name === name);
     try {
-      removed = removeServer(ctx.storagePath, name);
+      removed = removeServer(mcpStoragePath(ctx), name);
       if (removed) await removeServerSecrets(ctx, existing);
     } catch (err) {
       ctx.logger.error('failed to write servers.json', err);
@@ -1316,6 +1864,22 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     };
   }
 
+  async function setUserMcpServerEnabled(name: string, enabled: boolean): Promise<{ ok: boolean }> {
+    const existing = readUserServers(mcpStoragePath(ctx)).find((server) => server.name === name);
+    if (!existing) throw new Error(`No user-configured MCP server named "${name}".`);
+    const next: ManagedMcpServerConfig = { ...existing, enabled };
+    upsertServer(mcpStoragePath(ctx), next);
+    if (enabled) {
+      applyServerUpsert(name, next, ctx.logger);
+    } else {
+      disconnectServer(name);
+      configs.set(name, withoutContributedOwnership(next));
+      serverStatus.set(name, 'disabled');
+    }
+    ctx.logger.info(`${enabled ? 'enabled' : 'disabled'} MCP server "${name}"`);
+    return { ok: true };
+  }
+
   async function connectMcpServerOAuth(input: Record<string, unknown>): Promise<finch.ToolResult> {
     const name = String(input.name ?? '').trim();
     const config = configs.get(name);
@@ -1326,7 +1890,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       return { content: [{ type: 'text', text: `MCP server "${name}" is not configured for OAuth.` }], isError: true };
     }
     disconnectServer(name);
-    await authorizeMcpOAuth(config.url, config.oauth, createOAuthCustody(ctx.oauth, config.oauth), ctx.oauth);
+    await authorizeConfiguredMcpOAuth(name, config, ctx, true);
     serverStatus.set(name, 'pending');
     await connectIfNeeded(name, ctx.logger);
     return { content: [{ type: 'text', text: `Connected MCP server "${name}" with OAuth discovery, DCR, and PKCE.` }] };
@@ -1361,8 +1925,8 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       description:
         'Manage Model Context Protocol (MCP) server connections with action=list/add/edit/remove/connect/disconnect. ' +
         'Use action=list to inspect configured services before ToolSearch or before edit/remove. ' +
-        'Use action=add when the user wants to connect a new MCP server. For an OAuth MCP server pass oauth=true; the saved server then uses discovery + DCR + PKCE and action=connect starts authorization. For a token-authenticated HTTP server pass name+url — the secure form shows ONE "API token" field that auto-creates a standard "Authorization: Bearer <token>" header; you never pass, see, or hand-edit the token or any header. Only set authHeader if the server needs a NON-standard header (e.g. "X-Api-Key"). ' +
-        'For stdio (command) servers, pass secretEnvKeys/plainEnvKeys for the env vars the user should fill. Never ask the user to paste secrets in chat. ' +
+        'Use action=add when the user wants to connect a new MCP server. HTTP authMethod supports none, oauth, bearer, basic, and apiKey. OAuth runs discovery + DCR + PKCE during add/edit; Basic collects username/password; API key supports header or query placement. Pass only non-secret metadata — secure forms collect every credential. headerNames adds extra business HTTP headers for any HTTP auth method, with values collected securely. ' +
+        'For stdio (command) servers, pass secretEnvKeys/plainEnvKeys for the env vars the user should fill. stdio has no HTTP headers. Never ask the user to paste secrets in chat. ' +
         'Use action=edit/remove only for user-configured servers in the local servers.json; extension-injected servers cannot be edited or removed. ' +
         'To rename a server, call action=edit with name=<current name> and newName=<desired name> — this prefills the confirmation form with the new name so the user just has to hit save. ' +
         'TIMING: action=add/edit open a secure form and this tool call BLOCKS until the user submits or cancels it. By the time you receive the tool result, the user has ALREADY filled in and submitted the form (including any token) — never tell the user "you should see a form" or "please fill in the token" after this returns; describe the outcome in past tense using the returned status instead. ' +
@@ -1380,15 +1944,25 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
           command: { type: 'string', description: 'For stdio servers: executable, e.g. "npx". Presence implies stdio transport for add/edit.' },
           args: { type: 'string', description: 'For stdio: whitespace-separated arguments, e.g. "-y @modelcontextprotocol/server-filesystem /path".' },
           url: { type: 'string', description: 'For HTTP servers: the MCP endpoint URL. Presence implies httpStream transport for add/edit.' },
-          oauth: { type: 'boolean', description: 'HTTP servers only. Set true to use MCP OAuth discovery, Dynamic Client Registration, and PKCE instead of an API token.' },
-          authHeader: {
+          authMethod: {
             type: 'string',
-            description: 'HTTP servers only. Optional. Omit for the normal case — the form collects a token and sends "Authorization: Bearer <token>". Set this ONLY for a non-standard auth header name, e.g. "X-Api-Key", and the token is then sent as that header\'s raw value.',
+            enum: ['none', 'oauth', 'bearer', 'basic', 'apiKey'],
+            description: 'HTTP authentication method. Omit on edit to preserve the existing method.',
           },
+          authUsername: { type: 'string', description: 'Basic auth username. The password is collected by the secure form.' },
+          apiKeyPlacement: { type: 'string', enum: ['header', 'query'], description: 'Where to send an API key.' },
+          apiKeyName: { type: 'string', description: 'API key header or URL query parameter name, e.g. X-Api-Key or tavilyApiKey.' },
+          headerNames: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Names of additional business HTTP headers. Their values are collected by the secure form and never exposed to the model.',
+          },
+          oauth: { type: 'boolean', description: 'Deprecated alias for authMethod=oauth.' },
+          authHeader: { type: 'string', description: 'Deprecated alias for apiKeyName with apiKeyPlacement=header.' },
           secretEnvKeys: {
             type: 'array',
             items: { type: 'string' },
-            description: 'stdio servers only. Names of env vars holding secrets the user must enter securely, e.g. ["API_KEY"]. Values are never shown to the model. (HTTP auth uses authHeader instead.)',
+            description: 'stdio servers only. Names of env vars holding secrets the user must enter securely, e.g. ["API_KEY"]. Values are never shown to the model.',
           },
           plainEnvKeys: {
             type: 'array',
@@ -1429,8 +2003,11 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         const queryTerms = query.split(/\s+/).filter(Boolean);
         const source = String(input.source ?? '').trim().toLowerCase();
         const requestedServer = source.startsWith('mcp:') ? source.slice('mcp:'.length).trim() : '';
+        const enabledServerNames = [...configs.entries()]
+          .filter(([, config]) => isServerEnabled(config))
+          .map(([server]) => server);
         const matchingServer = requestedServer
-          ? [...configs.keys()].find((server) => sanitizeSegment(server) === sanitizeSegment(requestedServer))
+          ? enabledServerNames.find((server) => sanitizeSegment(server) === sanitizeSegment(requestedServer))
           : undefined;
         // A specified MCP server is an exact selector, not a hint. Returning no
         // result for an unknown name avoids connecting every configured server.
@@ -1440,11 +2017,11 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         // explicitly by name returns ALL its tools so the caller gets its complete
         // capability set, not an arbitrary first-N slice.
         const limit = Math.max(1, Math.min(Number(input.limit ?? 10) || 10, 200));
-        const namedServers = [...configs.keys()].filter((server) => {
+        const namedServers = enabledServerNames.filter((server) => {
           const normalized = server.toLowerCase();
           return query === normalized || queryTerms.includes(normalized);
         });
-        const servers = matchingServer ? [matchingServer] : namedServers.length > 0 ? namedServers : [...configs.keys()];
+        const servers = matchingServer ? [matchingServer] : namedServers.length > 0 ? namedServers : enabledServerNames;
         const results: finch.ToolSearchResult[] = [];
         for (const server of servers) {
           if (results.length >= limit) break;
@@ -1499,14 +2076,27 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     ctx.capabilities.provide('mcp.client', {
       async listServers(): Promise<string[]> {
         refreshServerConfigs(ctx);
-        return [...configs.keys()];
+        return [...configs.entries()]
+          .filter(([, config]) => isServerEnabled(config))
+          .map(([name]) => name);
       },
-      /** Returns rich status info for all configured servers and starts pending connections in the background. */
-      async getServerStatuses(): Promise<Array<{ name: string; status: string; toolCount: number; ownerExtensionId?: string; qualifiedName?: string }>> {
+      /**
+       * Returns rich status info for all servers the Toolcase should show, and starts
+       * pending connections in the background.
+       *
+       * This includes Mini Tool-declared servers that currently have no transport to
+       * connect with (`status: 'unconfigured'`). Their alias still blocks same-name user
+       * configuration, so omitting them would leave the list empty while the name is
+       * taken — see contributedPlaceholders.ts.
+       */
+      async getServerStatuses(): Promise<McpServerStatusRow[]> {
         refreshServerConfigs(ctx);
-        return [...configs.entries()].map(([name, config]) => {
-          const status = serverStatus.get(name) ?? 'pending';
-          if (status === 'pending' || status === 'failed') {
+        const userServers = new Map(readUserServers(mcpStoragePath(ctx)).map((server) => [server.name, server]));
+        const userConfigured = new Set(userServers.keys());
+        const configured: McpServerStatusRow[] = [...configs.entries()].map(([name, config]) => {
+          const enabled = isServerEnabled(config);
+          const status = enabled ? (serverStatus.get(name) ?? 'pending') : 'disabled';
+          if (enabled && status === 'pending') {
             void connectIfNeeded(name, ctx.logger).catch(() => {
               // The status map and extension logs keep the user-visible error.
             });
@@ -1514,11 +2104,126 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
           return {
             name,
             status,
+            enabled,
+            userConfigured: userConfigured.has(name),
+            builtIn: !userConfigured.has(name) && !config.ownerExtensionId,
+            transport: isHttpConfig(config) ? 'httpStream' : 'stdio',
+            endpoint: isHttpConfig(config) ? config.url : config.command,
+            description: config.description,
+            iconUrl: serverIcons.get(name)?.iconUrl,
+            error: serverLastError.get(name),
+            management: {
+              editable: userServers.has(name),
+              toggleable: userServers.has(name),
+              retryable: enabled,
+              removable: userServers.has(name),
+            },
             toolCount: serverTools.get(name)?.length ?? 0,
+            tools: (serverTools.get(name) ?? []).map((tool) => ({
+              ...tool,
+              title: buildMcpToolTitle(name, tool.name),
+            })),
             ownerExtensionId: config.ownerExtensionId,
             qualifiedName: config.qualifiedName,
           };
         });
+        // A Mini Tool can reserve an alias before it has anything to connect with
+        // (Tavily registers only after its API key is saved and readable). Those
+        // declared-but-unregistered servers stay in the list as `unconfigured` so the
+        // reserved name is always visible next to the naming conflict it causes.
+        const placeholders: McpServerStatusRow[] = unconfiguredContributedServers(readContributedServers(ctx), configs.keys())
+          .map((contribution) => ({
+            name: contribution.name,
+            status: UNCONFIGURED_SERVER_STATUS,
+            enabled: false,
+            userConfigured: false,
+            builtIn: false,
+            description: contribution.description,
+            management: { editable: false, toggleable: false, retryable: false, removable: false },
+            toolCount: 0,
+            tools: [],
+            ownerExtensionId: contribution.ownerExtensionId,
+            qualifiedName: contribution.qualifiedName,
+          }));
+        return [...configured, ...placeholders];
+      },
+      async 'host:getMigrationState'(): Promise<McpMigrationState> {
+        return migrationState;
+      },
+      async 'host:retryServer'(name: string): Promise<{ ok: boolean }> {
+        const config = configs.get(String(name));
+        if (!config) throw new Error(`Unknown MCP server: "${name}"`);
+        if (!isServerEnabled(config)) throw new Error(`MCP server "${name}" is disabled`);
+        disconnectServer(config.name);
+        try {
+          serverStatus.set(config.name, 'connecting');
+          if (isHttpConfig(config) && config.oauth) {
+            await authorizeConfiguredMcpOAuth(config.name, config, ctx, false);
+          }
+          serverStatus.set(config.name, 'pending');
+          await connectIfNeeded(config.name, ctx.logger);
+          return { ok: true };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          serverStatus.set(config.name, 'failed');
+          serverLastError.set(config.name, message);
+          throw error;
+        }
+      },
+      async 'host:getUserServerDraft'(name: string): Promise<Record<string, unknown> | null> {
+        const server = readUserServers(mcpStoragePath(ctx)).find((entry) => entry.name === String(name));
+        return server ? userServerDraft(server) : null;
+      },
+      async 'host:getUserServerToken'(name: string): Promise<string> {
+        const server = readUserServers(mcpStoragePath(ctx)).find((entry) => entry.name === String(name));
+        if (!server) return '';
+        const ref = server.secretRefs?.[AUTH_TOKEN_ENV];
+        const stored = ref ? (await ctx.secrets.get(ref) ?? '') : (server.env?.[AUTH_TOKEN_ENV] ?? '');
+        if (server.authConfig?.method !== 'basic' || !stored) return stored;
+        const decoded = Buffer.from(stored, 'base64').toString('utf8');
+        return decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : '';
+      },
+      async 'host:getUserServerEditorSecrets'(name: string): Promise<{
+        authToken?: string;
+        headers: Array<{ name: string; value: string }>;
+        env: Array<{ key: string; value: string }>;
+      }> {
+        const server = readUserServers(mcpStoragePath(ctx)).find((entry) => entry.name === String(name));
+        if (!server) return { headers: [], env: [] };
+        const resolved = await resolveServerSecrets(server, ctx);
+        if (!isHttpConfig(resolved)) {
+          return {
+            headers: [],
+            env: Object.entries(resolved.env ?? {}).map(([key, value]) => ({ key, value })),
+          };
+        }
+        const auth = describeHttpAuth(resolved);
+        const stored = resolved.env?.[AUTH_TOKEN_ENV] ?? '';
+        const authToken = auth.method === 'basic' && stored
+          ? (() => {
+              const decoded = Buffer.from(stored, 'base64').toString('utf8');
+              return decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : '';
+            })()
+          : stored;
+        const primary = auth.primaryHeaderName?.toLowerCase();
+        const headers = Object.entries(resolved.headers ?? {})
+          .filter(([header]) => header.toLowerCase() !== primary)
+          .map(([header, template]) => ({
+            name: header,
+            value: resolvedTemplateValue(template, resolved.env),
+          }));
+        return { authToken, headers, env: [] };
+      },
+      async 'host:saveUserServer'(input: Record<string, unknown>): Promise<{ ok: boolean }> {
+        return saveUserMcpServer(input);
+      },
+      async 'host:setUserServerEnabled'(name: string, enabled: boolean): Promise<{ ok: boolean }> {
+        return setUserMcpServerEnabled(name, enabled);
+      },
+      async 'host:removeUserServer'(name: string): Promise<{ ok: boolean }> {
+        const result = await removeMcpServer({ name });
+        if (result.isError) throw new Error(result.content[0]?.type === 'text' ? result.content[0].text : 'Failed to remove MCP server');
+        return { ok: true };
       },
       async listTools(server: string): Promise<Array<McpTool & { title?: string }>> {
         refreshServerConfigs(ctx);
@@ -1622,7 +2327,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         if (existed) refreshServerConfigs(ctx);
         return { ok: existed };
       },
-    }),
+    }, { version: '1.1.0' }),
   );
 }
 

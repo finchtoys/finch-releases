@@ -4,7 +4,7 @@
   "toolMeta": {
     "name": "MCP"
   },
-  "systemPrompt": "用 MCP action=list/add/edit/remove 管理已配置的 MCP 服务；不要让用户在聊天里粘贴密钥，add/edit 会打开安全表单收集密钥值。添加 HTTP（url）类 MCP 服务时只需传 name+url——表单会显示一个「API token」输入框并自动生成标准的「Authorization: Bearer <token>」头；切勿自己传入、查看或手改 token 与任何 header，仅当服务需要非标准头名（如 X-Api-Key）时才设置 authHeader。协议头（MCP-Protocol-Version、Mcp-Method、Mcp-Name、Mcp-Param-*）由客户端按每次请求自动生成，不要配置成固定的自定义头——Mcp-Name 必须与请求体的 params.name/params.uri 一致；若服务端报 HeaderMismatch（-32020）或缺少 Mcp-Name 头，问题在客户端/transport 协议层（协商版本、SDK 版本、transport 包装），而不是缺少自定义头。需要使用 MCP 服务的真实工具时，已知目标服务名则先调用 Finch 标准 ToolSearch 并传 source:'mcp:<服务名>'；仅当精确检索找不到可用工具时，才传 source:'mcp' 泛搜。ToolSearch 会连接选定服务、发现工具，并把匹配的 mcp__<服务名>__<工具名> 注入当前 run。授权可精确到具体工具（mcp__filesystem__read_file）或使用通配符（mcp__filesystem__*）。",
+  "systemPrompt": "用 MCP action=list/add/edit/remove 管理已配置的 MCP 服务；不要让用户在聊天里粘贴密钥，add/edit 会打开安全表单收集密钥值。通过 add/edit 配置 HTTP 服务时，authMethod 可使用 none、oauth、bearer、basic 或 apiKey；API Key 同时传 apiKeyPlacement 和 apiKeyName，附加业务请求头只传 headerNames。只传非敏感元数据，密码、Token、API Key 与请求头值全部由安全表单收集，并等待连接成功后完成。协议头（MCP-Protocol-Version、Mcp-Method、Mcp-Name、Mcp-Param-*）由客户端按每次请求自动生成，不要配置成固定的自定义头——Mcp-Name 必须与请求体的 params.name/params.uri 一致；若服务端报 HeaderMismatch（-32020）或缺少 Mcp-Name 头，问题在客户端/transport 协议层（协商版本、SDK 版本、transport 包装），而不是缺少自定义头。需要使用 MCP 服务的真实工具时，已知目标服务名则先调用 Finch 标准 ToolSearch 并传 source:'mcp:<服务名>'；仅当精确检索找不到可用工具时，才传 source:'mcp' 泛搜。ToolSearch 会连接选定服务、发现工具，并把匹配的 mcp__<服务名>__<工具名> 注入当前 run。授权可精确到具体工具（mcp__filesystem__read_file）或使用通配符（mcp__filesystem__*）。",
   "promptGuides": {
     "setup-filesystem": {
       "title": "连接 filesystem MCP 服务",
@@ -31,11 +31,23 @@
   "field.url": "接入地址",
   "field.command": "命令",
   "field.args": "参数",
+  "field.auth.username": "账号",
+  "field.auth.password": "密码",
+  "field.auth.apiKeyPlacement": "API Key 传递位置",
+  "field.auth.apiKeyHeader": "请求头",
+  "field.auth.apiKeyQuery": "URL 参数",
+  "field.auth.apiKeyName": "请求头或参数名",
+  "field.auth.apiKeyValue": "API Key",
+  "field.header.description": "该请求头会随每个 HTTP 请求发送，值将安全保存在本地。",
   "field.token.bearer": "API 令牌",
   "field.token.customValue": "{header} 值",
   "field.token.desc.bearerAdd": "只粘贴原始令牌（不含「Bearer」前缀）。将以「Authorization: Bearer <token>」发送。若服务无需鉴权可留空。",
   "field.token.desc.customAdd": "将作为「{header}」请求头发送。若服务无需鉴权可留空。",
   "field.token.desc.keep": "留空则保留原有令牌。",
   "field.token.desc.bearerEdit": "只粘贴原始令牌（不含「Bearer」前缀）。将以「Authorization: Bearer <token>」发送。无需鉴权可留空。",
-  "field.token.desc.customEdit": "将作为「{header}」请求头发送。无需鉴权可留空。"
+  "field.token.desc.customEdit": "将作为「{header}」请求头发送。无需鉴权可留空。",
+  "error.invalidUrl": "接入地址无效，请填写以 http:// 或 https:// 开头的完整 URL。",
+  "error.inlineCredential": "URL 中包含疑似密钥参数。请选择 API Key 的 URL 参数方式，让密钥通过安全表单保存。",
+  "error.nameConflict.user": "已存在名为“{name}”的自定义 MCP 服务，请使用其他名称。",
+  "error.nameConflict.extension": "“{owner}”小程序已提供名为“{name}”的 MCP 服务，请使用其他名称。"
 }

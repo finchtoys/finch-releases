@@ -71,7 +71,16 @@ describe('MCP 激活的 OAuth 迁移屏障', () => {
       readResource: expect.any(Function),
       listPrompts: expect.any(Function),
       getPrompt: expect.any(Function),
-    }));
+      // 工具箱管理面：宿主专用成员，普通消费方调用会被 host 侧拒绝。
+      'host:getMigrationState': expect.any(Function),
+      'host:getUserServerDraft': expect.any(Function),
+      'host:getUserServerToken': expect.any(Function),
+      'host:getUserServerEditorSecrets': expect.any(Function),
+      'host:saveUserServer': expect.any(Function),
+      'host:setUserServerEnabled': expect.any(Function),
+      'host:retryServer': expect.any(Function),
+      'host:removeUserServer': expect.any(Function),
+    }), { version: expect.any(String) });
     expect(ctx.logger.info).toHaveBeenCalledWith('mcp.oauth.migration.completed', {
       migratedCount: 1, durationMs: expect.any(Number),
     });

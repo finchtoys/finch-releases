@@ -73,7 +73,7 @@ interface StoredSetup {
 
 type McpServerConfig =
   | { name: string; command: string; args?: string[]; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string }
-  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string };
+  | { name: string; url: string; headers?: Record<string, string>; queryParams?: Record<string, string>; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string };
 
 interface McpClientCapability {
   registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
@@ -237,7 +237,7 @@ MCP Client 仍然支持用户手写 `servers.json`，用于本地高级配置和
 }
 ```
 
-HTTP Stream 中的 `env` 只用于替换 `headers` 里的 `${KEY}` 占位，不会作为请求 body 发送。
+HTTP Stream 中的 `env` 只用于替换 `headers` 和 `queryParams` 里的 `${KEY}` 占位，不会作为请求 body 发送。需要把 API Key 放入 URL 参数的服务应使用 `queryParams`，从而让基础 `url` 保持不含密钥。
 
 `headers` 只用于**业务自定义头**（如 `Authorization`、`X-Api-Key`、`X-Tenant-Id`）。MCP 协议头
 （`MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name`、`Mcp-Param-*`）由官方 SDK 的 transport 根据

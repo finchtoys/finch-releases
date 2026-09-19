@@ -1,5 +1,10 @@
 [
   {
+    "id": "agent-team",
+    "name": "智能体团队",
+    "description": "通过事件驱动看板规划、分派和监督多模型智能体项目。"
+  },
+  {
     "id": "agently-mail",
     "name": "QQ Agent 邮箱",
     "description": "通过官方 CLI 和 MCP 工具连接 QQ Agent 邮箱。"
@@ -68,6 +73,11 @@
     "id": "finch-pet",
     "name": "Finch 宠物",
     "description": "为 Finch 添加桌面宠物伙伴。"
+  },
+  {
+    "id": "finch-workbuddy-bridge",
+    "name": "WorkBuddy 桥接",
+    "description": "将 WorkBuddy 桌面应用模型暴露为本地 OpenAI 兼容端点，供 Finch 自定义提供商使用。"
   },
   {
     "id": "frontend-design",

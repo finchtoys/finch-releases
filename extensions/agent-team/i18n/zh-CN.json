@@ -1,0 +1,7 @@
+{
+  "name": "Agent Team",
+  "description": "通过事件驱动看板规划、分派和监督多模型智能体项目。",
+  "appView": {
+    "description": "跨 Space 协同多模型智能体，跟踪 Workflow、实时 Turn 与人工授权。"
+  }
+}

@@ -240,10 +240,12 @@ Permissions are opt-in. Request only what the mini tool truly needs.
 | `shell` | `boolean` | Shell command execution. |
 | `secrets` | `string[]` | Exact names or trailing-wildcard prefixes the mini tool may access via `ctx.secrets.get/set/delete`. |
 | `oauth` | `string[]` | OAuth provider ids allowed through `ctx.oauth`. |
-| `sessions` | `boolean` | Create owner-scoped Sessions and exchange messages via `ctx.sessions`. Also covers reading pending waits (`listWaits` / `waitForWait`). |
-| `sessionInteractions` | `boolean` | Answer permission / question / form cards in your own Sessions via `ctx.sessions.respondToWait()`. A program may reject a destructive permission card, but only a human in Finch may approve it. |
+| `sessions` | `boolean` | Create owner-scoped Sessions and exchange messages via `ctx.sessions`. Also covers reading pending waits in owned Sessions (`listWaits(sessionId)` / `waitForWait(sessionId, ...)`). |
+| `sessionWaits` | `boolean` / `'all'` | `true` explicitly keeps wait reads owner-scoped (normally unnecessary); `'all'` reads pending permission / question / form waits from every Session, enables no-argument `listWaits()` / `waitForWait()`, and enables `ctx.events.onInteractionWait()`. It does not expose conversation history. |
+| `sessionInteractions` | `boolean` / `'all'` | `true` preserves the 1.6.1 behavior and answers waits only in owned Sessions. `'all'` answers waits in every Session and includes global wait observation, so a separate `sessionWaits: 'all'` is unnecessary. A program may always reject a destructive permission card; approving one needs the separate `destructiveInteractions` grant. |
+| `destructiveInteractions` | `boolean` | Approve an irreversible (`destructive`) permission card on the user's behalf, on top of whichever answer tier you hold (owned or global). Without it a programmatic approval returns `forbidden`. Declare it only for a relay that puts the real decision in front of the user — and show them `wait.toolInput`, which for Bash is the exact command. Every programmatic destructive approval is audited. |
 
-Start with the least privileged setting. OAuth access is brokered and stored per mini tool; see `oauth.md`. Session permissions require a matching `contributes.sessionContainers` declaration; see `session.md`.
+Start with the least privileged setting. OAuth access is brokered and stored per mini tool; see `oauth.md`. Creating container Sessions requires a matching `contributes.sessionContainers` declaration; global wait-only permissions do not. Global wait scope crosses Spaces and directories, so request `'all'` only for a trusted device or relay and follow the non-autopilot rules in `session.md` §6.1.
 
 ## 6. Settings
 

@@ -123,8 +123,8 @@ export function activate(ctx: finch.ExtensionContext): void {
   }));
 
   // ── ComposerAction ─────────────────────────────────────────
-  // Keep menu rendering local. MCP probing may create or await a remote connection,
-  // so it must never block a click on the toolbar button.
+  // Menu rendering must stay side-effect free: Finch may request it while hovering.
+  // OAuth starts only after the user explicitly selects “连接 Notion”.
   const action = ctx.composerActions.register('notion', {
     async getBadge() {
       return connectionState === 'connecting' ? { text: '连接中', active: true } : undefined;
@@ -135,25 +135,7 @@ export function activate(ctx: finch.ExtensionContext): void {
         return [{ id: 'connect', label: '连接 Notion', iconName: ICON('link') }];
       }
       if (connectionState === 'unknown' || connectionState === 'disconnected') {
-        // Start OAuth from the toolbar click, but return immediately so the menu never
-        // waits on network or browser authorization.
-        connectionState = 'connecting';
-        action.notifyUpdate();
-        const mcp = ctx.capabilities.get<McpClientCapability>('mcp.client');
-        void mcp.connectServer(SERVER_NAME).then(async () => {
-          connectionState = 'connected';
-          action.notifyUpdate();
-          await ctx.ui.showToast({ title: 'Notion 已连接', variant: 'success' });
-        }).catch(async (error) => {
-          connectionState = 'unknown';
-          action.notifyUpdate();
-          await ctx.ui.showToast({
-            title: '连接失败',
-            description: error instanceof Error ? error.message : String(error),
-            variant: 'error',
-          });
-        });
-        return [{ id: 'connecting', label: '正在连接 Notion…', iconName: ICON('link'), disabled: true }];
+        return [{ id: 'connect', label: '连接 Notion', iconName: ICON('link') }];
       }
       if (connectionState === 'connecting') {
         return [{ id: 'connecting', label: '正在连接 Notion…', iconName: ICON('link'), disabled: true }];

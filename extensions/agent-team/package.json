@@ -1,0 +1,58 @@
+{
+  "name": "finch-agent-team",
+  "version": "0.1.3",
+  "type": "module",
+  "description": "Event-driven multi-model Agent Team project board for Finch.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://finchwork.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/agent-team"
+  },
+  "license": "MIT",
+  "main": "dist/backend/index.js",
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:backend": "tsc -p tsconfig.backend.json",
+    "build:app": "vite build",
+    "build": "npm run clean && npm run build:backend && npm run build:app",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.backend.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "doctor": "npx @finchtoys/minitools doctor ."
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "^0.3.11",
+    "@finchtoys/minitools": "^0.3.4",
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^6.0.3",
+    "vite": "^7.1.7",
+    "vitest": "^5.0.0"
+  },
+  "files": [
+    "dist/",
+    "finch.json",
+    "i18n/",
+    "README.md",
+    "README.zh-CN.md",
+    "ARCHITECTURE.md"
+  ]
+}

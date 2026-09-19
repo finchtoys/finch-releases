@@ -1048,7 +1048,7 @@ declare module 'finch' {
     readonly requestId: string;
     readonly kind: SessionWaitKind;
     readonly createdAt: string;
-    /** 仅当等待会自行取消时出现（带 timeoutMs 的表单卡）。 */
+    /** 等待被自动结算的时刻：权限卡（到时自动拒绝）与带 timeoutMs 的表单卡（到时自动取消）。 */
     readonly expiresAt?: string;
   }
 
@@ -1063,7 +1063,8 @@ declare module 'finch' {
     readonly dangerous?: boolean;
     /**
      * 不可逆操作。小工具可拒绝这类等待，让任务安全继续，但不能批准；
-     * 批准时 respondToWait() 返回 `forbidden`，只有真人可以批准。
+     * 批准时 respondToWait() 在未获 `permissions.destructiveInteractions` 时返回 `forbidden`；
+     * 获准时程序也可以批准（会写入审计日志）。
      */
     readonly destructive?: boolean;
   }
@@ -1135,12 +1136,22 @@ declare module 'finch' {
     waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
     listEvents(options: SessionEventQuery): Promise<SessionEventPage>;
-    /** 当前阻塞该 Session 的未结算等待。需要 permissions.sessions。 */
-    listWaits(sessionId: string): Promise<SessionWait[]>;
+    /**
+     * 当前阻塞该 Session 的未结算等待。需要 permissions.sessions。
+     *
+     * 省略 `sessionId` 时返回**所有会话**的未结算等待（设备重连后的对账入口），
+     * 需要 `permissions.sessionWaits: 'all'` 或 `permissions.sessionInteractions: 'all'`。
+     * 返回的 `SessionWait` 已带 `sessionId`，无需额外字段。
+     */
+    listWaits(sessionId?: string): Promise<SessionWait[]>;
     /** 以程序方式应答等待。需要 permissions.sessionInteractions。 */
     respondToWait(sessionId: string, requestId: string, response: SessionWaitResponse): Promise<SessionWaitRespondResult>;
-    /** Session 一旦出现待处理等待就返回，无需轮询。 */
-    waitForWait(sessionId: string, options?: SessionWaitPollOptions): Promise<SessionWait | undefined>;
+    /**
+     * Session 一旦出现待处理等待就返回，无需轮询。
+     * 省略 `sessionId` 时等待任意会话的下一条等待，需要
+     * `permissions.sessionWaits: 'all'` 或 `permissions.sessionInteractions: 'all'`。
+     */
+    waitForWait(sessionId?: string, options?: SessionWaitPollOptions): Promise<SessionWait | undefined>;
   }
 
   /** 当前激活 Space 或默认 Workspace 的信息。 */
@@ -2798,6 +2809,11 @@ declare module 'finch' {
     /**
      * 提供一个能力。仅允许 manifest `provides.capabilities` 中声明的名字。
      * 建议通过 `options.version` 声明 semver 版本，便于消费方协商兼容性。
+     *
+     * 成员名以 `host:` 开头表示这是一组**只给 Finch 宿主界面使用**的管理成员（例如
+     * 工具箱里该小程序自己的设置面板）。宿主调用时会带上信任标记；其它插件通过
+     * `get()` 拿到的代理调用这些成员会被拒绝。普通能力成员不要使用这个前缀，也不要
+     * 依赖 `host:` 成员——它属于 Finch 内部界面契约，不随公开 API 一起保证兼容。
      */
     provide(name: string, implementation: CapabilityImpl, options?: CapabilityProvideOptions): Disposable;
     /** 获取一个能力代理。仅允许 manifest `requires.capabilities` 中声明的名字。 */
@@ -2967,9 +2983,54 @@ declare module 'finch' {
     readonly cwd?: string;
   }
 
+  // ── 全局等待感知 ─────────────────────────────────────────────────
+
+  /**
+   * 发起会话的主体，供设备显示"这是谁的会话"。
+   * 不暴露对话正文，只提供归属上下文。
+   */
+  export type InteractionWaitOwner =
+    | { readonly type: 'user' }
+    | { readonly type: 'minitool'; readonly id: string; readonly name?: string }
+    | { readonly type: 'automation'; readonly taskId?: string };
+
+  /**
+   * 全局等待事件，承载三类卡片（权限 / 提问 / 表单）的注册与结算。
+   * 由 `ctx.events.onInteractionWait` 推送，需要
+   * `permissions.sessionWaits: 'all'` 或 `permissions.sessionInteractions: 'all'`。
+   */
+  export type InteractionWaitEvent =
+    | {
+        readonly phase: 'waiting';
+        readonly sessionId: string;
+        readonly sessionTitle?: string;
+        readonly spaceId?: string;
+        readonly turnId?: string;
+        /** 传给 respondToWait() 的 id，等于卡片 id（permission/question 为 toolUseId）。 */
+        readonly requestId: string;
+        /** 与 turn.waiting 是同一份安全投影。 */
+        readonly wait: SessionWait;
+        /** 发起该会话的主体，供设备显示"这是谁的会话"。 */
+        readonly requestedBy: InteractionWaitOwner;
+        readonly createdAt: string;
+      }
+    | {
+        readonly phase: 'resolved';
+        readonly sessionId: string;
+        readonly turnId?: string;
+        readonly requestId: string;
+        readonly resolvedBy: SessionWaitResolver;
+        readonly createdAt: string;
+      };
+
   export interface Events {
     /** 订阅 Finch Agent 运行事件。返回的 Disposable 可用于取消订阅。 */
     onAgentEvent(listener: (event: AgentEvent) => unknown): Disposable;
+    /**
+     * 订阅全局等待变化（三类卡片：权限 / 提问 / 表单）。
+     * 需要 `permissions.sessionWaits: 'all'` 或 `permissions.sessionInteractions: 'all'`。
+     */
+    onInteractionWait(listener: (event: InteractionWaitEvent) => unknown): Disposable;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -3691,11 +3752,30 @@ declare module 'finch' {
     /** 是否允许创建并收发当前小工具自己拥有的 Session。 */
     readonly sessions?: boolean;
     /**
-     * 是否允许代替用户应答自己 Session 里的等待（权限卡 / 提问卡 / 表单卡）。
+     * 是否允许代替用户应答 Session 里的等待（权限卡 / 提问卡 / 表单卡）。
+     * `true` = 仅自己创建的会话（1.6.1 语义，不变）；
+     * `'all'` = 任意会话（全局代答）。`'all'` 蕴含对全部会话的等待感知。
      * 独立于 `sessions`：读取等待只需 `sessions`，应答才需要本权限。
-     * destructive 权限卡可由程序拒绝以安全继续，但永远只能由真人批准。
+     * destructive 权限卡可由程序拒绝以安全继续；批准需要另见
+     * `destructiveInteractions`。
      */
-    readonly sessionInteractions?: boolean;
+    readonly sessionInteractions?: boolean | 'all';
+    /**
+     * 是否允许代替用户批准**不可逆**（destructive）权限卡。
+     * 必须在 `sessionInteractions` 之上单独授权：读卡、拒绝是可恢复的，批准
+     * `rm -rf` 不是。未声明时，程序批准 destructive 卡仍返回 `forbidden`。
+     */
+    readonly destructiveInteractions?: boolean;
+    /**
+     * 读取任意会话的等待内容（含权限卡命令、提问正文、表单字段）。
+     * 省略 = 只能看自己拥有的会话（现状，由 `sessions` 覆盖）；
+     * `true` = 显式声明"只看自己的"（通常无需写）；
+     * `'all'` = 全部会话（全局等待感知）。
+     *
+     * 注意：`'all'` 扩大了内容读取面，但读到的只是安全投影（`toSessionWait()`），
+     * 不含对话历史；风险低于 `agentEvents: 'full'`。
+     */
+    readonly sessionWaits?: boolean | 'all';
     /**
      * 是否允许通过 `ctx.appearance` 修改 App 级外观（主题/皮肤/字体）与首页
      * 背景。效果等同于用户自己在「外观设置」里操作，因此单独声明为一项权限。

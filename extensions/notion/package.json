@@ -1,6 +1,6 @@
 {
   "name": "finch-notion",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Connect Notion to Finch — search pages, read databases, and manage your workspace through MCP.",
   "author": {
     "name": "Finch Team",

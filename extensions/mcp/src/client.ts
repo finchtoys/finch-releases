@@ -6,7 +6,7 @@
  * SDK owns transports, framing, JSON-RPC, and process lifecycle details.
  */
 import { Client as SdkClient, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import type { OAuthClientProvider, ServerCapabilities, Transport } from '@modelcontextprotocol/client';
+import type { Icon, Implementation, OAuthClientProvider, ServerCapabilities, Transport } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import type { McpOAuthConfig } from './oauth.js';
 
@@ -33,7 +33,9 @@ export interface McpHttpStreamServerConfig {
   url: string;
   /** HTTP headers. Values may contain `${ENV_NAME}` placeholders. */
   headers?: Record<string, string>;
-  /** Values used to expand header placeholders; merged with process.env. */
+  /** URL query parameters. Values may contain `${ENV_NAME}` placeholders. */
+  queryParams?: Record<string, string>;
+  /** Values used to expand header and query placeholders; merged with process.env. */
   env?: Record<string, string>;
   /** Standards-based MCP OAuth discovery + DCR + PKCE. */
   oauth?: McpOAuthConfig;
@@ -94,11 +96,15 @@ export interface McpToolResult {
 
 /** Capabilities advertised by the MCP server in its initialize response. */
 export type McpCapabilities = ServerCapabilities;
+export type McpServerIcon = Icon;
+export type McpServerInfo = Implementation;
 
 export interface McpClient {
   readonly name: string;
   /** Server capabilities populated after a successful connect(). */
   readonly capabilities: McpCapabilities;
+  /** Standards-defined implementation metadata from initialize, including serverInfo.icons. */
+  readonly serverInfo?: McpServerInfo;
   /**
    * Called when the connection drops unexpectedly (process exit, network error).
    * NOT called when close() is invoked intentionally.
@@ -131,6 +137,7 @@ class SdkBackedMcpClient implements McpClient {
   private closing = false;
   private connected = false;
   private _capabilities: McpCapabilities = {};
+  private _serverInfo?: McpServerInfo;
 
   /** Called when the connection drops unexpectedly (not via close()). */
   onclose?: () => void;
@@ -146,6 +153,10 @@ class SdkBackedMcpClient implements McpClient {
 
   get capabilities(): McpCapabilities {
     return this._capabilities;
+  }
+
+  get serverInfo(): McpServerInfo | undefined {
+    return this._serverInfo;
   }
 
   onNotification(method: string, handler: () => void): void {
@@ -199,6 +210,7 @@ class SdkBackedMcpClient implements McpClient {
       this.sdkClient = client;
       this.transport = transport;
       this._capabilities = client.getServerCapabilities() ?? {};
+      this._serverInfo = client.getServerVersion();
       this.connected = true;
     } catch (err) {
       this.closing = true;
@@ -284,10 +296,13 @@ class SdkBackedMcpClient implements McpClient {
 
   private createTransport(): Transport {
     if (isHttpConfig(this.config)) {
-      return new StreamableHTTPClientTransport(new URL(this.config.url), {
+      const url = new URL(this.config.url);
+      const queryParams = expandTemplates(this.config.queryParams, this.config.env);
+      for (const [name, value] of Object.entries(queryParams)) url.searchParams.set(name, value);
+      return new StreamableHTTPClientTransport(url, {
         authProvider: this.authProvider,
         requestInit: {
-          headers: expandHeaders(this.config.headers, this.config.env),
+          headers: expandTemplates(this.config.headers, this.config.env),
         },
       });
     }
@@ -328,10 +343,10 @@ function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return out;
 }
 
-function expandHeaders(headers: Record<string, string> | undefined, env: Record<string, string> | undefined): Record<string, string> {
+function expandTemplates(entries: Record<string, string> | undefined, env: Record<string, string> | undefined): Record<string, string> {
   const values = { ...definedEnv(process.env), ...env };
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers ?? {})) {
+  for (const [key, value] of Object.entries(entries ?? {})) {
     out[key] = value.replace(/\$\{([A-Z0-9_]+)\}/gi, (_, name: string) => values[name] ?? '');
   }
   return out;

@@ -409,12 +409,10 @@ if (!wait) return; // timed out, nothing pending
 // 3. Relay the question to your real user, then answer on their behalf.
 if (wait.kind === 'permission') {
   const decision: 'allow' | 'deny' = await relayPermissionToUser(wait);
-  // Remote channels may reject an irreversible operation, but approval must
-  // happen in the Finch desktop app. Do not retry a forbidden approval.
-  if (wait.destructive && decision === 'allow') {
-    await tellUserToApproveInFinch(wait);
-    return;
-  }
+  // Before asking, show `wait.toolInput` (for Bash: the exact command) and
+  // `wait.expiresAt` (when Finch would auto-deny it). Approving an irreversible
+  // card additionally needs `permissions.destructiveInteractions`; without that
+  // grant Finch answers `forbidden` — tell the user, never retry the approval.
   await ctx.sessions.respondToWait(sessionId, wait.requestId, {
     kind: 'permission',
     allow: decision === 'allow',
@@ -434,6 +432,21 @@ if (wait.kind === 'permission') {
 }
 ```
 
+For a device or remote surface that monitors every Session, use an event-driven loop with startup reconciliation. `onInteractionWait()` is best-effort and does not replay events, so always call the no-argument `listWaits()` first (and again after reconnect), then subscribe to changes. Remove the device-side prompt when the matching `resolved` event arrives:
+
+```ts
+// 1. Startup/reconnect reconciliation across all Sessions.
+for (const pending of await ctx.sessions.listWaits()) present(pending);
+
+// 2. Incremental changes. Keep the disposable for deactivation.
+ctx.subscriptions.push(ctx.events.onInteractionWait((event) => {
+  if (event.phase === 'waiting') present(event);
+  else dismiss(event.requestId);
+}));
+```
+
+A fan-out may produce many waits at once. Finch deliberately does not throttle this stream; the device should merge presentation itself, for example by collapsing waits by `sessionId` into “N items need attention”. Make `present()` idempotent by `requestId`, because reconnect or app restoration may announce an existing wait again.
+
 `respondToWait()` never throws on a race. Check the result state:
 
 | state | Meaning |
@@ -441,30 +454,42 @@ if (wait.kind === 'permission') {
 | `accepted` | Your answer was applied and the turn resumed. |
 | `stale` | Someone else settled it first; `resolvedBy` tells you who. |
 | `not_found` | Unknown `requestId` — usually an already-garbage-collected card. |
-| `forbidden` | Policy blocked it, e.g. trying to approve a destructive permission card. |
+| `forbidden` | Policy blocked that response — e.g. approving a destructive card without `permissions.destructiveInteractions`. |
 
 Hard rules, enforced by Finch and not overridable by any manifest flag:
 
-- **You can only touch your own Sessions.** Every call is ownership-checked.
-- **Destructive permission cards may only be rejected by a program.** This lets
-  the turn skip the dangerous operation and continue safely. Approval always
-  requires a human in the Finch window; programmatic approval gets `forbidden`.
+- **Owner scope remains the default.** With `permissions.sessions`, wait reads are limited to Sessions owned by this mini tool. `sessionInteractions: true` preserves the 1.6.1 behavior: it answers only those owned Sessions.
+- **Global scope is explicit and broad.** `sessionWaits: 'all'` reads waits from every Session; `sessionInteractions: 'all'` reads and answers waits from every Session. This scope is not limited by the active Space or directory, and it does not grant conversation history, `send()`, `listEvents()`, or `onDidReceiveEvent()` access to other Sessions.
+- **The device is not the authorizer.** It may only relay a decision the user made on that device. Never approve from local allowlists, regular expressions, heuristics, or model output. Safe automation may reject a dangerous item and tell the user to return to Finch Desktop.
+- **Approving an irreversible card needs its own grant.** With `permissions.destructiveInteractions`
+  a program may approve a destructive wait; without it approval still returns
+  `forbidden` and only a human in Finch can approve. Rejecting never needs the
+  grant — a program may always reject, so the turn can skip the dangerous
+  operation and continue safely. Every programmatic approval of an irreversible
+  operation is audited.
 - **A delegated answer never becomes a persistent rule.** `remember` is stripped,
   so you cannot silently widen the user's standing permissions.
 - **A human always wins.** If the user answers in the window first, your call
   returns `stale` instead of overwriting their decision.
 
-Permissions: `listWaits()` and `waitForWait()` need only `permissions.sessions`.
-`respondToWait()` additionally requires `permissions.sessionInteractions`, which is
-shown as its own line in the enable-confirmation dialog.
+Permissions are split into owned and global tiers:
+
+- Owned read: `permissions.sessions`; call `listWaits(sessionId)` / `waitForWait(sessionId, ...)` only for a Session owned by this mini tool.
+- Owned answer: add `permissions.sessionInteractions: true` (the 1.6.1-compatible tier).
+- Global read and `onInteractionWait()`: declare `permissions.sessionWaits: 'all'`.
+- Global answer: declare `permissions.sessionInteractions: 'all'`; this also includes global read/notification capability, so `sessionWaits: 'all'` need not be repeated.
+- Irreversible approvals: add `permissions.destructiveInteractions: true` on top of whichever answer tier you hold (owned or global). It stays separate because reading a wait and rejecting it is recoverable, while approving `rm -rf` is not.
+- Deadlines: permission waits and timed form waits carry `expiresAt`. When it passes, Finch settles the wait alone (permission → auto-deny, form → auto-cancel) and you receive a `resolved` event with `resolvedBy: 'timeout'`, so you can count down (or nudge the user) before that happens.
 
 ```json
 {
   "finch": {
-    "permissions": { "sessions": true, "sessionInteractions": true }
+    "permissions": { "sessionWaits": "all" }
   }
 }
 ```
+
+Use the read-only global tier unless the product genuinely relays user answers. If it must answer waits in any Session, replace the permission above with `"sessionInteractions": "all"`. These global wait permissions do not require a `contributes.sessionContainers` declaration; that declaration is still required when the mini tool creates container Sessions.
 
 The intended pattern is **relay, not autopilot**: forward the question to your real
 user on whatever channel you own (WeChat, email, a web UI), and submit their answer.
@@ -474,10 +499,13 @@ Submit the answer to the existing card with `respondToWait()`. Never pass a wait
 answer to `sessions.send()`: that creates a new turn and leaves the original card
 unsettled, so the task remains stuck.
 
-Note that `activity: 'background'` Sessions never produce waits — they auto-deny
-permission cards and cancel question/form cards so unattended work cannot hang. Keep
-your bot's own listener Session in the background, and dispatch real work into a
-normal Session where waits can surface and be relayed.
+By default an `activity: 'background'` Session degrades instead of waiting: it
+auto-denies permission cards and cancels question/form cards, so unattended work
+cannot hang. That changes when **your own mini tool holds `sessionInteractions`
+with a live host** — Finch then hands those waits to you instead of denying them,
+which is what lets a relay bot answer cards raised inside its own background
+Session. Either way the wait deadline still bounds the turn. Dispatching real work
+into a normal Session remains the simplest shape.
 
 ---
 
@@ -569,5 +597,5 @@ When the queue is full, `send()` returns a `rejected` receipt with `retryAfterMs
 - Implementing `sleep` + repeated `listEvents()` calls instead of `waitForTurn()` or `waitForWait()`.
 - Treating a `waitForTurn()` timeout as cancellation, or stopping by Session id without retaining the exact `turnId` returned by `send()`.
 - Auto-approving every permission card from code. That defeats the point of the prompt; relay it to a human instead.
-- Retrying the same answer after `stale` or `forbidden`. `stale` means the card is already settled; `forbidden` means that exact response is blocked. In particular, do not retry destructive approval—send the user to Finch for approval, or submit a rejection if that is their decision.
+- Retrying the same answer after `stale` or `forbidden`. `stale` means the card is already settled; `forbidden` means that exact response is blocked. A `forbidden` on a destructive approval means this mini tool lacks `permissions.destructiveInteractions` — have the user grant it (re-enable the mini tool) or approve in the desktop app; do not retry in a loop.
 - Trying to read or write the user's normal Composer Sessions. `ctx.sessions` only owns Sessions created by this mini tool.

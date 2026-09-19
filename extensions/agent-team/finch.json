@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 1,
+  "minVersion": "1.6.4",
+  "name": "Agent Team",
+  "description": "Plan, dispatch, and supervise multi-model agent projects from an event-driven board.",
+  "main": "dist/backend/index.js",
+  "activationEvents": ["onStartup"],
+  "miniToolType": "official",
+  "categories": ["productivity", "developer"],
+  "contributes": {
+    "tools": true,
+    "appView": {
+      "icon": "users",
+      "description": "Coordinate multi-model agents across Spaces with workflows, live turns, and human approvals.",
+      "source": {
+        "type": "local",
+        "path": "dist/appview/index.html"
+      }
+    }
+  },
+  "permissions": {
+    "filesystem": "read",
+    "network": false,
+    "shell": false,
+    "artifacts": true,
+    "collaboration": true,
+    "sessions": true,
+    "sessionInteractions": true
+  }
+}

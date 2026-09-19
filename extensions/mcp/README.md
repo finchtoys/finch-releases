@@ -73,7 +73,7 @@ interface StoredSetup {
 
 type McpServerConfig =
   | { name: string; command: string; args?: string[]; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string }
-  | { name: string; url: string; headers?: Record<string, string>; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string };
+  | { name: string; url: string; headers?: Record<string, string>; queryParams?: Record<string, string>; env?: Record<string, string>; ownerExtensionId?: string; ownerExtensionName?: string };
 
 interface McpClientCapability {
   registerServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }>;
@@ -237,7 +237,7 @@ In dev mode, the path is `~/.finch-dev/mcp/servers.json`. Configuration and busi
 }
 ```
 
-For HTTP Stream, `env` is only used to expand `${KEY}` placeholders in `headers`; it is not sent in the request body.
+For HTTP Stream, `env` is only used to expand `${KEY}` placeholders in `headers` and `queryParams`; it is not sent in the request body. Use `queryParams` for services that require an API key in the URL query string so the base `url` can remain secret-free.
 
 `headers` is only for **business headers** (e.g. `Authorization`, `X-Api-Key`, `X-Tenant-Id`). The MCP protocol headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`) are generated dynamically by the official SDK transport per request — do **not** configure them as fixed values: the client already negotiates the protocol version automatically via `versionNegotiation` (`2026-07-28` and later, falling back for legacy servers), and `Mcp-Name` must match the request body's `params.name` / `params.uri` exactly. If the server reports `HeaderMismatch` (-32020, HTTP 400) or a missing `Mcp-Name` header, investigate the client SDK version and transport layer instead of hardcoding protocol headers into `headers`.
 
