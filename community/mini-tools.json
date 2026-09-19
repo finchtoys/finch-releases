@@ -167,8 +167,8 @@
   },
   {
     "id": "finch-file-browser",
-    "version": "0.2.0",
-    "name": "Session Files",
+    "version": "0.4.0",
+    "name": "File Browser",
     "author": "zhaobaizhou",
     "description": "Browse, preview, and safely edit files in the current Finch conversation folder with a searchable file tree and session file list.",
     "repo": "zhaobaizhou/finch-file-browser",
