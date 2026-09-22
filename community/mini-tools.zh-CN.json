@@ -95,6 +95,11 @@
     "description": "用 Jev（TypeSafe AI System One）评估文本：分类、路由、打分、是/否判断都以带概率与置信度的结构化答案返回，可走 TypeSafe 官方 API 或 OpenRouter。"
   },
   {
+    "id": "kimi-webbridge",
+    "name": "Kimi 网页助手",
+    "description": "Kimi 驱动的浏览器工具：让 Finch 在 Chrome 中打开网站、点击、填表、截图并保存 PDF；连接由本机 Kimi WebBridge 组件（127.0.0.1:10086）及其 Chrome 扩展提供。"
+  },
+  {
     "id": "markdown-editor",
     "name": "写字",
     "description": "编辑 Markdown 并预览为微信公众号文章，支持选区 AI 修改与 AI 设计自定义排版。"

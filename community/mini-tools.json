@@ -260,6 +260,19 @@
     "featured": true
   },
   {
+    "id": "kimi-webbridge",
+    "version": "1.0.3",
+    "name": "Kimi Web Assistant",
+    "author": "Arthur",
+    "description": "Kimi-powered browser tool: let Finch operate websites in your Chrome browser through Kimi WebBridge — a local Kimi component (127.0.0.1:10086) plus its Chrome extension.",
+    "repo": "BlessedChild/finch-web-assistant",
+    "npm": "finch-web-assistant",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ]
+  },
+  {
     "id": "markdown-editor",
     "version": "0.2.22",
     "name": "Writing",
