@@ -75,6 +75,11 @@
     "description": "将 WorkBuddy 桌面应用模型暴露为本地 OpenAI 兼容端点，供 Finch 自定义提供商使用。"
   },
   {
+    "id": "finch-worktree-coordinator",
+    "name": "Worktree 协调器",
+    "description": "在隔离的 Git worktree 与绑定 Space 的持久 Agent Session 中协调并行交付通道，支持交付依赖门禁、turn 级取消、按 lane 选择模型，以及两阶段证据校验的回收流程。"
+  },
+  {
     "id": "frontend-design",
     "name": "网页设计",
     "description": "通过内嵌设计技能创建具有鲜明风格、可用于生产的前端界面。"

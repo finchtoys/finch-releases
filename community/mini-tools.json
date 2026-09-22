@@ -203,6 +203,20 @@
     ]
   },
   {
+    "id": "finch-worktree-coordinator",
+    "version": "0.11.1",
+    "name": "Worktree Coordinator",
+    "author": "EMUIO",
+    "description": "Coordinate persistent Finch Agent lanes across isolated Git worktrees and Space-bound Sessions — delivery-graph dependency gates, turn-level cancel, per-lane model selection, and two-phase evidence-verified retirement.",
+    "repo": "npm:finch-worktree-coordinator",
+    "npm": "finch-worktree-coordinator",
+    "extensionType": "community",
+    "categories": [
+      "developer",
+      "productivity"
+    ]
+  },
+  {
     "id": "frontend-design",
     "version": "0.1.1",
     "name": "Frontend Design",
