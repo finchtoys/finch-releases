@@ -550,7 +550,7 @@ const list = await ctx.sessions.list({ containerId: 'inbox', includeArchived: fa
 const all = await ctx.sessions.list();
 ```
 
-`list()` returns descriptors with `placement`, `activity`, `state` (pinned / archived), `profileId`, and timestamps.
+`create()`, `get()`, and `list()` return descriptors with an optional `title` (the current sidebar Session name, read from the Pi session index), plus `placement`, `activity`, `state` (pinned / archived), `profileId`, and timestamps. `title` is absent for unnamed Sessions; it is distinct from `topic`, which groups sibling Sessions in the subtask menu.
 
 ---
 

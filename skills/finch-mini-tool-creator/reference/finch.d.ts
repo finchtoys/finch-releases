@@ -686,6 +686,8 @@ declare module 'finch' {
   /** 由 Finch 写入的小工具 Session 元数据；owner 与 minitoolId 不可伪造。 */
   export interface MinitoolSessionDescriptor {
     readonly sessionId: string;
+    /** 当前会话标题（侧栏显示的名称）；未命名时不存在。与分组标签 `topic` 不同。 */
+    readonly title?: string;
     readonly owner: { readonly type: 'minitool'; readonly minitoolId: string };
     /**
      * `minitool` 会话位于本工具声明的容器内。`space` 会话被创建到某个具体
@@ -1113,6 +1115,13 @@ declare module 'finch' {
     readonly timeoutMs?: number;
   }
 
+  export interface SessionTurnPromoteResult {
+    readonly promoted: boolean;
+    readonly interruption: 'active_attempt' | 'retry_wait' | 'no_active_turn' | 'failed';
+    readonly dispatchScheduled: boolean;
+    readonly error?: string;
+  }
+
   export interface Sessions {
     create(options: SessionCreateOptions): Promise<MinitoolSessionDescriptor>;
     get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
@@ -1127,6 +1136,13 @@ declare module 'finch' {
      * `false`。
      */
     cancelTurn(sessionId: string, turnId: string): Promise<boolean>;
+    /**
+     * 提升本小程序自己拥有的排队 turn，并调用界面“立即追问”的协作式中断路径。
+     * 不支持提升运行中或终态 turn；不影响其他排队 turn 的内容。
+     * 返回 promoted 不代表已消费，使用 turn.started / waitForTurn 观察实际执行。
+     * 旧宿主调用前可通过 ctx.api.supports('sessions.promoteTurn') 检测支持情况。
+     */
+    promoteTurn(sessionId: string, turnId: string): Promise<SessionTurnPromoteResult>;
     /**
      * 动态修改当前 mini tool 自己拥有的 Session 权限模式并持久化。
      * acceptCalls 仍不会自动批准危险操作；不支持 auto。
