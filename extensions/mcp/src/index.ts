@@ -131,6 +131,8 @@ const runtimeServers = new Map<string, ManagedMcpServerConfig>();
 const clients = new Map<string, McpClient>();
 /** Cached tool lists for connected servers. */
 const serverTools = new Map<string, McpTool[]>();
+/** Best-effort capability counts; enumeration must not block connection or tool registration. */
+const serverContentCounts = new Map<string, { resources?: McpResource[]; prompts?: McpPrompt[] }>();
 /** MCP 服务图标仅用于列表展示，不替换授权弹窗的受信任图标。 */
 const serverIcons = new Map<string, { endpoint: string; iconUrl: string }>();
 const serverIconResolver = new McpServerIconResolver();
@@ -291,6 +293,7 @@ function buildServerToolRegistration(serverName: string, toolName: string, tool:
         if (cfg && isHttpConfig(cfg) && clients.has(serverName) && isSessionDeadError(callErr)) {
           clients.delete(serverName);
           serverTools.delete(serverName);
+          serverContentCounts.delete(serverName);
           serverStatus.set(serverName, 'pending');
         }
         return {
@@ -355,6 +358,7 @@ function disconnectServer(name: string): void {
   }
   connecting.delete(name);
   serverTools.delete(name);
+  serverContentCounts.delete(name);
   serverLastError.delete(name);
   unregisterServerTools(name);
   serverStatus.delete(name);
@@ -793,6 +797,10 @@ type McpServerStatusRow = {
   iconUrl?: string;
   error?: string;
   toolCount: number;
+  resourceCount?: number;
+  promptCount?: number;
+  resources?: McpResource[];
+  prompts?: McpPrompt[];
   tools: Array<McpTool & { title?: string }>;
   draft?: Record<string, unknown>;
   ownerExtensionId?: string;
@@ -1054,6 +1062,7 @@ async function connectIfNeeded(name: string, logger: finch.Logger, reconnectAtte
         unregisterServerTools(name); // remove mcp__server__* tools while disconnected
         clients.delete(name);
         serverTools.delete(name);
+        serverContentCounts.delete(name);
         logger.warn(`MCP server "${name}" disconnected unexpectedly`);
         scheduleReconnect(name, 1, logger);
       };
@@ -1070,6 +1079,32 @@ async function connectIfNeeded(name: string, logger: finch.Logger, reconnectAtte
       serverStatus.set(name, 'connected');
       serverLastError.delete(name);
       registerServerTools(name, tools); // register mcp__<server>__<tool> tools
+      // Enumeration is best-effort: slow or failed lists cannot block tools.
+      serverContentCounts.set(name, {
+        resources: client.capabilities.resources ? undefined : [],
+        prompts: client.capabilities.prompts ? undefined : [],
+      });
+      const refreshCount = <T extends McpResource | McpPrompt>(kind: 'resources' | 'prompts', list: () => Promise<T[]>) => {
+        void list().then((items) => {
+          if (clients.get(name) !== client) return;
+          const counts = serverContentCounts.get(name);
+          if (counts) Object.assign(counts, { [kind]: items });
+        }).catch(() => {
+          // Unknown count is not zero; keep the service connected and usable.
+        });
+      };
+      if (client.capabilities.resources) {
+        refreshCount('resources', () => client.listResources());
+        if (client.capabilities.resources.listChanged) {
+          client.onNotification('notifications/resources/list_changed', () => refreshCount('resources', () => client.listResources()));
+        }
+      }
+      if (client.capabilities.prompts) {
+        refreshCount('prompts', () => client.listPrompts());
+        if (client.capabilities.prompts.listChanged) {
+          client.onNotification('notifications/prompts/list_changed', () => refreshCount('prompts', () => client.listPrompts()));
+        }
+      }
       logger.info(`MCP server "${name}" connected with ${tools.length} tools`);
     } catch (err) {
       client.close();
@@ -1234,6 +1269,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       for (const client of clients.values()) client.close();
       clients.clear();
       serverTools.clear();
+      serverContentCounts.clear();
       configs.clear();
       connecting.clear();
       serverStatus.clear();
@@ -2119,6 +2155,10 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
               removable: userServers.has(name),
             },
             toolCount: serverTools.get(name)?.length ?? 0,
+            resourceCount: serverContentCounts.get(name)?.resources?.length,
+            promptCount: serverContentCounts.get(name)?.prompts?.length,
+            resources: serverContentCounts.get(name)?.resources,
+            prompts: serverContentCounts.get(name)?.prompts,
             tools: (serverTools.get(name) ?? []).map((tool) => ({
               ...tool,
               title: buildMcpToolTitle(name, tool.name),
@@ -2342,6 +2382,7 @@ export function deactivate(): void {
   for (const client of clients.values()) client.close();
   clients.clear();
   serverTools.clear();
+  serverContentCounts.clear();
   configs.clear();
   runtimeServers.clear();
   connecting.clear();

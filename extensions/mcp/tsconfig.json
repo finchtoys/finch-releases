@@ -11,9 +11,8 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "finch": ["./node_modules/@finchtoys/minitool-api/finch.d.ts"]
+      "finch": ["../../packages/minitool-api/finch.d.ts"]
     }
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src"]
 }

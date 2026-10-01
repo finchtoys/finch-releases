@@ -25,7 +25,6 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node ../../scripts/bundle-extension.mjs .",
-    "test": "vitest run",
     "prepack": "npm run build"
   },
   "finch": {
@@ -82,8 +81,6 @@
     "@modelcontextprotocol/client": "^2.0.0"
   },
   "devDependencies": {
-    "@finchtoys/minitool-api": "^0.3.11",
-    "@types/node": "^26.1.1",
-    "vitest": "^5.0.0"
+    "@types/node": "^26.1.1"
   }
 }
