@@ -65,6 +65,11 @@
     "description": "回答关于 Finch 使用、功能和小程序开发的问题，基于官方文档。"
   },
   {
+    "id": "finch-knowledge",
+    "name": "本地知识库",
+    "description": "把本地文档、图片与 OCR 文本索引成私有知识库，在对话中检索相关片段。"
+  },
+  {
     "id": "finch-pet",
     "name": "Finch 宠物",
     "description": "为 Finch 添加桌面宠物伙伴。"
