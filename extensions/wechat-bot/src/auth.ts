@@ -7,6 +7,7 @@ import {
   type BotState, type QRCodeResponse, type StatusResponse,
 } from './types';
 import { IlinkClient } from './ilink-client';
+import { ContextStore } from './context';
 import { sleep } from './utils';
 
 type ToastFn = (title: string, description?: string, variant?: finch.ToastVariant) => void;
@@ -21,6 +22,7 @@ export class AuthManager {
   constructor(
     private ctx: finch.MiniToolContext,
     private ilink: IlinkClient,
+    private contexts: ContextStore,
     private state: BotState,
     private toast: ToastFn,
     private onStartMessageLoop: () => void,
@@ -80,6 +82,7 @@ export class AuthManager {
   clearTypingTimers(): void {
     for (const st of this.typingState.values()) clearInterval(st.timer);
     this.typingState.clear();
+    this.ticketCache.clear();
   }
 
   // ── 扫码登录 ────────────────────────────────────────────────────────────────
@@ -156,6 +159,8 @@ export class AuthManager {
         case 'confirmed': {
           if (!st.bot_token || !st.ilink_bot_id) throw new Error('Login confirmed but credentials missing');
           const baseUrl = (st.baseurl || currentBase).replace(/\/+$/, '');
+          await this.contexts.clear();
+          this.clearTypingTimers();
           await this.ctx.storage.set(KEY_TOKEN, st.bot_token);
           await this.ctx.storage.set(KEY_BASE_URL, baseUrl);
           await this.ctx.storage.set(KEY_BOT_ID, st.ilink_bot_id);
@@ -259,6 +264,8 @@ export class AuthManager {
     this.state.messageRunning = false;
     this.state.lastError = undefined;
     await this.ctx.storage.delete(KEY_TOKEN);
+    this.clearTypingTimers();
+    await this.contexts.clear();
     await this.ctx.storage.delete(KEY_BASE_URL);
     await this.ctx.storage.delete(KEY_BOT_ID);
     await this.ctx.storage.delete(KEY_OWNER_USER);

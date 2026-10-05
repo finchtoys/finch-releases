@@ -1,6 +1,6 @@
 import type * as finch from 'finch';
 import {
-  CTOKEN_PREFIX, TASK_PREFIX, TASK_INDEX_KEY,
+  TASK_PREFIX, TASK_INDEX_KEY,
   type TaskRecord,
 } from './types';
 import { MediaManager } from './media';
@@ -50,13 +50,12 @@ export class TaskManager {
   /** 把任务执行状态回馈到微信联系人。 */
   private async notifyResult(task: TaskRecord): Promise<void> {
     if (!task.notifyPeerId) return;
-    const contextToken = await this.ctx.storage.get<string>(`${CTOKEN_PREFIX}${task.notifyPeerId}`);
     const label = task.title ? `「${task.title}」` : '任务';
     const body = task.status === 'completed'
       ? `✅ ${label}已完成：\n${(task.lastOutput ?? '').trim() || '（无文本输出）'}`
       : `❌ ${label}执行失败：${task.lastError ?? '未知错误'}`;
     try {
-      await this.media.sendText(task.notifyPeerId, contextToken, body);
+      await this.media.sendText(task.notifyPeerId, body);
       this.ctx.logger.info('task result pushed to wechat', { sessionId: task.sessionId, status: task.status });
     } catch (error) {
       this.ctx.logger.error('notify task result failed', error);

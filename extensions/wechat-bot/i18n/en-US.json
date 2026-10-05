@@ -26,6 +26,14 @@
     }
   },
   "runtime": {
+    "send": {
+      "notLoggedIn": "WeChat is not logged in. Scan the QR code first.",
+      "noContext": "Cannot send: no message context for the recipient under the current login. Ask the recipient to message the currently connected Finch Bot first, confirm Finch received it, then retry.",
+      "contextRejected": "WeChat could not prepare the send; the message context may be stale. Message the currently connected Finch Bot from WeChat and retry. If it still fails, scan a new QR code and send another inbound message.",
+      "loginExpired": "WeChat login has expired. Scan a new QR code, then message the currently connected Finch Bot from WeChat.",
+      "accountChanged": "WeChat login changed during the send. Delivery was stopped; start a new operation under the current login.",
+      "partialMedia": "The caption was sent, but media delivery failed. Do not send the caption again when retrying."
+    },
     "wait": {
       "operation": "Action: {operation}",
       "command": "Command: {command}",

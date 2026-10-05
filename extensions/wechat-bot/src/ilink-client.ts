@@ -1,11 +1,17 @@
 import type * as finch from 'finch';
 import {
   ILINK_APP_ID, ILINK_APP_CLIENT_VERSION, ILINK_CHANNEL_VERSION,
-  KEY_TOKEN, KEY_BASE_URL,
+  KEY_TOKEN, KEY_BASE_URL, KEY_BOT_ID,
 } from './types';
 import { randomWechatUin } from './utils';
 
 export type BotConfig = { autoReply: boolean };
+
+export interface IlinkAccount {
+  baseUrl: string;
+  botId: string;
+  botToken: string;
+}
 
 /**
  * iLink HTTP 客户端：封装了鉴权 header、base_info 和通用 POST/GET。
@@ -23,6 +29,16 @@ export class IlinkClient {
 
   async getBaseUrl(): Promise<string | undefined> {
     return this.ctx.storage.get<string>(KEY_BASE_URL);
+  }
+
+  async getAccount(): Promise<IlinkAccount | undefined> {
+    const [baseUrl, botId, botToken] = await Promise.all([
+      this.getBaseUrl(),
+      this.ctx.storage.get<string>(KEY_BOT_ID),
+      this.getToken(),
+    ]);
+    if (!baseUrl || !botId || !botToken) return undefined;
+    return { baseUrl, botId, botToken };
   }
 
   async isLoggedIn(): Promise<boolean> {

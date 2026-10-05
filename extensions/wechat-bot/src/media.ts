@@ -2,12 +2,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import type * as finch from 'finch';
 import {
   CDN_BASE_URL,
-  CTOKEN_PREFIX, KEY_BASE_URL, KEY_TOKEN,
   UPLOAD_MEDIA_IMAGE, UPLOAD_MEDIA_VIDEO, UPLOAD_MEDIA_FILE,
   type GetUploadUrlResponse, type UploadedMediaInfo,
   type WeixinCdnMedia, type WeixinMessageItem, type SendMessageResponse,
 } from './types';
-import { IlinkClient } from './ilink-client';
+import { IlinkClient, type IlinkAccount } from './ilink-client';
+import { ContextStore, contextScope, type MessageContext } from './context';
 import {
   encryptAesEcb, decryptAesEcb, parseAesKey, aesEcbPaddedSize,
   guessMime, attachmentKindFor, randomHex, sleep,
@@ -20,7 +20,79 @@ export class MediaManager {
   constructor(
     private ctx: finch.MiniToolContext,
     private ilink: IlinkClient,
+    private contexts: ContextStore,
   ) {}
+
+  private sendError(key: string): Error {
+    return new Error(this.ctx.i18n.t(`runtime.send.${key}`));
+  }
+
+  private async requireAccount(expected?: IlinkAccount): Promise<IlinkAccount> {
+    const account = await this.ilink.getAccount();
+    if (!account) throw this.sendError('notLoggedIn');
+    if (expected && (contextScope(account) !== contextScope(expected) || account.baseUrl !== expected.baseUrl)) {
+      throw this.sendError('accountChanged');
+    }
+    return account;
+  }
+
+  /** 每次发送都取当前登录的最新上下文，不使用历史 Session/turn 的 token 回退。 */
+  private async prepareSend(toUserId: string, expected?: IlinkAccount): Promise<{ account: IlinkAccount; context: MessageContext }> {
+    const account = await this.requireAccount(expected);
+    const context = await this.contexts.get(toUserId, account);
+    if (!context) {
+      this.ctx.logger.warn('wechat send blocked: no message context', { hasContextToken: false });
+      throw this.sendError('noContext');
+    }
+    await this.requireAccount(account);
+    return { account, context };
+  }
+
+  /** 工具入口在读取本地媒体/下载远程媒体之前也可执行预检。 */
+  async assertCanSend(toUserId: string): Promise<void> {
+    await this.prepareSend(toUserId);
+  }
+
+  private checkSendResponse(
+    resp: SendMessageResponse, account: IlinkAccount, context: MessageContext,
+    toUserId: string, itemType: number,
+  ): void {
+    const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
+    if (!failed) return;
+    // 服务端错误文本也可能回显请求字段；只保留限长且去敏的诊断信息。
+    let errmsg = resp.errmsg ?? '';
+    for (const sensitive of [account.botToken, context.token, toUserId]) {
+      if (sensitive) errmsg = errmsg.split(sensitive).join('[redacted]');
+    }
+    errmsg = errmsg.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200);
+    const detail = `sendMessage ret=${resp.ret ?? '-'} errcode=${resp.errcode ?? '-'} ${errmsg}`.trim();
+    this.ctx.logger.warn('wechat send rejected', {
+      ret: resp.ret, errcode: resp.errcode, errmsg, itemType,
+      hasContextToken: true, contextAgeMs: Math.max(0, Date.now() - context.receivedAt),
+    });
+    if (resp.ret === -14 || resp.errcode === -14) {
+      throw new Error(`${this.sendError('loginExpired').message} (${detail})`);
+    }
+    if (resp.ret === -2 && /^prepare\s*failed$/i.test((resp.errmsg ?? '').trim())) {
+      throw new Error(`${this.sendError('contextRejected').message} (${detail})`);
+    }
+    throw new Error(detail);
+  }
+
+  /** 文本、caption 和媒体共用响应校验；业务失败不自动重试，避免重复投递。 */
+  private async sendItem(toUserId: string, item: WeixinMessageItem, expected?: IlinkAccount): Promise<void> {
+    const { account, context } = await this.prepareSend(toUserId, expected);
+    const clientId = `openclaw-weixin:${Date.now()}-${randomHex(4)}`;
+    const resp = await this.ilink.post<SendMessageResponse>(account.baseUrl, 'ilink/bot/sendmessage', {
+      msg: {
+        from_user_id: '', to_user_id: toUserId, client_id: clientId,
+        message_type: 2, message_state: 2,
+        item_list: [item], context_token: context.token,
+      },
+      base_info: this.ilink.buildBaseInfo(),
+    }, account.botToken);
+    this.checkSendResponse(resp, account, context, toUserId, item.type);
+  }
 
   // ── CDN 下载解密 ────────────────────────────────────────────────────────────
 
@@ -43,15 +115,14 @@ export class MediaManager {
   private async getUploadUrl(
     toUserId: string, filekey: string, mediaType: number,
     rawsize: number, rawfilemd5: string, filesize: number, aeskeyHex: string,
+    expected: IlinkAccount,
   ): Promise<GetUploadUrlResponse> {
-    const baseUrl = await this.ilink.getBaseUrl();
-    const token = await this.ilink.getToken();
-    if (!baseUrl || !token) throw new Error('WeChat is not logged in');
-    return this.ilink.post<GetUploadUrlResponse>(baseUrl, 'ilink/bot/getuploadurl', {
+    const account = await this.requireAccount(expected);
+    return this.ilink.post<GetUploadUrlResponse>(account.baseUrl, 'ilink/bot/getuploadurl', {
       filekey, media_type: mediaType, to_user_id: toUserId,
       rawsize, rawfilemd5, filesize, no_need_thumb: true, aeskey: aeskeyHex,
       base_info: this.ilink.buildBaseInfo(),
-    }, token);
+    }, account.botToken);
   }
 
   /** POST 加密数据到 CDN，返回下载引用 (x-encrypted-param)。 */
@@ -106,7 +177,7 @@ export class MediaManager {
   /**
    * 完整的媒体上传管线：读取 Buffer → 生成 AES key → getUploadUrl → CDN upload。
    */
-  async uploadMediaToCdn(data: Buffer, toUserId: string, mediaType: number, label: string): Promise<UploadedMediaInfo> {
+  async uploadMediaToCdn(data: Buffer, toUserId: string, mediaType: number, label: string, account: IlinkAccount): Promise<UploadedMediaInfo> {
     const rawsize = data.length;
     const rawfilemd5 = createHash('md5').update(data).digest('hex');
     const filesize = aesEcbPaddedSize(rawsize);
@@ -115,7 +186,7 @@ export class MediaManager {
     const aeskeyHex = aeskey.toString('hex');
 
     this.ctx.logger.debug(`${label}: uploading rawsize=${rawsize} filesize=${filesize} mediaType=${mediaType}`);
-    const uploadResp = await this.getUploadUrl(toUserId, filekey, mediaType, rawsize, rawfilemd5, filesize, aeskeyHex);
+    const uploadResp = await this.getUploadUrl(toUserId, filekey, mediaType, rawsize, rawfilemd5, filesize, aeskeyHex, account);
     const downloadParam = await this.uploadBufferToCdn(
       data, aeskey,
       uploadResp.upload_full_url?.trim() || undefined,
@@ -130,67 +201,32 @@ export class MediaManager {
   // ── 发送消息 ────────────────────────────────────────────────────────────────
 
   /** 发送纯文本消息。 */
-  async sendText(toUserId: string, contextToken: string | undefined, text: string): Promise<void> {
-    const baseUrl = await this.ilink.getBaseUrl();
-    const token = await this.ilink.getToken();
-    if (!baseUrl || !token) throw new Error('WeChat is not logged in');
-    const latestToken = (await this.ctx.storage.get<string>(`${CTOKEN_PREFIX}${toUserId}`)) ?? contextToken;
-    const clientId = `openclaw-weixin:${Date.now()}-${randomHex(4)}`;
-    const resp = await this.ilink.post<SendMessageResponse>(baseUrl, 'ilink/bot/sendmessage', {
-      msg: {
-        from_user_id: '', to_user_id: toUserId, client_id: clientId,
-        message_type: 2, message_state: 2,
-        item_list: [{ type: 1, text_item: { text } }],
-        context_token: latestToken,
-      },
-      base_info: this.ilink.buildBaseInfo(),
-    }, token);
-    if (resp.ret !== undefined && resp.ret !== 0) {
-      throw new Error(`sendMessage ret=${resp.ret} ${resp.errmsg ?? ''}`);
-    }
+  async sendText(toUserId: string, text: string): Promise<void> {
+    await this.sendItem(toUserId, { type: 1, text_item: { text } });
   }
 
-  /** 发送单个媒体 item（图片/视频/文件），caption 作为独立 TEXT 先发。 */
+  /** caption 作为独立 TEXT 先发，失败立即停止，不假报整个媒体发送成功。 */
   private async sendMediaItem(
-    toUserId: string, contextToken: string | undefined,
-    item: WeixinMessageItem, caption?: string,
+    toUserId: string, item: WeixinMessageItem, account: IlinkAccount, caption?: string,
   ): Promise<void> {
-    const baseUrl = await this.ilink.getBaseUrl();
-    const token = await this.ilink.getToken();
-    if (!baseUrl || !token) throw new Error('WeChat is not logged in');
-    const latestToken = (await this.ctx.storage.get<string>(`${CTOKEN_PREFIX}${toUserId}`)) ?? contextToken;
-
     if (caption?.trim()) {
-      const captionClientId = `openclaw-weixin:${Date.now()}-${randomHex(4)}`;
-      await this.ilink.post<SendMessageResponse>(baseUrl, 'ilink/bot/sendmessage', {
-        msg: {
-          from_user_id: '', to_user_id: toUserId, client_id: captionClientId,
-          message_type: 2, message_state: 2,
-          item_list: [{ type: 1, text_item: { text: caption } }],
-          context_token: latestToken,
-        },
-        base_info: this.ilink.buildBaseInfo(),
-      }, token);
+      await this.sendItem(toUserId, { type: 1, text_item: { text: caption } }, account);
     }
-
-    const clientId = `openclaw-weixin:${Date.now()}-${randomHex(4)}`;
-    const resp = await this.ilink.post<SendMessageResponse>(baseUrl, 'ilink/bot/sendmessage', {
-      msg: {
-        from_user_id: '', to_user_id: toUserId, client_id: clientId,
-        message_type: 2, message_state: 2,
-        item_list: [item],
-        context_token: latestToken,
-      },
-      base_info: this.ilink.buildBaseInfo(),
-    }, token);
-    if (resp.ret !== undefined && resp.ret !== 0) {
-      throw new Error(`sendMessage(media) ret=${resp.ret} ${resp.errmsg ?? ''}`);
+    try {
+      await this.sendItem(toUserId, item, account);
+    } catch (error) {
+      if (caption?.trim()) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`${this.sendError('partialMedia').message} ${detail}`);
+      }
+      throw error;
     }
   }
 
-  async sendImage(toUserId: string, contextToken: string | undefined, data: Buffer, caption?: string): Promise<void> {
-    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_IMAGE, 'sendImage');
-    await this.sendMediaItem(toUserId, contextToken, {
+  async sendImage(toUserId: string, data: Buffer, caption?: string): Promise<void> {
+    const { account } = await this.prepareSend(toUserId);
+    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_IMAGE, 'sendImage', account);
+    await this.sendMediaItem(toUserId, {
       type: 2,
       image_item: {
         media: {
@@ -201,12 +237,13 @@ export class MediaManager {
         },
         mid_size: uploaded.fileSizeCiphertext,
       },
-    }, caption);
+    }, account, caption);
   }
 
-  async sendVideo(toUserId: string, contextToken: string | undefined, data: Buffer, caption?: string): Promise<void> {
-    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_VIDEO, 'sendVideo');
-    await this.sendMediaItem(toUserId, contextToken, {
+  async sendVideo(toUserId: string, data: Buffer, caption?: string): Promise<void> {
+    const { account } = await this.prepareSend(toUserId);
+    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_VIDEO, 'sendVideo', account);
+    await this.sendMediaItem(toUserId, {
       type: 5,
       video_item: {
         media: {
@@ -216,12 +253,13 @@ export class MediaManager {
         },
         video_size: uploaded.fileSizeCiphertext,
       },
-    }, caption);
+    }, account, caption);
   }
 
-  async sendFile(toUserId: string, contextToken: string | undefined, data: Buffer, fileName: string, caption?: string): Promise<void> {
-    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_FILE, 'sendFile');
-    await this.sendMediaItem(toUserId, contextToken, {
+  async sendFile(toUserId: string, data: Buffer, fileName: string, caption?: string): Promise<void> {
+    const { account } = await this.prepareSend(toUserId);
+    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_FILE, 'sendFile', account);
+    await this.sendMediaItem(toUserId, {
       type: 4,
       file_item: {
         media: {
@@ -232,18 +270,18 @@ export class MediaManager {
         file_name: fileName,
         len: String(uploaded.fileSize),
       },
-    }, caption);
+    }, account, caption);
   }
 
   /** 根据 MIME 类型自动路由到图片/视频/文件发送。 */
-  async sendMediaByMime(toUserId: string, contextToken: string | undefined, data: Buffer, fileName: string, caption?: string): Promise<void> {
+  async sendMediaByMime(toUserId: string, data: Buffer, fileName: string, caption?: string): Promise<void> {
     const mime = guessMime(fileName);
     if (mime.startsWith('image/')) {
-      await this.sendImage(toUserId, contextToken, data, caption);
+      await this.sendImage(toUserId, data, caption);
     } else if (mime.startsWith('video/')) {
-      await this.sendVideo(toUserId, contextToken, data, caption);
+      await this.sendVideo(toUserId, data, caption);
     } else {
-      await this.sendFile(toUserId, contextToken, data, fileName, caption);
+      await this.sendFile(toUserId, data, fileName, caption);
     }
   }
 

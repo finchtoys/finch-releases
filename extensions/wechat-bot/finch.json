@@ -65,6 +65,7 @@
     "sessions": true,
     "sessionInteractions": true,
     "destructiveInteractions": true,
-    "filesystem": "read"
+    "filesystem": "read",
+    "secrets": ["wechat.context.*"]
   }
 }

@@ -3,13 +3,14 @@ import { readFile } from 'node:fs/promises';
 import {
   CONTAINER_ID, wechatIcon,
   KEY_TOKEN, KEY_BASE_URL, KEY_OWNER_USER, KEY_CURSOR, KEY_ACTIVE_SESSION,
-  LEGACY_PEER_MAP_PREFIX, SESSION_MAP_PREFIX, TURN_MAP_PREFIX, CTOKEN_PREFIX,
+  LEGACY_PEER_MAP_PREFIX, SESSION_MAP_PREFIX, TURN_MAP_PREFIX,
   WAIT_PREFIX, WAIT_INDEX_PREFIX, RECONNECT_BACKOFF_MS,
   type BotState, type TaskRecord, type PendingWaitRecord, type WeixinInboundMessage, type GetUpdatesResponse,
 } from './types';
 import { createBotState } from './types';
 import { formatChinaDateTime, sleep, randomHex } from './utils';
-import { IlinkClient, type BotConfig } from './ilink-client';
+import { IlinkClient, type BotConfig, type IlinkAccount } from './ilink-client';
+import { ContextStore } from './context';
 import { MediaManager } from './media';
 import { AuthManager } from './auth';
 import { TaskManager } from './tasks';
@@ -38,12 +39,14 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   // ── 组装模块 ────────────────────────────────────────────────────────────────
 
   const ilink = new IlinkClient(ctx, appInfo.userAgent);
-  const media = new MediaManager(ctx, ilink);
+  const contexts = new ContextStore(ctx);
+  await contexts.discardLegacy();
+  const media = new MediaManager(ctx, ilink, contexts);
 
   // 前向声明：消息循环启动函数（auth 和 menu 都要调）
   let startMessageLoop: () => void;
 
-  const auth = new AuthManager(ctx, ilink, state, toast, () => startMessageLoop());
+  const auth = new AuthManager(ctx, ilink, contexts, state, toast, () => startMessageLoop());
 
   const tasks = new TaskManager(ctx, media);
 
@@ -55,7 +58,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   };
 
   const createWechatSession = async (
-    ownerUserId: string, contextToken: string | undefined, label?: string,
+    ownerUserId: string, label?: string,
   ): Promise<string> => {
     const created = await ctx.sessions.create({
       containerId: CONTAINER_ID,
@@ -64,12 +67,12 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       permissionMode: 'acceptCalls',
     });
     await ctx.storage.set(KEY_ACTIVE_SESSION, created.sessionId);
-    await ctx.storage.set(`${SESSION_MAP_PREFIX}${created.sessionId}`, { peerId: ownerUserId, contextToken });
+    await ctx.storage.set(`${SESSION_MAP_PREFIX}${created.sessionId}`, { peerId: ownerUserId });
     return created.sessionId;
   };
 
   const ensureActiveWechatSession = async (
-    ownerUserId: string, nickname: string | undefined, contextToken: string | undefined,
+    ownerUserId: string, nickname: string | undefined,
   ): Promise<string> => {
     const active = await ctx.storage.get<string>(KEY_ACTIVE_SESSION);
     if (active && (await ctx.sessions.get(active))) return active;
@@ -78,7 +81,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       await ctx.storage.set(KEY_ACTIVE_SESSION, legacy);
       return legacy;
     }
-    return createWechatSession(ownerUserId, contextToken, nickname);
+    return createWechatSession(ownerUserId, nickname);
   };
 
   // ── 等待状态中继 ────────────────────────────────────────────────────────────
@@ -289,9 +292,9 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     return wait.form.title;
   };
 
-  const relayWait = async (peerId: string, contextToken: string | undefined, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
+  const relayWait = async (peerId: string, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
     if (event.wait.kind === 'form' && event.wait.form.fields.some((field) => field.secret || field.type === 'password')) {
-      await media.sendText(peerId, contextToken, renderWait(event.wait) ?? waitText('fallback'));
+      await media.sendText(peerId, renderWait(event.wait) ?? waitText('fallback'));
       return;
     }
     if (event.wait.kind === 'form' && !event.wait.form.fields.some((field) => field.type !== 'link')) return;
@@ -310,10 +313,10 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     };
     await ctx.storage.set(`${WAIT_PREFIX}${code}`, pending);
     await ctx.storage.set(waitIndexKey(peerId), [...existingCodes, code]);
-    await media.sendText(peerId, contextToken, renderWait(event.wait) ?? waitText('fallback'));
+    await media.sendText(peerId, renderWait(event.wait) ?? waitText('fallback'));
   };
 
-  const respondToPendingWait = async (peerId: string, contextToken: string | undefined, text: string): Promise<boolean> => {
+  const respondToPendingWait = async (peerId: string, text: string): Promise<boolean> => {
     const match = text.trim().match(/^#([0-9a-f]{6})\s+([\s\S]+)$/i);
     let pending: PendingWaitRecord | undefined;
     let wait: finch.SessionWait | undefined;
@@ -326,7 +329,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       wait = waits?.find((candidate) => candidate.requestId === pending?.requestId);
       if (!wait) {
         await removePendingWait(pending);
-        await media.sendText(peerId, contextToken, waitText('expired'));
+        await media.sendText(peerId, waitText('expired'));
         return true;
       }
     } else {
@@ -337,7 +340,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       if (candidates.length > 1) {
         const lines = candidates.map((candidate) =>
           waitText('multiplePendingItem', { code: candidate.pending.code, summary: summarizeWait(candidate.wait) }));
-        await media.sendText(peerId, contextToken, `${waitText('multiplePending')}\n${lines.join('\n')}`);
+        await media.sendText(peerId, `${waitText('multiplePending')}\n${lines.join('\n')}`);
         return true;
       }
       pending = candidates[0].pending;
@@ -347,37 +350,33 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     }
     const parsed = responseForWait(wait, value);
     if (!parsed.response) {
-      await media.sendText(peerId, contextToken, parsed.error ?? waitText('parseFailed'));
+      await media.sendText(peerId, parsed.error ?? waitText('parseFailed'));
       return true;
     }
 
     const result = await ctx.sessions.respondToWait(pending.sessionId, pending.requestId, parsed.response);
     if (result.state === 'accepted') {
       await removePendingWait(pending);
-      await media.sendText(peerId, contextToken, waitText('accepted'));
+      await media.sendText(peerId, waitText('accepted'));
     } else if (result.state === 'stale') {
       // 用户已在桌面端、超时或结束会话时，静默清理旧映射。
       await removePendingWait(pending);
     } else if (result.state === 'forbidden') {
       await removePendingWait(pending);
       ctx.logger.warn('wait response forbidden', { sessionId: pending.sessionId, requestId: pending.requestId, reason: result.reason });
-      await media.sendText(peerId, contextToken, waitText('forbidden'));
+      await media.sendText(peerId, waitText('forbidden'));
     } else {
       await removePendingWait(pending);
-      await media.sendText(peerId, contextToken, waitText('expired'));
+      await media.sendText(peerId, waitText('expired'));
     }
     return true;
   };
 
   // ── 入站消息处理 ────────────────────────────────────────────────────────────
 
-  const handleInbound = async (msg: WeixinInboundMessage) => {
+  const handleInbound = async (msg: WeixinInboundMessage, account: IlinkAccount) => {
     const peerId = msg.from_user_id;
-    if (!peerId) return;
-
-    if (msg.context_token) {
-      await ctx.storage.set(`${CTOKEN_PREFIX}${peerId}`, msg.context_token);
-    }
+    if (!peerId || !(await contexts.isCurrent(account))) return;
 
     const { autoReply } = readConfig();
     const owner = await ctx.storage.get<string>(KEY_OWNER_USER);
@@ -386,6 +385,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       return;
     }
     if (!owner) await ctx.storage.set(KEY_OWNER_USER, peerId);
+    await contexts.capture(peerId, msg.context_token, account);
 
     let text = media.extractText(msg);
     const attachments = await media.extractAttachments(msg);
@@ -395,9 +395,9 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     }
     if (!text && !attachments.length) return;
 
-    if (text && await respondToPendingWait(peerId, msg.context_token, text)) return;
+    if (text && await respondToPendingWait(peerId, text)) return;
 
-    const sessionId = await ensureActiveWechatSession(peerId, msg.from_nickname, msg.context_token);
+    const sessionId = await ensureActiveWechatSession(peerId, msg.from_nickname);
     const idempotencyKey = `wx:${peerId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const receipt = await ctx.sessions.send(sessionId, {
       text, idempotencyKey,
@@ -406,10 +406,10 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
     if (receipt.state === 'rejected') {
       ctx.logger.warn('session queue full', { peerId, code: receipt.code });
-      if (autoReply) await media.sendText(peerId, msg.context_token, '我现在有点忙，请稍后再试。').catch(() => {});
+      if (autoReply) await media.sendText(peerId, '我现在有点忙，请稍后再试。').catch(() => {});
       return;
     }
-    await ctx.storage.set(`${TURN_MAP_PREFIX}${receipt.turnId}`, { peerId, contextToken: msg.context_token });
+    await ctx.storage.set(`${TURN_MAP_PREFIX}${receipt.turnId}`, { peerId });
     if (autoReply) void auth.startTyping(peerId, msg.context_token);
     state.deliveredCount += 1;
   };
@@ -423,14 +423,13 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         if (task) {
           await tasks.handleEvent(event);
           if (task.notifyPeerId) {
-            const contextToken = await ctx.storage.get<string>(`${CTOKEN_PREFIX}${task.notifyPeerId}`);
-            await relayWait(task.notifyPeerId, contextToken, event).catch((error) => ctx.logger.error('relay task wait failed', error));
+            await relayWait(task.notifyPeerId, event).catch((error) => ctx.logger.error('relay task wait failed', error));
           }
           return;
         }
-        const target = await ctx.storage.get<{ peerId: string; contextToken?: string }>(`${SESSION_MAP_PREFIX}${event.sessionId}`);
+        const target = await ctx.storage.get<{ peerId: string }>(`${SESSION_MAP_PREFIX}${event.sessionId}`);
         if (target?.peerId) {
-          await relayWait(target.peerId, target.contextToken, event).catch((error) => ctx.logger.error('relay session wait failed', error));
+          await relayWait(target.peerId, event).catch((error) => ctx.logger.error('relay session wait failed', error));
         }
         return;
       }
@@ -460,10 +459,10 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       if (event.type !== 'turn.completed' && event.type !== 'turn.failed') return;
       const { autoReply } = readConfig();
       const turnKey = `${TURN_MAP_PREFIX}${event.turnId}`;
-      let target = await ctx.storage.get<{ peerId: string; contextToken?: string }>(turnKey);
+      let target = await ctx.storage.get<{ peerId: string }>(turnKey);
       await ctx.storage.delete(turnKey);
       if (!target) {
-        const bySession = await ctx.storage.get<{ peerId: string; contextToken?: string }>(
+        const bySession = await ctx.storage.get<{ peerId: string }>(
           `${SESSION_MAP_PREFIX}${event.sessionId}`,
         );
         if (bySession) target = bySession;
@@ -493,14 +492,14 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         }).trim();
 
         if (textWithoutImages) {
-          await media.sendText(target.peerId, target.contextToken, textWithoutImages);
+          await media.sendText(target.peerId, textWithoutImages);
         }
 
         for (const imgPath of imagePaths) {
           try {
             const data = await readFile(imgPath);
             const fileName = imgPath.split('/').pop() ?? 'image.png';
-            await media.sendMediaByMime(target.peerId, target.contextToken, data, fileName);
+            await media.sendMediaByMime(target.peerId, data, fileName);
             ctx.logger.info('sent image to wechat', { peerId: target.peerId, path: imgPath });
           } catch (imgError) {
             ctx.logger.warn('failed to send image to wechat', { path: imgPath, error: String(imgError) });
@@ -508,7 +507,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         }
 
         if (!textWithoutImages && imagePaths.length === 0) {
-          await media.sendText(target.peerId, target.contextToken, reply);
+          await media.sendText(target.peerId, reply);
         }
         ctx.logger.info('replied to wechat', { peerId: target.peerId, chars: reply.length, images: imagePaths.length });
       } catch (error) {
@@ -530,16 +529,16 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
     while (!state.stopMessageLoop) {
       try {
-        const baseUrl = await ilink.getBaseUrl();
-        const token = await ilink.getToken();
-        if (!baseUrl || !token) {
+        const account = await ilink.getAccount();
+        if (!account) {
           ctx.logger.info('not logged in, stopping message loop');
           break;
         }
         const cursor = (await ctx.storage.get<string>(KEY_CURSOR)) ?? '';
-        const resp = await ilink.post<GetUpdatesResponse>(baseUrl, 'ilink/bot/getupdates', {
+        const resp = await ilink.post<GetUpdatesResponse>(account.baseUrl, 'ilink/bot/getupdates', {
           get_updates_buf: cursor, base_info: ilink.buildBaseInfo(),
-        }, token);
+        }, account.botToken);
+        if (state.stopMessageLoop || !(await contexts.isCurrent(account))) continue;
 
         const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
         if (failed) {
@@ -555,7 +554,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         if (resp.get_updates_buf !== undefined) await ctx.storage.set(KEY_CURSOR, resp.get_updates_buf);
         for (const msg of resp.msgs ?? []) {
           try {
-            await handleInbound(msg);
+            await handleInbound(msg, account);
           } catch (error) {
             await ctx.storage.delete(KEY_ACTIVE_SESSION);
             const detail = error instanceof Error
@@ -681,8 +680,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       }
       try {
         const previousSessionId = await ctx.storage.get<string>(KEY_ACTIVE_SESSION);
-        const contextToken = await ctx.storage.get<string>(`${CTOKEN_PREFIX}${ownerUserId}`);
-        const sessionId = await createWechatSession(ownerUserId, contextToken, requestedTitle || undefined);
+        const sessionId = await createWechatSession(ownerUserId, requestedTitle || undefined);
         ctx.logger.info('created fresh wechat session', { previousSessionId, sessionId });
         return {
           content: [{
@@ -702,7 +700,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'wechat_send',
     title: '发送微信消息',
-    description: 'Send a text message, image, or file to WeChat. Omit recipient to use the account that completed QR login, or provide a known WeChat userId. To send media, provide filePath (local file path) or imageUrl (remote URL to download). The message parameter serves as caption when sending media.',
+    description: 'Send a text message, image, or file to WeChat. Omit recipient to use the account that completed QR login, or provide a known WeChat userId. To send media, provide filePath (local file path) or imageUrl (remote URL to download). The message parameter serves as caption when sending media. The recipient must first message the currently connected bot to establish message context. QR login alone does not establish send readiness.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -726,12 +724,12 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       const recipient = requestedRecipient || await ctx.storage.get<string>(KEY_OWNER_USER) || '';
       if (!recipient) return { content: [{ type: 'text', text: 'No recipient is known. Log in to WeChat first or provide recipient.' }], isError: true };
       try {
-        const contextToken = await ctx.storage.get<string>(`${CTOKEN_PREFIX}${recipient}`);
+        await media.assertCanSend(recipient);
 
         if (filePath) {
           const data = await readFile(filePath);
           const fileName = filePath.split('/').pop() ?? 'file';
-          await media.sendMediaByMime(recipient, contextToken, data, fileName, message || undefined);
+          await media.sendMediaByMime(recipient, data, fileName, message || undefined);
           return { content: [{ type: 'text', text: `WeChat media (${fileName}) sent to ${requestedRecipient ? recipient : 'the logged-in account'}.` }] };
         }
         if (imageUrl) {
@@ -741,11 +739,11 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
           const contentType = res.headers.get('content-type') ?? '';
           const urlPath = new URL(imageUrl).pathname;
           const fileName = urlPath.split('/').pop() || (contentType.startsWith('image/') ? 'image.jpg' : 'file');
-          await media.sendMediaByMime(recipient, contextToken, data, fileName, message || undefined);
+          await media.sendMediaByMime(recipient, data, fileName, message || undefined);
           return { content: [{ type: 'text', text: `WeChat media from URL sent to ${requestedRecipient ? recipient : 'the logged-in account'}.` }] };
         }
 
-        await media.sendText(recipient, contextToken, message);
+        await media.sendText(recipient, message);
         return { content: [{ type: 'text', text: `WeChat message sent to ${requestedRecipient ? recipient : 'the logged-in account'}.` }] };
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);

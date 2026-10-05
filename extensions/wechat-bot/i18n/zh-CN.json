@@ -26,6 +26,14 @@
     }
   },
   "runtime": {
+    "send": {
+      "notLoggedIn": "微信尚未登录，请先扫码登录。",
+      "noContext": "无法发送：当前登录下没有收件人的消息上下文。请先从收件人的微信给当前 Finch Bot 发一条消息，确认 Finch 收到后再试。",
+      "contextRejected": "微信服务端未能准备发送，会话上下文可能已失效。请从微信给当前 Finch Bot 发一条消息后重试；若仍失败，请重新扫码登录并再次发消息。",
+      "loginExpired": "微信登录已失效，请重新扫码登录，再从微信给当前 Finch Bot 发一条消息。",
+      "accountChanged": "发送期间微信登录已切换，已停止发送。请在当前登录下重新发起操作。",
+      "partialMedia": "说明文字已发送，但媒体发送失败；重试时请勿重复发送说明文字。"
+    },
     "wait": {
       "operation": "操作：{operation}",
       "command": "命令：{command}",
