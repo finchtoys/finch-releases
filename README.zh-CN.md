@@ -5,8 +5,7 @@
 **Finch Agent 是一款轻量的桌面 AI Agent，支持 macOS 与 Windows。**
 
 你用自然语言与它协作。它会读取并处理你授权的本机文件，跨会话保留上下文，并通过
-扩展（小程序）、技能和 MCP 集成不断扩展能力。基于开源项目
-[Pi](https://pi.dev/) 构建。
+扩展（小程序）、技能和 MCP 集成不断扩展能力。
 
 [下载](https://finchwork.app/zh/downloads) ·
 [文档](https://finchwork.app/zh/docs) ·

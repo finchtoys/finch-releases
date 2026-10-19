@@ -7,8 +7,7 @@ Windows.**
 
 You work with it in natural language. It reads and processes local files you
 authorize, remembers context across sessions, and extends through mini tools,
-skills, and MCP integrations. Built on the open source project
-[Pi](https://pi.dev/).
+skills, and MCP integrations.
 
 [Download](https://finchwork.app/en/downloads) ·
 [Docs](https://finchwork.app/en/docs) ·
