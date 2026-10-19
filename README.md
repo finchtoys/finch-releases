@@ -1,5 +1,7 @@
 # Finch Agent
 
+[简体中文](README.zh-CN.md) · **English**
+
 **Finch Agent is a lightweight, easy-to-use desktop AI agent for macOS and
 Windows.**
 
@@ -101,7 +103,9 @@ Finch Toolbox
 Finch has a WeChat user group, **Finch 与她的小伙伴** — a Chinese-language space for
 questions, mini tool ideas, and bug reports. Scan the code with WeChat to join.
 
-<img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="WeChat group QR code for the Finch user group" width="240" />
+<div align="center">
+  <img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="WeChat group QR code for the Finch user group" width="240" />
+</div>
 
 WeChat group invitations expire after 7 days. If the code above has gone stale,
 [open an issue](https://github.com/finchtoys/finch-releases/issues) and we will
