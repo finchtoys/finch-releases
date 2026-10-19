@@ -22,14 +22,6 @@ skills, and MCP integrations. Built on the open source project
 | Models | 13+ cloud model providers, plus local models — you supply your own API key |
 | Extensibility | Mini tools, skills, MCP servers |
 | Interface languages | Simplified Chinese, English |
-| Built on | [Pi](https://pi.dev/) |
-
-> **Not to be confused with** — several unrelated products share the name Finch:
-> the [container development tool](https://runfinch.com/), the
-> [payroll and HR API](https://www.tryfinch.com/),
-> [Finch 3D](https://www.finch3d.com/) for architecture, and
-> [FinchAI](https://finchai.com/) for text analysis. This repository belongs to
-> the desktop AI agent at [finchwork.app](https://finchwork.app/).
 
 ## About this repository
 
@@ -103,3 +95,14 @@ Finch Toolbox
 - When an override is unavailable, Finch falls back to the English metadata.
 - Registry updates are published through `community.finchwork.app`; they can take up to about one hour to appear because of edge caching.
 - Selecting an extension in Finch directs installation through its published npm package or public source.
+
+## Join the community
+
+Finch has a WeChat user group, **Finch 与她的小伙伴** — a Chinese-language space for
+questions, mini tool ideas, and bug reports. Scan the code with WeChat to join.
+
+<img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="WeChat group QR code for the Finch user group" width="240" />
+
+WeChat group invitations expire after 7 days. If the code above has gone stale,
+[open an issue](https://github.com/finchtoys/finch-releases/issues) and we will
+refresh it.
