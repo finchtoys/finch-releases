@@ -2,8 +2,8 @@
 
 [简体中文](README.zh-CN.md) · **English**
 
-**Finch Agent is a lightweight, easy-to-use desktop AI agent for macOS and
-Windows.**
+**Finch Agent is a lightweight, easy-to-use desktop AI agent for macOS, Windows,
+and Linux.**
 
 You work with it in natural language. It reads and processes local files you
 authorize, remembers context across sessions, and extends through mini tools,
@@ -18,7 +18,7 @@ skills, and MCP integrations.
 
 | | |
 |---|---|
-| Platforms | macOS (Apple Silicon and Intel), Windows 10, Windows 11 |
+| Platforms | macOS (Apple Silicon and Intel), Windows 10, Windows 11, Linux (x86_64 — deb, rpm, AppImage) |
 | Price | The desktop app is free, permanently. Cloud services and model tokens are billed separately. |
 | Models | 13+ cloud model providers, plus local models — you supply your own API key |
 | Extensibility | Mini tools, skills, MCP servers |

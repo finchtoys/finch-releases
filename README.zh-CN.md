@@ -2,7 +2,7 @@
 
 [English](README.md) · **简体中文**
 
-**Finch Agent 是一款轻量的桌面 AI Agent，支持 macOS 与 Windows。**
+**Finch Agent 是一款轻量的桌面 AI Agent，支持 macOS、Windows 与 Linux。**
 
 你用自然语言与它协作。它会读取并处理你授权的本机文件，跨会话保留上下文，并通过
 扩展（小程序）、技能和 MCP 集成不断扩展能力。
@@ -16,7 +16,7 @@
 
 | | |
 |---|---|
-| 平台 | macOS（Apple Silicon 与 Intel）、Windows 10、Windows 11 |
+| 平台 | macOS（Apple Silicon 与 Intel）、Windows 10、Windows 11、Linux（x86_64：deb / rpm / AppImage） |
 | 价格 | 桌面应用永久免费。云服务与模型 token 单独计费。 |
 | 模型 | 13+ 云端模型供应商，同时支持本地模型——API Key 由你自己提供 |
 | 扩展能力 | 小程序、技能、MCP server |
