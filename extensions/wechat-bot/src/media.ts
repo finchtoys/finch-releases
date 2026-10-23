@@ -8,6 +8,8 @@ import {
 } from './types';
 import { IlinkClient, type IlinkAccount } from './ilink-client';
 import { ContextStore, contextScope, type MessageContext } from './context';
+import { SendObservations, type SendOutcome, type SendReason } from './send-observations';
+import { splitText } from './text-chunks';
 import {
   encryptAesEcb, decryptAesEcb, parseAesKey, aesEcbPaddedSize,
   guessMime, attachmentKindFor, randomHex, sleep,
@@ -17,11 +19,42 @@ import {
  * 媒体管理器：CDN 上传/下载 + 发送文本/图片/视频/文件消息。
  */
 export class MediaManager {
+  readonly observations: SendObservations;
+  private sendQueues = new Map<string, { tail: Promise<void>; pending: number }>();
+  private recentSends = new Map<string, number[]>();
+
   constructor(
     private ctx: finch.MiniToolContext,
     private ilink: IlinkClient,
     private contexts: ContextStore,
-  ) {}
+  ) { this.observations = new SendObservations(ctx); }
+
+  /** Serialize complete logical deliveries to a peer, including captions and media. */
+  private async withSendQueue(toUserId: string, operation: (account: IlinkAccount) => Promise<void>, signal?: AbortSignal): Promise<void> {
+    this.checkCancelled(signal);
+    const account = await this.requireAccount();
+    const key = `${contextScope(account)}:${toUserId}`;
+    const queue = this.sendQueues.get(key) ?? { tail: Promise.resolve(), pending: 0 };
+    if (queue.pending >= 20) throw this.sendError('queueFull');
+    queue.pending++;
+    const current = queue.tail.catch(() => {}).then(async () => {
+      this.checkCancelled(signal);
+      await this.requireAccount(account);
+      await operation(account);
+    });
+    const tail = current.then(() => {}, () => {});
+    queue.tail = tail;
+    this.sendQueues.set(key, queue);
+    void tail.then(() => {
+      queue.pending--;
+      if (queue.pending === 0 && this.sendQueues.get(key) === queue) this.sendQueues.delete(key);
+    });
+    await current;
+  }
+
+  private checkCancelled(signal?: AbortSignal): void {
+    if (signal?.aborted) throw this.sendError('cancelled');
+  }
 
   private sendError(key: string): Error {
     return new Error(this.ctx.i18n.t(`runtime.send.${key}`));
@@ -49,49 +82,93 @@ export class MediaManager {
   }
 
   /** 工具入口在读取本地媒体/下载远程媒体之前也可执行预检。 */
-  async assertCanSend(toUserId: string): Promise<void> {
+  async assertCanSend(toUserId: string, signal?: AbortSignal): Promise<void> {
+    this.checkCancelled(signal);
     await this.prepareSend(toUserId);
   }
 
   private checkSendResponse(
-    resp: SendMessageResponse, account: IlinkAccount, context: MessageContext,
-    toUserId: string, itemType: number,
+    resp: SendMessageResponse, diagnosticId: string,
   ): void {
     const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
     if (!failed) return;
-    // 服务端错误文本也可能回显请求字段；只保留限长且去敏的诊断信息。
-    let errmsg = resp.errmsg ?? '';
-    for (const sensitive of [account.botToken, context.token, toUserId]) {
-      if (sensitive) errmsg = errmsg.split(sensitive).join('[redacted]');
-    }
-    errmsg = errmsg.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200);
-    const detail = `sendMessage ret=${resp.ret ?? '-'} errcode=${resp.errcode ?? '-'} ${errmsg}`.trim();
-    this.ctx.logger.warn('wechat send rejected', {
-      ret: resp.ret, errcode: resp.errcode, errmsg, itemType,
-      hasContextToken: true, contextAgeMs: Math.max(0, Date.now() - context.receivedAt),
-    });
+    // Server text may echo partial credentials/content: expose fixed known tags only.
+    const raw = typeof resp.errmsg === 'string' ? resp.errmsg.trim().toLowerCase() : '';
+    const errmsg = /^prepare\s*failed$/.test(raw) ? 'prepare failed'
+      : ['rate limited', 'frequency limit', 'expired', 'denied', 'caption rejected'].includes(raw) ? raw : 'server rejected request';
+    const ret = typeof resp.ret === 'number' ? resp.ret : '-';
+    const errcode = typeof resp.errcode === 'number' ? resp.errcode : '-';
+    const detail = `sendMessage ret=${ret} errcode=${errcode} ${errmsg} diagnostic=${diagnosticId}`.trim();
     if (resp.ret === -14 || resp.errcode === -14) {
       throw new Error(`${this.sendError('loginExpired').message} (${detail})`);
     }
-    if (resp.ret === -2 && /^prepare\s*failed$/i.test((resp.errmsg ?? '').trim())) {
-      throw new Error(`${this.sendError('contextRejected').message} (${detail})`);
+    if (resp.ret === -2 && /^prepare\s*failed$/i.test(errmsg.trim())) {
+      throw new Error(`${this.sendError('prepareFailed').message} (${detail})`);
     }
     throw new Error(detail);
   }
 
   /** 文本、caption 和媒体共用响应校验；业务失败不自动重试，避免重复投递。 */
-  private async sendItem(toUserId: string, item: WeixinMessageItem, expected?: IlinkAccount): Promise<void> {
+  private async sendItem(
+    toUserId: string, item: WeixinMessageItem, expected?: IlinkAccount, part = 1, parts = 1, signal?: AbortSignal,
+  ): Promise<void> {
+    this.checkCancelled(signal);
     const { account, context } = await this.prepareSend(toUserId, expected);
-    const clientId = `openclaw-weixin:${Date.now()}-${randomHex(4)}`;
-    const resp = await this.ilink.post<SendMessageResponse>(account.baseUrl, 'ilink/bot/sendmessage', {
+    const body = {
       msg: {
-        from_user_id: '', to_user_id: toUserId, client_id: clientId,
+        from_user_id: '', to_user_id: toUserId, client_id: `openclaw-weixin:${Date.now()}-${randomHex(4)}`,
         message_type: 2, message_state: 2,
         item_list: [item], context_token: context.token,
       },
       base_info: this.ilink.buildBaseInfo(),
-    }, account.botToken);
-    this.checkSendResponse(resp, account, context, toUserId, item.type);
+    };
+    const id = this.observations.newId();
+    const at = Date.now();
+    const key = `${contextScope(account)}:${toUserId}`;
+    // A rolling attempt count is diagnostic only, not a guessed server quota.
+    for (const [k, times] of this.recentSends) {
+      const recent = times.filter((t) => at - t < 60_000);
+      if (recent.length) this.recentSends.set(k, recent); else this.recentSends.delete(k);
+    }
+    const recent = [...(this.recentSends.get(key) ?? []), at];
+    this.recentSends.set(key, recent.slice(-100));
+    let outcome: SendOutcome = 'transport_unknown';
+    let reason: SendReason = 'other';
+    let resp: SendMessageResponse | undefined;
+    try {
+      resp = await this.ilink.post<SendMessageResponse>(account.baseUrl, 'ilink/bot/sendmessage', body, account.botToken, 45_000, signal);
+      if (!resp || typeof resp !== 'object' || Array.isArray(resp)
+        || (resp.ret !== undefined && (typeof resp.ret !== 'number' || !Number.isFinite(resp.ret)))
+        || (resp.errcode !== undefined && (typeof resp.errcode !== 'number' || !Number.isFinite(resp.errcode)))) {
+        outcome = 'response_unknown';
+        throw new Error(`${this.sendError('responseUnknown').message} diagnostic=${id}`);
+      }
+      const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
+      if (failed) {
+        outcome = 'business_rejected';
+        reason = resp.ret === -14 || resp.errcode === -14 ? 'login_expired'
+          : resp.ret === -2 && typeof resp.errmsg === 'string' && /^prepare\s*failed$/i.test(resp.errmsg.trim()) ? 'prepare_failed' : 'other';
+        this.checkSendResponse(resp, id);
+      }
+      // The official sender permits omitted ret on successful JSON responses.
+      // HTTP succeeded, JSON is an object, and any provided business codes are zero.
+      // Do not require ret/message_id or synthesize absent codes in diagnostics.
+      outcome = 'accepted';
+    } finally {
+      const text = item.text_item?.text ?? '';
+      const observation = {
+        id, at, durationMs: Math.max(0, Date.now() - at), itemType: item.type,
+        textCharacters: [...text].length, textUtf8Bytes: Buffer.byteLength(text, 'utf8'),
+        requestBytes: Buffer.byteLength(JSON.stringify(body), 'utf8'), part, parts,
+        recentSendCount: recent.length, contextReceivedAt: context.receivedAt,
+        contextRevision: context.revision, outcome, reason,
+        ret: typeof resp?.ret === 'number' ? resp.ret : undefined,
+        errcode: typeof resp?.errcode === 'number' ? resp.errcode : undefined,
+      };
+      await this.observations.record(observation);
+      // Never persist/log arbitrary server errmsg, request content or credentials.
+      try { this.ctx.logger.info('wechat send observation', observation); } catch { /* telemetry is best effort */ }
+    }
   }
 
   // ── CDN 下载解密 ────────────────────────────────────────────────────────────
@@ -200,20 +277,34 @@ export class MediaManager {
 
   // ── 发送消息 ────────────────────────────────────────────────────────────────
 
-  /** 发送纯文本消息。 */
-  async sendText(toUserId: string, text: string): Promise<void> {
-    await this.sendItem(toUserId, { type: 1, text_item: { text } });
+  /** All TEXT paths share lossless bounds and stop on the first failure. */
+  private async sendTextChunks(toUserId: string, text: string, account: IlinkAccount, signal?: AbortSignal): Promise<void> {
+    const chunks = splitText(text);
+    if (!chunks.length) throw this.sendError('emptyText');
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        await this.sendItem(toUserId, { type: 1, text_item: { text: chunks[i] } }, account, i + 1, chunks.length, signal);
+      } catch (error) {
+        if (i === 0) throw error;
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`${this.sendError('partialText').message} (${i}/${chunks.length}) ${detail}`);
+      }
+    }
+  }
+
+  async sendText(toUserId: string, text: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(toUserId, (account) => this.sendTextChunks(toUserId, text, account, signal), signal);
   }
 
   /** caption 作为独立 TEXT 先发，失败立即停止，不假报整个媒体发送成功。 */
   private async sendMediaItem(
-    toUserId: string, item: WeixinMessageItem, account: IlinkAccount, caption?: string,
+    toUserId: string, item: WeixinMessageItem, account: IlinkAccount, caption?: string, signal?: AbortSignal,
   ): Promise<void> {
     if (caption?.trim()) {
-      await this.sendItem(toUserId, { type: 1, text_item: { text: caption } }, account);
+      await this.sendTextChunks(toUserId, caption, account, signal);
     }
     try {
-      await this.sendItem(toUserId, item, account);
+      await this.sendItem(toUserId, item, account, 1, 1, signal);
     } catch (error) {
       if (caption?.trim()) {
         const detail = error instanceof Error ? error.message : String(error);
@@ -223,65 +314,71 @@ export class MediaManager {
     }
   }
 
-  async sendImage(toUserId: string, data: Buffer, caption?: string): Promise<void> {
-    const { account } = await this.prepareSend(toUserId);
-    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_IMAGE, 'sendImage', account);
-    await this.sendMediaItem(toUserId, {
-      type: 2,
-      image_item: {
-        media: {
-          encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-          // 官方协议：base64(32 字符 hex 文本)，不是 base64(原始 16 字节 key)。
-          aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
-          encrypt_type: 1,
+  async sendImage(toUserId: string, data: Buffer, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(toUserId, async (account) => {
+      await this.prepareSend(toUserId, account);
+      const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_IMAGE, 'sendImage', account);
+      await this.sendMediaItem(toUserId, {
+        type: 2,
+        image_item: {
+          media: {
+            encrypt_query_param: uploaded.downloadEncryptedQueryParam,
+            // 官方协议：base64(32 字符 hex 文本)，不是 base64(原始 16 字节 key)。
+            aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
+            encrypt_type: 1,
+          },
+          mid_size: uploaded.fileSizeCiphertext,
         },
-        mid_size: uploaded.fileSizeCiphertext,
-      },
-    }, account, caption);
+      }, account, caption, signal);
+    }, signal);
   }
 
-  async sendVideo(toUserId: string, data: Buffer, caption?: string): Promise<void> {
-    const { account } = await this.prepareSend(toUserId);
-    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_VIDEO, 'sendVideo', account);
-    await this.sendMediaItem(toUserId, {
-      type: 5,
-      video_item: {
-        media: {
-          encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-          aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
-          encrypt_type: 1,
+  async sendVideo(toUserId: string, data: Buffer, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(toUserId, async (account) => {
+      await this.prepareSend(toUserId, account);
+      const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_VIDEO, 'sendVideo', account);
+      await this.sendMediaItem(toUserId, {
+        type: 5,
+        video_item: {
+          media: {
+            encrypt_query_param: uploaded.downloadEncryptedQueryParam,
+            aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
+            encrypt_type: 1,
+          },
+          video_size: uploaded.fileSizeCiphertext,
         },
-        video_size: uploaded.fileSizeCiphertext,
-      },
-    }, account, caption);
+      }, account, caption, signal);
+    }, signal);
   }
 
-  async sendFile(toUserId: string, data: Buffer, fileName: string, caption?: string): Promise<void> {
-    const { account } = await this.prepareSend(toUserId);
-    const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_FILE, 'sendFile', account);
-    await this.sendMediaItem(toUserId, {
-      type: 4,
-      file_item: {
-        media: {
-          encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-          aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
-          encrypt_type: 1,
+  async sendFile(toUserId: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(toUserId, async (account) => {
+      await this.prepareSend(toUserId, account);
+      const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_FILE, 'sendFile', account);
+      await this.sendMediaItem(toUserId, {
+        type: 4,
+        file_item: {
+          media: {
+            encrypt_query_param: uploaded.downloadEncryptedQueryParam,
+            aes_key: Buffer.from(uploaded.aeskeyHex).toString('base64'),
+            encrypt_type: 1,
+          },
+          file_name: fileName,
+          len: String(uploaded.fileSize),
         },
-        file_name: fileName,
-        len: String(uploaded.fileSize),
-      },
-    }, account, caption);
+      }, account, caption, signal);
+    }, signal);
   }
 
   /** 根据 MIME 类型自动路由到图片/视频/文件发送。 */
-  async sendMediaByMime(toUserId: string, data: Buffer, fileName: string, caption?: string): Promise<void> {
+  async sendMediaByMime(toUserId: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal): Promise<void> {
     const mime = guessMime(fileName);
     if (mime.startsWith('image/')) {
-      await this.sendImage(toUserId, data, caption);
+      await this.sendImage(toUserId, data, caption, signal);
     } else if (mime.startsWith('video/')) {
-      await this.sendVideo(toUserId, data, caption);
+      await this.sendVideo(toUserId, data, caption, signal);
     } else {
-      await this.sendFile(toUserId, data, fileName, caption);
+      await this.sendFile(toUserId, data, fileName, caption, signal);
     }
   }
 

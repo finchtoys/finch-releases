@@ -12,6 +12,7 @@ import { formatChinaDateTime, sleep, randomHex } from './utils';
 import { IlinkClient, type BotConfig, type IlinkAccount } from './ilink-client';
 import { ContextStore } from './context';
 import { MediaManager } from './media';
+import { executeWechatSend } from './send-tool';
 import { AuthManager } from './auth';
 import { TaskManager } from './tasks';
 
@@ -714,41 +715,8 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     defaultEnabled: true,
     risk: 'medium',
     callDisplay: { inline: { mode: 'single', fields: [{ path: 'recipient', label: '发送给' }] } },
-    async execute(rawInput): Promise<finch.ToolResult> {
-      const input = rawInput as { message?: unknown; recipient?: unknown; filePath?: unknown; imageUrl?: unknown };
-      const message = typeof input.message === 'string' ? input.message.trim() : '';
-      const filePath = typeof input.filePath === 'string' ? input.filePath.trim() : '';
-      const imageUrl = typeof input.imageUrl === 'string' ? input.imageUrl.trim() : '';
-      const requestedRecipient = typeof input.recipient === 'string' ? input.recipient.trim() : '';
-      if (!message && !filePath && !imageUrl) return { content: [{ type: 'text', text: 'Provide message, filePath, or imageUrl.' }], isError: true };
-      const recipient = requestedRecipient || await ctx.storage.get<string>(KEY_OWNER_USER) || '';
-      if (!recipient) return { content: [{ type: 'text', text: 'No recipient is known. Log in to WeChat first or provide recipient.' }], isError: true };
-      try {
-        await media.assertCanSend(recipient);
-
-        if (filePath) {
-          const data = await readFile(filePath);
-          const fileName = filePath.split('/').pop() ?? 'file';
-          await media.sendMediaByMime(recipient, data, fileName, message || undefined);
-          return { content: [{ type: 'text', text: `WeChat media (${fileName}) sent to ${requestedRecipient ? recipient : 'the logged-in account'}.` }] };
-        }
-        if (imageUrl) {
-          const res = await fetch(imageUrl);
-          if (!res.ok) return { content: [{ type: 'text', text: `Failed to download media: HTTP ${res.status}` }], isError: true };
-          const data = Buffer.from(await res.arrayBuffer());
-          const contentType = res.headers.get('content-type') ?? '';
-          const urlPath = new URL(imageUrl).pathname;
-          const fileName = urlPath.split('/').pop() || (contentType.startsWith('image/') ? 'image.jpg' : 'file');
-          await media.sendMediaByMime(recipient, data, fileName, message || undefined);
-          return { content: [{ type: 'text', text: `WeChat media from URL sent to ${requestedRecipient ? recipient : 'the logged-in account'}.` }] };
-        }
-
-        await media.sendText(recipient, message);
-        return { content: [{ type: 'text', text: `WeChat message sent to ${requestedRecipient ? recipient : 'the logged-in account'}.` }] };
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        return { content: [{ type: 'text', text: `Failed to send WeChat message: ${detail}` }], isError: true };
-      }
+    async execute(rawInput, exec): Promise<finch.ToolResult> {
+      return executeWechatSend(ctx, media, rawInput, exec.signal);
     },
   }));
 

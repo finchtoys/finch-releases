@@ -67,10 +67,13 @@ export class IlinkClient {
 
   async post<T>(
     baseUrl: string, endpoint: string, body: unknown,
-    token?: string, timeoutMs = 45_000,
+    token?: string, timeoutMs = 45_000, signal?: AbortSignal,
   ): Promise<T> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const abort = () => ctrl.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) ctrl.abort();
     try {
       const res = await fetch(`${baseUrl}/${endpoint}`, {
         method: 'POST',
@@ -82,6 +85,7 @@ export class IlinkClient {
       return (await res.json()) as T;
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
     }
   }
 

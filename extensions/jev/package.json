@@ -1,6 +1,6 @@
 {
   "name": "finch-jev",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Structured evaluation with Jev (TypeSafe AI System One) — via TypeSafe's own API or OpenRouter.",
   "author": {
     "name": "PuterJam"

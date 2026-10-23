@@ -127,7 +127,10 @@ export interface GetUpdatesResponse {
 }
 
 export interface SendMessageResponse {
-  ret: number;
+  /** Official send client permits omission on successful JSON responses. */
+  ret?: number;
+  /** Optional server identifier, not a device delivery receipt. */
+  message_id?: string | number;
   errcode?: number;
   errmsg?: string;
 }

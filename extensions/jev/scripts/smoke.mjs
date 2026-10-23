@@ -99,6 +99,52 @@ check('tool registered', tool?.name === 'finch_jev_evaluate', tool?.name);
 // `risk: "high"` makes Finch confirm on every single call, even in act mode.
 check('risk stays out of high', tool?.risk !== 'high', String(tool?.risk));
 
+// Mirrors ToolCallCard.tsx#inlineToolLabel, so the callDisplay declaration is
+// verified to produce the label the Timeline will actually render.
+function inlineLabel(input, inline) {
+  if (!input || typeof input !== 'object') return '';
+  const pick = (path) => path.split('.').reduce((cur, seg) => (cur && typeof cur === 'object' ? cur[seg] : undefined), input);
+  const fields = inline.fields
+    .map((field) => {
+      const raw = pick(field.path);
+      if (typeof raw !== 'string' || !raw) return null;
+      const value = field.format === 'truncate' ? raw.slice(0, field.maxLength ?? 60) : raw;
+      return { key: field.path.split('.').at(-1), value };
+    })
+    .filter(Boolean);
+  if (fields.length === 0) return '';
+  if ((inline.mode ?? 'single') === 'single') return fields[0].value;
+  if (inline.template) {
+    const EMPTY = '__FINCH_EMPTY__';
+    return inline.template
+      .replace(/\{([^}]+)\}/g, (_match, key) => fields.find((item) => item.key === key)?.value ?? EMPTY)
+      .split(/\s+/)
+      .filter((token) => token && !token.includes(EMPTY))
+      .join(' ')
+      .trim();
+  }
+  return fields.map((item) => item.value).join(inline.separator ?? ' ');
+}
+
+const callDisplay = tool?.callDisplay?.inline;
+check('callDisplay declared', Array.isArray(callDisplay?.fields) && callDisplay.fields.length === 2);
+check(
+  'models call falls back to the action name',
+  inlineLabel({ action: 'models' }, callDisplay) === 'models',
+  inlineLabel({ action: 'models' }, callDisplay),
+);
+const evaluateLabel = inlineLabel({ action: 'evaluate', state: '客户催了三天，Stripe 一直连不上，很急。' }, callDisplay);
+check(
+  'evaluate call shows the material, not the action name',
+  evaluateLabel === '客户催了三天，Stripe 一直连不上，很急。',
+  evaluateLabel,
+);
+check(
+  'long state is truncated',
+  inlineLabel({ action: 'evaluate', state: 'x'.repeat(200) }, callDisplay).length <= 63,
+);
+check('missing input degrades cleanly', inlineLabel({}, callDisplay) === '');
+
 // 1. evaluate with a missing API key → form collected + stored, then the call runs.
 const evaluated = await tool.execute(
   {

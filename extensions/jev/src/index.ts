@@ -495,7 +495,8 @@ The whole \`state\` is read once and every question is evaluated in parallel, so
           },
           state: {
             type: 'string',
-            description: 'The text to evaluate — one message, record, ticket, transcript or other material. Required for action=evaluate.',
+            description:
+              'The material to evaluate, passed verbatim — one message, record, ticket, transcript or other text. Do not prepend labels such as "Title:" or "标题：": the text should read the same as its source. Required for action=evaluate.',
             maxLength: MAX_STATE_CHARS,
           },
           questions: {
@@ -522,6 +523,20 @@ The whole \`state\` is read once and every question is evaluated in parallel, so
           },
         },
         required: ['action'],
+      },
+      // Timeline card summary. `single` = first non-empty field, so a call with
+      // material shows the material itself (`评估 客户催了三天…`) instead of
+      // repeating the action name, and actions without material (`models`,
+      // `configure`) still get a label. The card clips to one line with an
+      // ellipsis, so multi-line state is fine.
+      callDisplay: {
+        inline: {
+          mode: 'single',
+          fields: [
+            { path: 'state', format: 'truncate', maxLength: 60 },
+            { path: 'action', maxLength: 24 },
+          ],
+        },
       },
       // Read-only judgment over an external API. Deliberately NOT `high`: Finch
       // short-circuits `risk: "high"` into "confirm on every single call"
