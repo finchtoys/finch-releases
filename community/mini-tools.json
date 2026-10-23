@@ -43,7 +43,7 @@
   },
   {
     "id": "browser-tools",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "name": "Browser Tools",
     "author": "JoeHe",
     "description": "Browser automation tools for Finch — navigate, click, fill forms, take screenshots, debug, and more. Powered by Chrome DevTools MCP (Google).",
@@ -70,7 +70,7 @@
   },
   {
     "id": "codex-canvas",
-    "version": "0.3.12",
+    "version": "0.5.0",
     "name": "Codex Canvas",
     "author": "emuio",
     "description": "Generate images, compose reference images, and annotate local edits directly on an infinite Excalidraw canvas using the local Codex CLI, iterating through connections and version branches.",
@@ -109,7 +109,7 @@
   },
   {
     "id": "ego-browser",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "name": "Ego Browser",
     "author": "puterjam",
     "description": "Let Finch browse the web in isolated Ego Lite task spaces while users follow, inspect, take over, and close the Agent's pages.",
@@ -178,7 +178,7 @@
   },
   {
     "id": "finch-knowledge",
-    "version": "0.24.1",
+    "version": "0.25.1",
     "name": "Knowledge Base",
     "author": "PuterJam",
     "description": "Build a private local library from your own documents, images and OCR text in LanceDB, then let Finch retrieve the relevant passages during conversation.",
@@ -276,7 +276,7 @@
   },
   {
     "id": "jev",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "name": "TypeSafe AI",
     "author": "Finch Team",
     "description": "Evaluate text with Jev (TypeSafe AI System One): classification, routing, scoring, and yes/no judgments returned as typed answers with probabilities and confidence — via the TypeSafe API or OpenRouter.",
@@ -290,7 +290,7 @@
   },
   {
     "id": "kimi-webbridge",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "name": "Kimi Web Assistant",
     "author": "Arthur",
     "description": "Kimi-powered browser tool: let Finch operate websites in your Chrome browser through Kimi WebBridge — a local Kimi component (127.0.0.1:10086) plus its Chrome extension.",
@@ -303,7 +303,7 @@
   },
   {
     "id": "markdown-editor",
-    "version": "0.2.22",
+    "version": "0.2.24",
     "name": "Writing",
     "author": "PuterJam",
     "description": "Edit Markdown and preview it as a WeChat Official Account article, with selection-based AI edits and AI-designed custom styles.",
@@ -417,7 +417,7 @@
   },
   {
     "id": "shell",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "name": "Shell",
     "author": "PuterJam",
     "description": "An interactive terminal panel for Finch powered by xterm.js and a native PTY, starting in the current workspace.",
@@ -431,7 +431,7 @@
   },
   {
     "id": "skin-studio",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "name": "Skin Studio",
     "author": "PuterJam",
     "description": "Design Finch skins and Home backgrounds: pick a background image and tiling, save AI-designed or current color schemes as custom skins, and switch between built-in and custom skins from a card gallery.",
@@ -487,7 +487,7 @@
   },
   {
     "id": "wechat-bot",
-    "version": "0.5.22",
+    "version": "0.5.25",
     "name": "WeChat Bot",
     "author": "Finch Team",
     "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session, retained inbox history, and full media support (image/video/file).",
