@@ -100,6 +100,11 @@
     "description": "基于智谱 GLM-4V 的图像理解——通用分析、OCR 文字提取、视觉描述与技术图表理解。"
   },
   {
+    "id": "image-gen",
+    "name": "生图工具",
+    "description": "在 Finch 内用 OpenAI GPT Image 2.5（或 OpenAI 兼容中转接口）生成与编辑图片：文生图、图生图、蒙版编辑、透明背景与自定义尺寸，并内置瀑布流画廊，可直接回看再编辑。"
+  },
+  {
     "id": "jev",
     "name": "TypeSafe AI",
     "description": "用 Jev（TypeSafe AI System One）评估文本：分类、路由、打分、是/否判断都以带概率与置信度的结构化答案返回，可走 TypeSafe 官方 API 或 OpenRouter。"
