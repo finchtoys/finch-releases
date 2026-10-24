@@ -276,7 +276,7 @@
   },
   {
     "id": "image-gen",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "name": "Image Generation",
     "author": "PuterJam",
     "description": "Generate and edit images with OpenAI GPT Image 2.5 (or an OpenAI-compatible relay): text-to-image, image-to-image, masked edits, transparent backgrounds and custom sizes, with a masonry gallery you can re-edit from.",
