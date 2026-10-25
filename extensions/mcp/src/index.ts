@@ -19,7 +19,7 @@ import { createMcpClient, isHttpConfig, type McpClient, type McpHttpStreamServer
 import { authorizeMcpOAuth, clearMcpOAuth, createMcpOAuthProvider, requiresMcpOAuthAuthorization, type McpOAuthConfig } from './oauth.js';
 import { createOAuthCustody, migrateLegacyOAuthStorage, migrateLegacyOAuthStorageFile } from './oauthCustody.js';
 import { mcpOAuthIconUrl } from './oauthIcon.js';
-import { migrateMcpData, type McpMigrationState } from './dataMigration.js';
+import { migrateMcpData, revokeMigrationRecovery, type McpMigrationState } from './dataMigration.js';
 import { sameMcpServerConfiguration } from './serverConfigEquality.js';
 import { McpServerIconResolver, normalizeMcpServerIcons } from './serverIcons.js';
 import { normalizeMcpServerAlias, withoutContributedOwnership } from './serverOwnership.js';
@@ -471,6 +471,16 @@ async function authorizeConfiguredMcpOAuth(
   }
 }
 
+/**
+ * Persist one secret and prove it reads back identical before any caller drops
+ * the plaintext copy it came from. A silently failed write must never be
+ * mistaken for a successful migration.
+ */
+async function setSecretVerified(ctx: finch.MiniToolContext, ref: string, value: string): Promise<void> {
+  await ctx.secrets.set(ref, value);
+  if (await ctx.secrets.get(ref) !== value) throw new Error('secure secret write verification failed');
+}
+
 /** Migrate legacy plaintext env values before the config is rewritten without them. */
 async function sealServerSecrets(ctx: finch.MiniToolContext, server: ManagedMcpServerConfig): Promise<ManagedMcpServerConfig> {
   const env = server.env ?? {};
@@ -478,7 +488,7 @@ async function sealServerSecrets(ctx: finch.MiniToolContext, server: ManagedMcpS
   const secretRefs = { ...(server.secretRefs ?? {}) };
   for (const [envKey, value] of Object.entries(env)) {
     const ref = secretRefs[envKey] ?? secretRefFor(server.name, envKey);
-    await ctx.secrets.set(ref, value);
+    await setSecretVerified(ctx, ref, value);
     secretRefs[envKey] = ref;
   }
   return { ...server, env: undefined, secretRefs };
@@ -505,7 +515,7 @@ async function migrateLegacySecrets(ctx: finch.MiniToolContext): Promise<void> {
     try {
       for (const [envKey, value] of Object.entries(env)) {
         const ref = secretRefs[envKey] ?? secretRefFor(server.name, envKey);
-        await ctx.secrets.set(ref, value);
+        await setSecretVerified(ctx, ref, value);
         secretRefs[envKey] = ref;
       }
       migrated.push({ ...server, env: undefined, secretRefs });
@@ -1176,6 +1186,12 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     throw new Error('MCP data migration failed; existing data was preserved');
   }
   ctx.logger.info('MCP data migration ready', { state: migrationState.state, conflictCount: migrationState.conflictCount ?? 0 });
+  if (migrationState.state === 'partial') {
+    // Configuration is published, but some business credentials could not be
+    // verified. Those servers stay disabled and the completion marker is
+    // withheld, so the next start retries them instead of silently finishing.
+    ctx.logger.warn('MCP credential migration incomplete; failed servers stay disabled and will retry');
+  }
   // Move any plaintext environment values in the stable file into encrypted storage.
   // Failed entries remain untouched for retry.
   await migrateLegacySecrets(ctx);
@@ -1187,11 +1203,13 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const migrationStartedAt = Date.now();
   let migrated = 0;
   try {
-    // 低优先级历史身份先执行，当前身份最后执行，保持已有覆盖顺序。
-    for (const source of [...migrationSources].reverse()) {
+    // 当前身份先迁移，再按历史优先级（sources() 已按 ext.id → 旧 id 排列）。
+    // 目标优先策略下「先写入者胜出」，所以 fresh 当前凭据必须先落盘；反过来会让
+    // stale 历史源抢占空 custody，然后 fresh 被当成「已有目标」而丢弃。
+    migrated += await migrateLegacyOAuthStorage(ctx.storage, ctx.oauth, ctx.logger);
+    for (const source of migrationSources) {
       migrated += await migrateLegacyOAuthStorageFile(source.storagePath, ctx.oauth, ctx.logger);
     }
-    migrated += await migrateLegacyOAuthStorage(ctx.storage, ctx.oauth, ctx.logger);
     ctx.logger.info('mcp.oauth.migration.completed', {
       migratedCount: migrated,
       durationMs: Date.now() - migrationStartedAt,
@@ -1908,6 +1926,9 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     if (enabled) {
       applyServerUpsert(name, next, ctx.logger);
     } else {
+      // A user disable beats a still-partial migration's recovery intent: drop the
+      // eligibility it recorded, so a later successful retry keeps the server off.
+      revokeMigrationRecovery(mcpStoragePath(ctx), name);
       disconnectServer(name);
       configs.set(name, withoutContributedOwnership(next));
       serverStatus.set(name, 'disabled');

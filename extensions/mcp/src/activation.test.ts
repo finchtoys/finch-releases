@@ -1,5 +1,5 @@
 import type * as finch from 'finch';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,10 +32,18 @@ function harness() {
   const list: finch.Disposable[] = [];
   subscriptions.push(list);
   const disposable = () => ({ dispose: vi.fn() });
+  const credentialKey = (ref: finch.OAuthCredentialRef) => `${ref.providerId}/${ref.account ?? ''}`;
+  const credentials = new Map<string, finch.OAuthCredentialValue>();
   const ctx = {
     storagePath: root,
     storage,
-    oauth: { saveCredential: vi.fn(async () => {}) },
+    oauth: {
+      saveCredential: vi.fn(async (ref: finch.OAuthCredentialRef, credential: finch.OAuthCredentialValue) => {
+        credentials.set(credentialKey(ref), credential);
+      }),
+      getCredential: vi.fn(async (ref: finch.OAuthCredentialRef) => credentials.get(credentialKey(ref))),
+      deleteCredential: vi.fn(async (ref: finch.OAuthCredentialRef) => { credentials.delete(credentialKey(ref)); }),
+    },
     i18n: { t: (key: string) => key },
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     subscriptions: list,
@@ -44,17 +52,21 @@ function harness() {
     capabilities: { provide: vi.fn(disposable) },
     capabilityMigration: { sources: vi.fn(() => [] as Array<{ id: string; storagePath: string }>) },
   };
-  return { ctx, values, root };
+  return { ctx, values, credentials, credentialKey, root };
 }
 
 describe('MCP 激活的 OAuth 迁移屏障', () => {
   it('加密迁移完成前不注册任何工具或能力，完成后才开放', async () => {
-    const { ctx, values } = harness();
+    const { ctx, values, credentials, credentialKey } = harness();
     let release!: () => void;
     let started!: () => void;
     const entered = new Promise<void>((resolve) => { started = resolve; });
     const pending = new Promise<void>((resolve) => { release = resolve; });
-    ctx.oauth.saveCredential.mockImplementation(async () => { started(); await pending; });
+    ctx.oauth.saveCredential.mockImplementation(async (ref: finch.OAuthCredentialRef, credential: finch.OAuthCredentialValue) => {
+      started();
+      await pending;
+      credentials.set(credentialKey(ref), credential);
+    });
     const { activate } = await import('./index.js');
     const activation = activate(ctx as unknown as finch.MiniToolContext);
     await entered;
@@ -64,7 +76,8 @@ describe('MCP 激活的 OAuth 迁移屏障', () => {
     expect(values.has('mcp.oauth.notion')).toBe(true);
     release();
     await activation;
-    expect(values.has('mcp.oauth.notion')).toBe(false);
+    // 源是只读的：明文键保留（本阶段不宣称普通 storage 已清理）。
+    expect(values.has('mcp.oauth.notion')).toBe(true);
     expect(ctx.tools.register).toHaveBeenCalled();
     expect(ctx.capabilities.provide).toHaveBeenCalledWith('mcp.client', expect.objectContaining({
       listResources: expect.any(Function),
@@ -87,7 +100,7 @@ describe('MCP 激活的 OAuth 迁移屏障', () => {
   });
 
   it('当前凭据写入失败时拒绝激活、保留原值，恢复后可重试', async () => {
-    const { ctx, values } = harness();
+    const { ctx, values, credentials } = harness();
     ctx.oauth.saveCredential.mockRejectedValueOnce(new Error('sensitive-fixture-error'));
     const { activate } = await import('./index.js');
     await expect(activate(ctx as unknown as finch.MiniToolContext)).rejects.toThrow('activation stopped for retry');
@@ -99,17 +112,39 @@ describe('MCP 激活的 OAuth 迁移屏障', () => {
     });
     expect(JSON.stringify([ctx.logger.warn.mock.calls, ctx.logger.error.mock.calls])).not.toContain('sensitive-fixture-error');
     await activate(ctx as unknown as finch.MiniToolContext);
-    expect(values.has('mcp.oauth.notion')).toBe(false);
+    // 恢复后导入成功，但源仍然保留。
+    expect(credentials.get('mcp/notion')).toEqual({ value: { token: 'fixture-only' } });
+    expect(values.has('mcp.oauth.notion')).toBe(true);
     expect(ctx.capabilities.provide).toHaveBeenCalledTimes(1);
   });
 
-  it('历史凭据源损坏时停止激活，不继续迁移当前凭据', async () => {
+  it('stale 历史源与 fresh 当前源同时存在时，当前凭据优先（两源均只读保留）', async () => {
+    const { ctx, values, credentials, root } = harness();
+    // 当前身份（ctx.storage）持有 fresh 值；历史身份持有 stale 值。
+    const staleDir = join(root, "legacy-dir");
+    mkdirSync(staleDir, { recursive: true });
+    writeFileSync(join(staleDir, "storage.json"), JSON.stringify({ 'mcp.oauth.notion': { token: 'stale-value' } }));
+    ctx.capabilityMigration.sources.mockReturnValue([{ id: 'legacy', storagePath: staleDir }]);
+
+    const { activate } = await import('./index.js');
+    await activate(ctx as unknown as finch.MiniToolContext);
+
+    // 空 custody 时必须是 fresh 胜出，而不是先到的 stale。
+    expect(credentials.get('mcp/notion')).toEqual({ value: { token: 'fixture-only' } });
+    // 两个源都保持只读：都保留明文。
+    expect(values.has('mcp.oauth.notion')).toBe(true);
+    expect(JSON.parse(readFileSync(join(staleDir, 'storage.json'), 'utf8'))['mcp.oauth.notion'])
+      .toEqual({ token: 'stale-value' });
+  });
+
+  it('历史凭据源损坏时停止激活，且不开放工具或能力', async () => {
     const { ctx, root } = harness();
     writeFileSync(join(root, 'storage.json'), '{invalid');
     ctx.capabilityMigration.sources.mockReturnValue([{ id: 'legacy', storagePath: root }]);
     const { activate } = await import('./index.js');
     await expect(activate(ctx as unknown as finch.MiniToolContext)).rejects.toThrow('activation stopped for retry');
-    expect(ctx.oauth.saveCredential).not.toHaveBeenCalled();
+    // 当前身份先迁移（fresh 优先），因此它已经落盘；损坏的历史源仍然阻断激活。
+    expect(ctx.oauth.saveCredential).toHaveBeenCalledTimes(1);
     expect(ctx.tools.register).not.toHaveBeenCalled();
     expect(ctx.capabilities.provide).not.toHaveBeenCalled();
   });
