@@ -2,7 +2,7 @@
 
 This document covers owner-scoped Finch Sessions for mini tools. Use `ctx.sessions` when your mini tool needs its own long-running conversations, such as a bot that mirrors an external platform, a background agent that processes jobs, or a tool that spawns a dedicated side-channel for a user request.
 
-A mini tool can only access Sessions it owns. It cannot read or write the user's normal Composer Sessions or Sessions owned by other mini tools.
+By default a mini tool can only access Sessions it owns. Global wait grants (§6.1) and the explicit related Bot wait grant (§6.2) expose only their specified wait scope, never other Sessions' conversation history or ownership.
 
 ---
 
@@ -283,17 +283,25 @@ Switching the model for a turn (your own model picker):
 ```ts
 // Third argument rebinds the Session's model for this message onward —
 // same validation as create()'s model: an unknown/disabled modelKey throws
-// and nothing is queued. Omit `model` to keep following whatever model the
-// Session is currently set to (i.e. the model the previous message used).
+// and nothing is queued. Omit `model` to keep the current accepted selection,
+// which can belong to a queued message rather than the last executed one.
+const selected = (await ctx.models.list()).find((model) => model.supportsThinking);
+if (!selected) throw new Error('No usable thinking model');
 await ctx.sessions.send(session.sessionId, {
   text: 'Explain this crash log in Chinese.',
   idempotencyKey: 'crash-001',
 }, {
-  model: { modelKey: 'anthropic:claude-sonnet-4-5', reasoningEffort: 'high' },
+  model: { modelKey: selected.modelKey, reasoningEffort: selected.defaultReasoningEffort },
 });
 ```
 
-Pick the `modelKey` from `ctx.models.list()` (each entry also carries an `icon` IconRef you can reuse in your picker UI) instead of hardcoding one, so the Session validation can never reject a model the user doesn't have.
+`modelKey` is a stable `providerId:modelId` selection handle; `modelId` is that configuration ID, not an upstream request name. Never build a key from `providerId:requestModel`. Display-name, request-name, context-window and protocol edits keep the same key. Identical parameter sets can still be separate configurations.
+
+Each directory row exposes flat `requestModel`, `contextLength` (tokens) and effective `protocol` fields for read-only picker metadata. They are not selection inputs or historical execution snapshots, and carry no credentials or connection addresses. `name` remains the display name with an alias applied; no nested reference object is part of this public contract.
+
+Creation determines a stable selection, not fixed parameters for future messages. Each new message (including `initialMessage`) captures current execution parameters when accepted. Omitting `model` keeps the current accepted selection; queued/retried turns and duplicate idempotency keys keep their original snapshots. Execution still checks availability, protocol, connection and account boundaries. A missing/disabled/unresolved selection requires explicit reselection, never a substitute-model fallback. Equal keys across turns do not guarantee equal parameters.
+
+Pick `modelKey` from `ctx.models.list()` rather than hardcoding one. The directory is a current view, not an availability reservation: Finch validates it again when accepting a message. Each row also carries an optional `icon` IconRef for picker UI.
 
 ### Waiting for one turn
 
@@ -508,6 +516,71 @@ Session. Either way the wait deadline still bounds the turn. Dispatching real wo
 into a normal Session remains the simplest shape.
 
 ---
+
+## 6.2 Related B2B Bot waits
+
+A separate, explicitly reviewed grant enables a relay to handle active Bot requests originating in its own Session:
+
+```json
+{ "permissions": { "sessions": true, "sessionInteractions": true, "botInteractions": true } }
+```
+
+Existing `sessionInteractions: true` remains owner-only. Even an old `'all'` grant does not enable the new methods/events without `botInteractions`. Missing or revoked grants fail closed. Approving destructive permission cards still requires the separate `destructiveInteractions` declaration and grant.
+
+```ts
+listBotWaits(originSessionId: string): Promise<SessionBotWait[]>;
+respondToBotWait(
+  originSessionId: string,
+  sessionId: string,
+  requestId: string,
+  response: SessionWaitResponse,
+  permissionMode?: 'ask' | 'acceptCalls',
+): Promise<SessionWaitRespondResult>;
+
+type SessionBotWait = SessionWait & {
+  originSessionId: string;
+  botRequestId: string;
+  actor: { botId: string; title: string };
+};
+```
+
+`SessionBotWait.sessionId` is the **real execution channel**. Keep it distinct from `originSessionId`; never replace it with the origin when responding. `requestId` is the interaction-card id; `botRequestId` identifies the active B2B request. Ownership is not transferred. Main validates the owned origin, active request chain and exact card; stale/terminal/mismatched requests are rejected. Only the card's current pending state can settle.
+
+`ctx.sessions.onDidReceiveEvent` adds two **live-only** variants (not in `listEvents`; reconnect using `listBotWaits`):
+
+- `bot.waiting`: `{ sessionId: originSessionId, turnId, originSessionId, channelSessionId, botRequestId, actor: { botId, title }, requestId, wait: SessionBotWait, createdAt }`.
+- `bot.wait_resolved`: the same basic fields plus `resolvedBy`, without `wait`.
+
+They route only to the origin owner with the new grant, never to all session listeners or by impersonating the execution channel's owner.
+
+### Safe compatible relay integration
+
+```ts
+// Check presence for older Finch runtimes. supports() signals availability, not authorization.
+if (ctx.api.supports('sessions.listBotWaits') && ctx.api.supports('sessions.respondToBotWait')) {
+  ctx.subscriptions.push(ctx.sessions.onDidReceiveEvent(async (event) => {
+    if (event.type !== 'bot.waiting') return; // keep existing turn.* handlers separately
+    const wait = event.wait;
+    // Application-specific adapter MUST bind authenticated user, origin, exact card,
+    // request short-code and user confirmation; deduplicate replies. Never auto-approve.
+    // Do not relay secret/password/token forms; collect secrets only in Finch's trusted UI.
+    const decision = await relayConfirmedUserDecision(wait);
+    if (!decision) return;
+    const result = await ctx.sessions.respondToBotWait(
+      wait.originSessionId, wait.sessionId, wait.requestId,
+      decision.response, decision.permissionMode,
+    );
+    if (result.state !== 'accepted') await relayNoLongerActionable(result);
+  }));
+  // On reconnect, after subscribing, reconcile only the authenticated user's owned origin:
+  const pending = await ctx.sessions.listBotWaits(ownedOriginSessionId);
+  await relayPendingForUser(pending); // adapter helpers are application-defined
+}
+```
+
+These adapter helpers are not Finch APIs. The bridge adapter is responsible for authenticating the real user and proving their confirmation; permission to relay is never permission for Bot self-approval. Show the execution actor and full permission details to the user. Questions use header-keyed `answers`; forms use `submitted`/`values`; permissions use `allow`. Do not send secrets through messaging, model context or this API.
+
+The optional mode is an explicit real-user choice and affects only that execution channel, not the origin, other Bot channels, or global settings. JavaScript callers passing `auto`, `bypass`, `null`, or any other value are rejected at runtime. Omit the mode for a one-time allow/deny; neither response writes a permanent tool grant, and a denial must not silently switch modes. Do not use `remember` or forge a mode in the response object.
 
 ## 7. Activity and permission mode
 

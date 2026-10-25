@@ -40,7 +40,7 @@ Optional `ToolDefinition` fields:
 
 - `defaultEnabled` — whether the tool is enabled by default when the mini tool is first activated. Defaults to `false`; users can still toggle it in the Toolcase.
 - `risk` — `low` / `medium` / `high`. Affects how Finch presents permission checks.
-- `exposure` — `startup` (default, included in every new session's tool list) or `dynamic` (injected only after runtime registration, useful for large on-demand sets such as MCP tools).
+- `exposure` — `dynamic` (default: kept out of every new session's tool list and activated on demand through ToolSearch; the platform defaults to this so enabling a mini tool never floods each request with its full schemas) or `startup` (injected into every new session — reserve it for tools that are needed on nearly every turn).
 - `owner` — override provenance when one mini tool registers a tool on behalf of another.
 - `callDisplay` — configure the inline summary shown next to the tool name in the timeline.
 - `progressMode` — `'indeterminate'` shows a progress bar immediately, before the first `exec.progress.report(...)`.

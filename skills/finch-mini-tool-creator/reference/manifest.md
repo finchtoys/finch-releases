@@ -121,6 +121,28 @@ Declare every encrypted key accessed through `ctx.secrets`. Use an exact key, or
 }
 ```
 
+## 3.2 Prompt layering: index stays resident, full text loads on demand
+
+A mini tool has three prompt surfaces, and only the first one is paid on every request.
+
+| Surface | Where it lives | When the model sees it |
+|---|---|---|
+| Index | `finch.systemPrompt` (one sentence) | injected into the system prompt on every request while the mini tool is enabled and no compaction removed it |
+| Full text | `skills/<skill-id>/SKILL.md` with `contributes.skills: true` | only after the model calls `Skills` with `action=invoke`; its body then arrives as a tool result |
+| User-facing only | `README.md` | never enters the context window |
+
+Tool schemas are a fourth surface, and they sit in the on-demand layer too: mini tool tools default to `exposure: 'dynamic'`, so `name` / `label` / `description` are only used to match a `ToolSearch` query and only enter the context after that tool is activated in the run.
+
+Rules of thumb:
+
+- `systemPrompt` answers exactly one question: **when should the model think of this mini tool**. One sentence. No steps, no parameter tables, no examples, no output format.
+- The platform appends the call signature of every on-demand tool to the index automatically, e.g. `tools: pet_control(action: show|hide|set_state|say; message?)`. It is extracted from the real `inputSchema`, so keep the `action` enum in the schema and do **not** copy the action list into `systemPrompt` — that would be charged twice.
+- Everything the model needs *after* it decides to use the tool — workflow, parameter rules, required sequence, output format, examples, caveats — belongs in a bundled Skill. It then costs nothing until invoked.
+- A long tool `description` is not a free way to teach the model either: it is invisible until activation, and once activated it stays in context for the rest of the run.
+- Finch does not truncate an over-long `systemPrompt` today — it is simply charged to every user on every request. Treat the one-sentence rule as a hard budget, not a style preference. Shipped mini tools with 2000–3000 character prompts are the current worst case, not a template.
+
+One line to remember: **"when to use me" → `systemPrompt`; "how to use me" → bundled Skill; "what I am" → `README.md`.**
+
 ## 4. Contributions
 
 ### Tools
@@ -243,6 +265,7 @@ Permissions are opt-in. Request only what the mini tool truly needs.
 | `sessions` | `boolean` | Create owner-scoped Sessions and exchange messages via `ctx.sessions`. Also covers reading pending waits in owned Sessions (`listWaits(sessionId)` / `waitForWait(sessionId, ...)`). |
 | `sessionWaits` | `boolean` / `'all'` | `true` explicitly keeps wait reads owner-scoped (normally unnecessary); `'all'` reads pending permission / question / form waits from every Session, enables no-argument `listWaits()` / `waitForWait()`, and enables `ctx.events.onInteractionWait()`. It does not expose conversation history. |
 | `sessionInteractions` | `boolean` / `'all'` | `true` preserves the 1.6.1 behavior and answers waits only in owned Sessions. `'all'` answers waits in every Session and includes global wait observation, so a separate `sessionWaits: 'all'` is unnecessary. A program may always reject a destructive permission card; approving one needs the separate `destructiveInteractions` grant. |
+| `botInteractions` | `boolean` | Explicit new grant to read/answer active Bot waits linked to this mini tool's owned origin Sessions, and receive `bot.waiting` / `bot.wait_resolved`. Requires effective `sessions: true` and `sessionInteractions: true` or `'all'`; neither old tier implicitly grants it. Can switch only that execution channel to `ask` / `acceptCalls`. No ownership transfer or global access. See `session.md` §6.2 for required real-user confirmation and secret-form prohibition. |
 | `destructiveInteractions` | `boolean` | Approve an irreversible (`destructive`) permission card on the user's behalf, on top of whichever answer tier you hold (owned or global). Without it a programmatic approval returns `forbidden`. Declare it only for a relay that puts the real decision in front of the user — and show them `wait.toolInput`, which for Bash is the exact command. Every programmatic destructive approval is audited. |
 
 Start with the least privileged setting. OAuth access is brokered and stored per mini tool; see `oauth.md`. Creating container Sessions requires a matching `contributes.sessionContainers` declaration; global wait-only permissions do not. Global wait scope crosses Spaces and directories, so request `'all'` only for a trusted device or relay and follow the non-autopilot rules in `session.md` §6.1.
@@ -301,6 +324,7 @@ See `capabilities.md` for usage rules.
 
 ## 8. Other useful fields
 
+- `systemPrompt` — one-sentence index that tells the model *when* to reach for this mini tool; injected on every request while enabled. Anything longer belongs in a bundled Skill — see §3.2.
 - `categories` — catalog categories (array of strings).
 - `privacyPolicyUrl` / `termsOfServiceUrl` — links shown in the Toolcase detail view.
 - `promptGuides` — cards on the detail page that pre-fill the Home Composer.

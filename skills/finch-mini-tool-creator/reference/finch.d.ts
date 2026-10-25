@@ -100,10 +100,24 @@ declare module 'finch' {
     appendCodeblock(value: string, language?: string): MarkdownString;
   }
 
+  /** `Navigation.openChat()` 的可选项。 */
+  export interface NavigationOpenChatOptions {
+    /** 预填到输入框的草稿文本；保持可编辑，永不自动发送。 */
+    readonly text: string;
+  }
+
   /** Finch 宿主级导航；后端 `ctx.navigation` 与页面 `window.finch.navigation` 共用此接口。 */
   export interface Navigation {
     /** 在当前 Finch 窗口打开已有 Session。 */
     openSession(sessionId: string): Promise<void>;
+    /**
+     * 在当前 Finch 窗口新开一个对话，并把可编辑草稿预填到输入框。
+     *
+     * 落在 Home Composer（只有用户真正发送时才创建 Session），自动聚焦输入框，
+     * 不会替用户发送，因此不会启动 Agent。草稿随导航一起送达，界面切换完成后
+     * 依然存在，无需轮询或固定延时。页面（Webview）调用需要真实用户手势。
+     */
+    openChat(options: NavigationOpenChatOptions): Promise<void>;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -801,13 +815,14 @@ declare module 'finch' {
     /**
      * 显式指定本次会话使用的模型，例如小程序自己的设置界面让用户选好的模型。
      * 优先级高于其它所有来源（容器默认模型、`context: 'caller'` 继承的模型、
-     * Space/全局默认模型）。`modelKey` 必须是已启用的 `provider:model` 键
-     * （与 `AppCall listModels` 展示的格式一致）；未知或已禁用的键会直接
-     * 抛错。不传 `model` 时行为与之前完全一致——沿用容器配置的模型，
-     * 再回退 Space/全局默认。
+     * Space/全局默认模型）。`modelKey` 必须来自 `ctx.models.list()`，是稳定的
+     * `providerId:modelId`；未知或已禁用的键会直接抛错。省略 `model` 时
+     * 按既有容器、调用者和 Space/全局默认规则确定选择。
+     * 创建只确定选择，不固定未来消息的参数；每条新消息（含 initialMessage）
+     * 在接受时冻结当时参数，排队和重试沿用同一快照。
      */
     readonly model?: {
-      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      /** 直接使用 ctx.models.list() 返回的 modelKey，不按请求名或显示名拼接。 */
       readonly modelKey: string;
       /** 思考/推理档位，仅当模型支持时生效。 */
       readonly reasoningEffort?: SessionReasoningEffort;
@@ -847,14 +862,20 @@ declare module 'finch' {
    * 发现一个合法的 `modelKey`。
    */
   export interface ModelSummary {
-    /** `provider:model` 键，可直接传给 `sessions.create({ model })`。 */
+    /** 从 ctx.models.list() 获取的稳定 providerId:modelId；不可用上游请求名拼接。 */
     readonly modelKey: string;
     /** 稳定的 provider id（与 `modelKey` 的前缀一致）。 */
     readonly providerId: string;
     /** provider 的可读展示名称，例如 "Anthropic"、"OpenAI"。 */
     readonly providerName: string;
-    /** 原始 model id（与 `modelKey` 的后缀一致）。 */
+    /** 稳定配置 ID（modelKey 后缀）；编辑名称、请求名、上下文或协议不换 ID。 */
     readonly modelId: string;
+    /** 当前上游请求名，不是配置 ID；只读参数，不可用于构造 modelKey。 */
+    readonly requestModel: string;
+    /** 当前上下文窗口上限（token）；只读参数，不代表历史 turn 的执行快照。 */
+    readonly contextLength: number;
+    /** 当前最终生效协议（含 Provider 继承）；编辑后 modelKey 保持不变。 */
+    readonly protocol: 'anthropic-messages' | 'openai-completions' | 'openai-responses' | 'openai-codex-responses';
     /** 展示名称——用户设置了别名时用别名，否则用模型默认名称。 */
     readonly name: string;
     /** 用户设置的别名（如有；已经折叠进上面的 `name`）。 */
@@ -890,16 +911,16 @@ declare module 'finch' {
     /**
      * 为这一条消息切换 Session 使用的模型——例如小程序自带一个模型选择器，
      * 用户随时切换模型后，下一条消息就该换到新模型，而不必重建 Session。
-     * 语义与 `SessionCreateOptions.model` 一致：`modelKey` 必须是已启用的
-     * `provider:model` 键（参考 `ctx.models.list()`），未知或已禁用会直接
-     * 抛错，整条 `send()` 调用失败、不入队。校验通过后立刻持久化为该
-     * Session 的当前模型，对本条及之后的消息生效，直到下次显式传入新值。
-     * 不传 `model` 时完全不改变现状——沿用 Session 当前配置的模型，也就是
-     * 沿用上一条消息实际生效的模型（若上一条消息也没传，则一路回溯到
-     * `create()` 时决定的模型）。
+     * `modelKey` 使用 `ctx.models.list()` 返回的稳定选择；新消息接受时发现
+     * 未知、禁用或无法解析的选择会直接抛错，不入队，也不回退其它模型。
+     * 新消息成功接受后，显式选择持久化为 Session 的当前选择，对后续消息生效。
+     * 省略 `model` 沿用 Session 当前已接受的选择，不等于上一条已执行的模型。
+     * 每条新消息接受时冻结当时参数；排队/重试不重捕获，但执行仍校验可用性、
+     * 协议、连接和账号边界。同一 modelKey 在不同 turn 中的参数可能不同。
+     * 相同 idempotencyKey 的重复发送返回原回执，不改选择或重新冻结参数。
      */
     readonly model?: {
-      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      /** 直接使用 ctx.models.list() 返回的 modelKey，不按请求名或显示名拼接。 */
       readonly modelKey: string;
       /** 思考/推理档位，仅当模型支持时生效；省略则清除已设置的档位。 */
       readonly reasoningEffort?: SessionReasoningEffort;
@@ -950,7 +971,7 @@ declare module 'finch' {
         readonly type: 'turn.started';
         readonly sessionId: string;
         readonly turnId: string;
-        /** 本次实际派发使用的 `provider:model` 键。 */
+        /** 本次实际派发使用的稳定配置键；相同键不代表不同 turn 的参数相同。 */
         readonly modelKey: string;
         /** 本次实际生效的思考/推理档位（未设置时省略）。 */
         readonly reasoningEffort?: SessionReasoningEffort;
@@ -971,7 +992,7 @@ declare module 'finch' {
         readonly costUsd?: number;
         /** 本次 turn 的执行耗时（毫秒）；Runner 未上报时为 undefined。 */
         readonly durationMs?: number;
-        /** 实际使用的 `provider:model` 键；Runner 未上报时为 undefined。 */
+        /** 实际使用的稳定配置键；Runner 未上报时为 undefined，不是参数快照。 */
         readonly modelKey?: string;
         readonly createdAt: string;
       }
@@ -998,7 +1019,23 @@ declare module 'finch' {
         readonly createdAt: string;
       };
 
+  /** Live-only; sessionId is the origin, channelSessionId/wait.sessionId the real channel. */
+  export type SessionBotWaitEvent = {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly originSessionId: string;
+    readonly channelSessionId: string;
+    readonly botRequestId: string;
+    readonly actor: { botId: string; title: string };
+    readonly requestId: string;
+    readonly createdAt: string;
+  } & (
+    | { readonly type: 'bot.waiting'; readonly wait: SessionBotWait }
+    | { readonly type: 'bot.wait_resolved'; readonly resolvedBy: SessionWaitResolver }
+  );
+
   export type SessionBridgeEvent =
+    | SessionBotWaitEvent
     | SessionDurableEvent
     /** 仅实时投递，不写入 listEvents()；断线后使用最终消息恢复。 */
     | { readonly type: 'assistant.delta'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly delta: string; readonly createdAt: string };
@@ -1096,6 +1133,13 @@ declare module 'finch' {
 
   export type SessionWait = SessionPermissionWait | SessionQuestionWait | SessionFormWait;
 
+  /** sessionId remains the real execution channel, not the origin Session. */
+  export type SessionBotWait = SessionWait & {
+    readonly originSessionId: string;
+    readonly botRequestId: string;
+    readonly actor: { botId: string; title: string };
+  };
+
   export type SessionWaitResponse =
     | { readonly kind: 'permission'; readonly allow: boolean }
     /** key 为每个问题的 `header`。 */
@@ -1160,6 +1204,11 @@ declare module 'finch' {
      * 返回的 `SessionWait` 已带 `sessionId`，无需额外字段。
      */
     listWaits(sessionId?: string): Promise<SessionWait[]>;
+    /** Active related Bot waits. Requires sessions + sessionInteractions + botInteractions. */
+    listBotWaits(originSessionId: string): Promise<SessionBotWait[]>;
+    /** Relay real user confirmation only; no self-approval, secret forms or permanent grants.
+     * Optional mode affects only this execution channel; auto/bypass are rejected at runtime. */
+    respondToBotWait(originSessionId: string, sessionId: string, requestId: string, response: SessionWaitResponse, permissionMode?: 'ask' | 'acceptCalls'): Promise<SessionWaitRespondResult>;
     /** 以程序方式应答等待。需要 permissions.sessionInteractions。 */
     respondToWait(sessionId: string, requestId: string, response: SessionWaitResponse): Promise<SessionWaitRespondResult>;
     /**
@@ -1464,10 +1513,9 @@ declare module 'finch' {
     readonly risk?: 'low' | 'medium' | 'high';
     /**
      * 工具 schema 暴露策略：
-     * - `startup` 默认值；每个新会话启动时注入工具定义。
-     * - `dynamic` 不进入新会话初始工具表；仅在插件运行中注册/更新后注入活跃会话。
-     *
-     * 适用于 MCP server tools、按需发现的大量工具等场景，避免新会话工具表膨胀。
+     * - `dynamic` 默认值；不进入新会话初始工具表，由 ToolSearch 按需激活。
+     *   平台统一采用按需加载，避免每启用一个小程序就把它的全部工具 schema 灌注进每一轮请求。
+     * - `startup` 每个新会话启动时注入工具定义；只给高频、缺它就做不了事的工具用。
      */
     readonly exposure?: ToolExposure;
     /**
@@ -1550,6 +1598,13 @@ declare module 'finch' {
     readonly mode?: ComposerFillMode;
   }
 
+  /** 页面向 Composer 同时插入普通附件与可编辑正文的选项。 */
+  export interface ComposerContextOptions {
+    readonly text?: string;
+    /** 默认 append 保留已有文字；replace 只覆盖正文，不删除已有附件。 */
+    readonly mode?: ComposerFillMode;
+  }
+
   /** 内联 Composer confirm 条的选项。 */
   export interface ComposerConfirmOptions {
     /** confirm 条上显示的提示文字。 */
@@ -1573,7 +1628,8 @@ declare module 'finch' {
   export interface ComposerActionComposerActions {
     /**
      * 向当前激活的 Composer 输入框填入文字。
-     * `/skill` 指令和 `@[path]` 文件引用会渲染为富文本 token。
+     * `/skill` 指令、`@[path]` 与 `[quote src="/path/image.png"]说明[/quote]` 会渲染为引用/token。
+     * 纯文本引用用 `[quote]文本[/quote]`；现有调用保持兼容。
      */
     fill(text: string, options?: ComposerFillOptions): Promise<void>;
     /**
@@ -2427,14 +2483,39 @@ declare module 'finch' {
     postMessage(message: unknown): void;
     onMessage(listener: (message: unknown) => void): () => void;
     /**
-     * Attaches contexts into the Composer draft this panel's scope owns.
-     * Works on `'session'` scope (writes into that Session's draft) and
-     * `'home'` scope (writes into the current Space's Home Composer draft —
-     * see `AppPanelEnvMessage.view`). Rejects on `'container'` scope or
-     * any legacy/unrecognized scope, since neither has a Composer draft to
-     * attach into.
+     * 该面板 scope 所属 Composer 的写入入口。两者都要求真实用户手势，
+     * 且都在 `'container'`、`appView` 或无法识别的 scope 上 reject
+     * （这些 scope 没有 Composer 草稿）。
      */
-    readonly composer: { addContexts(contexts: readonly ComposerContextDraft[]): Promise<{ added: number }> };
+    readonly composer: {
+      /**
+       * 向已挂载的目标输入框插入上下文。Session 精确匹配 sessionId，Home
+       * 精确匹配 Space 草稿。普通图片/文件可用 options.text 同时插入可编辑
+       * 正文（默认 append）；annotation token 不可与 options.text 混用。
+       * Promise 仅在输入框实际接收并应用后 resolve。没有目标输入框、恢复中、
+       * 数量超限或附件落盘失败时 reject，不会仅写缓存就显示成功。
+       * 老版本不支持 options；与 fillText 同批新增，调用前请检测 fillText 存在。
+       */
+      addContexts(contexts: readonly ComposerContextDraft[], options?: ComposerContextOptions): Promise<{ added: number }>;
+      /**
+       * 把文字写进当前输入框（可继续编辑，不会自动发送）。
+       *
+       * 将文字交给该 scope 的已挂载输入框；不可用时 reject。若要同时插入
+       * 图片/附件与正文，请用一次 addContexts(contexts, { text, mode })，不要
+       * 分别 await 两次调用（否则存在半成功和用户手势失效的问题）。
+       *
+       * `@[path]` 提及与 `/skill` 指令会渲染成 token，和 ComposerAction 的
+       * `actions.composer.fill()` 一致。新引用首选 `[quote src="/path/image.png"]说明[/quote]`，
+       * src 可为本地绝对路径或 HTTP(S) URL，正文仅作用户说明；无来源用 `[quote]文本[/quote]`。
+       * 路径含引号/与号时使用 &quot; / &amp;；旧 addContexts 接口保留兼容。
+       *
+       * @example
+       * await window.finch.composer.addContexts([imageContext], {
+       *   text: '把背景换成夜景', mode: 'append',
+       * });
+       */
+      fillText(text: string, options?: ComposerFillOptions): Promise<void>;
+    };
     readonly capture: { capturePage(options?: { mode?: 'viewport' | 'selection'; rect?: { x: number; y: number; width: number; height: number } }): Promise<{ name: string; mimeType: 'image/png'; content: string }> };
     /** Controls the current Panel tab from inside its page. */
     readonly panel: {
@@ -2888,11 +2969,32 @@ declare module 'finch' {
     | 'compact_boundary'
     | 'session_status';
 
+  export interface AgentContextBreakdown {
+    /** 系统注入段的估算 token 数。 */
+    readonly system: number;
+    /** 项目规则段：cwd 的 AGENTS.md 规则链与 Space 规则。 */
+    readonly rules: number;
+    /** 小程序工具 schema 与提示段。 */
+    readonly minitools: number;
+    /** skills 清单段。 */
+    readonly skills: number;
+    /** 用户消息。 */
+    readonly user: number;
+    /** 助手输出。 */
+    readonly assistant: number;
+    /** 工具结果。 */
+    readonly tools: number;
+  }
+
   export interface AgentTokenUsage {
     readonly inputTokens: number;
     readonly outputTokens: number;
     readonly cacheCreationTokens: number;
     readonly cacheReadTokens: number;
+    /** 平均生成速度（tokens/s）：流式实时估算、完成后校准，排除工具等待并保留最近读数。 */
+    readonly generationTokensPerSecond?: number;
+    /** 最近一次真实请求的上下文分类估算；缺省表示无更新，null 表示压缩后明确失效。 */
+    readonly contextBreakdown?: AgentContextBreakdown | null;
   }
 
   export interface AgentEventErrorDetail {
@@ -3622,7 +3724,12 @@ declare module 'finch' {
     readonly displayName?: LocalizedString;
     /** 扩展说明。新扩展建议写默认字符串，把多语言文案放到 `i18n/<locale>.json`。 */
     readonly description?: LocalizedString;
-    /** 一句话动态 system prompt。新扩展建议写默认字符串，把多语言文案放到 `i18n/<locale>.json`。 */
+    /**
+     * 一句话索引：只回答「什么时候该想到这个小工具」，启用后每轮注入 system prompt。
+     * 操作步骤、参数规则、示例等长文不要写在这里 —— 放进打包技能的 SKILL.md
+     * （contributes.skills: true），模型调用 Skills invoke 时才加载。
+     * 平台不做长度截断，超长部分会按轮计费。新扩展建议写默认字符串，多语言文案放 `i18n/<locale>.json`。
+     */
     readonly systemPrompt?: LocalizedString;
     /** 插件详情页 README 上方展示的 prompt 引导语。 */
     readonly promptGuides?: readonly MiniToolPromptGuide[];
@@ -3776,6 +3883,9 @@ declare module 'finch' {
      * `destructiveInteractions`。
      */
     readonly sessionInteractions?: boolean | 'all';
+    /** Read/answer active Bot waits related to owned origin Sessions. Requires sessions
+     * and sessionInteractions (true or all). Explicit new grant; true remains owner-only. */
+    readonly botInteractions?: boolean;
     /**
      * 是否允许代替用户批准**不可逆**（destructive）权限卡。
      * 必须在 `sessionInteractions` 之上单独授权：读卡、拒绝是可恢复的，批准

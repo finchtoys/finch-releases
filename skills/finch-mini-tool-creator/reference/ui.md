@@ -421,6 +421,20 @@ await api.composer.addContexts([{
 
 Keep a `file-range` batch below 20 contexts and image payloads below 20 MB. The page must not attempt to submit contexts on load, timers, or background messages.
 
+Text goes into the input box itself, where the user can still edit it before sending — that is the right way to hand over a request you composed on the page. An annotation chip is for pointing at evidence, not for carrying instructions the user may want to reword:
+
+```ts
+document.getElementById('insert').addEventListener('click', async () => {
+  // One acknowledged write into the live Composer, never a store-only update.
+  await api.composer.addContexts(
+    [{ type: 'image-region', ...shot, regions: [], displayName: 'Draft.png' }],
+    { text: 'Redraw this as watercolor', mode: 'append' },
+  );
+});
+```
+
+`fillText(text, { mode })` defaults to `replace`, so pass `mode: 'append'` to keep whatever the user already typed. `@[path]` mentions and `/skill` directives become rich tokens, exactly like the ComposerAction `actions.composer.fill()` they share an implementation with. It rejects when the scope has no Composer draft (`'container'`, `appView`) or when that Composer is not on screen — `'home'` scope writes into the foreground Home input box. For an image plus editable text, use one `addContexts(contexts, { text, mode })` call (default mode `append`), not two sequential awaited calls. Ordinary attachments and text are committed together after preparation succeeds; a missing/mismatched Composer, restore in progress, or a file failure rejects instead of reporting success for a store-only update. Home targets its exact Space draft. The combined options and `fillText` are introduced together; older hosts lack `fillText`, so probe it before using combined options. Annotation tokens cannot be mixed with the `text` option.
+
 ### 7.3 Native toast / confirm dialog
 
 `api.ui.toast(options)` and `api.ui.confirm(options)` render the exact same native Finch UI as `ctx.ui.showToast()` / `ctx.ui.showConfirmDialog()` on the extension backend side — **do not use the browser's `confirm()`/`alert()`**, which is unstyled, blocks the renderer, and is not guaranteed to appear consistently inside a sandboxed `<webview>`. Both work directly in a Panel App page without extension backend mediation and require a real page user gesture, same as `composer.addContexts()`:
