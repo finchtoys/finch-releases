@@ -99,7 +99,7 @@ Finch Toolbox
 
 ## Join the community
 
-Finch has a WeChat user group, **Finch 与她的小伙伴** — a Chinese-language space for
+Finch has a WeChat user group, **Finch 与她的伙伴** — a Chinese-language space for
 questions, mini tool ideas, and bug reports. Scan the code with WeChat to join.
 
 <div align="center">

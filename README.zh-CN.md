@@ -96,7 +96,7 @@ Finch Toolbox
 
 ## 加入社区
 
-Finch 有一个微信用户群 **Finch 与她的小伙伴**——提问、聊小程序点子、报 bug 都可以来这里。用微信扫码加入。
+Finch 有一个微信用户群 **Finch 与她的伙伴**——提问、聊小程序点子、报 bug 都可以来这里。用微信扫码加入。
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="Finch 微信用户群二维码" width="240" />
