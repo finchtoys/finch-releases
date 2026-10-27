@@ -178,7 +178,7 @@
   },
   {
     "id": "finch-knowledge",
-    "version": "0.25.1",
+    "version": "0.25.2",
     "name": "Knowledge Base",
     "author": "PuterJam",
     "description": "Build a private local library from your own documents, images and OCR text in LanceDB, then let Finch retrieve the relevant passages during conversation.",
