@@ -167,22 +167,53 @@ test('迟到的旧轮询响应不能缓存到新登录下', async () => {
   assert.equal(f.secrets.size, 0);
 });
 
-test('prepare failed 不武断归因于过期，保留错误码且不重试', async () => {
+test('prepare failed 去 token 重试一次，仍失败则保留错误码与 errmsg', async () => {
   const f = fixture();
   await f.inbound();
   f.respond({ ret: -2, errcode: 123, errmsg: 'prepare failed' });
-  await assert.rejects(f.media.sendText(peer, 'private-text'), /cause is not confirmed.*ret=-2 errcode=123 prepare failed/);
-  assert.equal(f.calls.length, 1);
+  await assert.rejects(f.media.sendText(peer, 'private-text'), /rejected send preparation on both.*ret=-2 errcode=123 errmsg=prepare failed/);
+  assert.equal(f.calls.length, 2);
+  const first = (f.calls[0].body as { msg: Record<string, unknown> }).msg;
+  const second = (f.calls[1].body as { msg: Record<string, unknown> }).msg;
+  assert.equal(first.context_token, 'test-context-secret');
+  assert.ok(!('context_token' in second));
   const logs = JSON.stringify(f.logs);
   assert.match(logs, /contextReceivedAt/);
   assert.doesNotMatch(logs, /test-context-secret|test-auth-secret|private-text|test-peer/);
+});
+
+test('stale token 去 token 重试成功，消息照常送达', async () => {
+  const f = fixture();
+  await f.inbound();
+  f.onPost(async () => f.calls.length === 1 ? { ret: -2, errmsg: 'prepare failed' } : { ret: 0 });
+  await f.media.sendText(peer, 'fallback-text');
+  assert.equal(f.calls.length, 2);
+  const first = (f.calls[0].body as { msg: Record<string, unknown> }).msg;
+  const second = (f.calls[1].body as { msg: Record<string, unknown> }).msg;
+  assert.equal(first.context_token, 'test-context-secret');
+  assert.ok(!('context_token' in second));
+  const [row] = await f.media.observations.list();
+  assert.equal(row.outcome, 'accepted');
+  assert.equal(row.staleTokenFallback, true);
+});
+
+test('图片路径 stale token 也能去 token 重试成功', async () => {
+  const f = fixture();
+  await f.inbound();
+  fakeUpload(f);
+  f.onPost(async () => f.calls.length === 1 ? { ret: -2, errmsg: 'prepare failed' } : { ret: 0 });
+  await f.media.sendImage(peer, Buffer.from('x'));
+  assert.equal(f.calls.length, 2);
+  const second = (f.calls[1].body as { msg: Record<string, unknown> }).msg;
+  assert.ok(!('context_token' in second));
+  assert.equal((await f.media.observations.list())[0].staleTokenFallback, true);
 });
 
 test('只有 errcode 非零也必须报失败', async () => {
   const f = fixture();
   await f.inbound();
   f.respond({ ret: 0, errcode: 9, errmsg: 'denied' });
-  await assert.rejects(f.media.sendText(peer, 'hello'), /ret=0 errcode=9 denied/);
+  await assert.rejects(f.media.sendText(peer, 'hello'), /ret=0 errcode=9 errmsg=denied/);
 });
 
 test('其他 ret=-2 不被误诊为上下文失效', async () => {
@@ -251,7 +282,7 @@ test('caption 成功但媒体失败时明确报告部分成功', async () => {
   fakeUpload(f);
   f.onPost(async () => f.calls.length === 1 ? { ret: 0 } : { ret: -2, errmsg: 'prepare failed' });
   await assert.rejects(f.media.sendImage(peer, Buffer.from('x'), 'caption'), /caption was sent.*media delivery failed/);
-  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls.length, 3);
 });
 
 test('媒体上传中切换账号，不把旧账号的媒体投递到新账号', async () => {
@@ -426,11 +457,11 @@ test('不同收件人不互相阻塞', async () => {
 test('分段中途业务失败立即停止且提示部分受理，队列不被失败污染', async () => {
   const f = fixture();
   await f.inbound();
-  f.onPost(async () => f.calls.length === 2 ? { ret: -2, errmsg: 'prepare failed' } : { ret: 0 });
+  f.onPost(async () => (f.calls.length === 2 || f.calls.length === 3) ? { ret: -2, errmsg: 'prepare failed' } : { ret: 0 });
   await assert.rejects(f.media.sendText(peer, 'a'.repeat(12_000)), /Some text parts.*1\/3.*diagnostic=/);
-  assert.equal(f.calls.length, 2);
-  await f.media.sendText(peer, 'new logical request');
   assert.equal(f.calls.length, 3);
+  await f.media.sendText(peer, 'new logical request');
+  assert.equal(f.calls.length, 4);
   assert.equal((await f.media.observations.list())[1].outcome, 'business_rejected');
   assert.equal((await f.media.observations.list())[1].reason, 'prepare_failed');
   assert.equal(lastToken(f), 'test-context-secret');
@@ -455,7 +486,7 @@ test('长 caption 中途失败后不发送余下文字或媒体', async () => {
   fakeUpload(f);
   f.onPost(async () => f.calls.length === 1 ? { ret: 0 } : { ret: -2, errmsg: 'prepare failed' });
   await assert.rejects(f.media.sendImage(peer, Buffer.from('x'), 'c'.repeat(8001)), /Some text parts/);
-  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls.length, 3);
   assert.ok(f.calls.every((c) => (c.body as { msg: { item_list: { type: number }[] } }).msg.item_list[0].type === 1));
 });
 
@@ -524,7 +555,7 @@ test('诊断并发写入不丢记录，最多100条，七天之外不可见', as
   assert.deepEqual(await f.media.observations.list(), []);
 });
 
-test('诊断存储或日志失败不改变发送成功/业务失败且不触发重试', async () => {
+test('诊断存储或日志失败不改变发送成功/业务失败，stale token 重试照常推进', async () => {
   const f = fixture();
   await f.inbound();
   const original = f.ctx.storage.set.bind(f.ctx.storage);
@@ -536,8 +567,8 @@ test('诊断存储或日志失败不改变发送成功/业务失败且不触发�
   f.ctx.logger.info = () => { throw new Error('private-logger-error'); };
   await f.media.sendText(peer, 'success');
   f.respond({ ret: -2, errmsg: 'prepare failed' });
-  await assert.rejects(f.media.sendText(peer, 'failure'), /cause is not confirmed/);
-  assert.equal(f.calls.length, 2);
+  await assert.rejects(f.media.sendText(peer, 'failure'), /rejected send preparation on both/);
+  assert.equal(f.calls.length, 3);
 });
 
 test('工具失败走异常链路，成功文案只确认服务端受理', async () => {
@@ -546,7 +577,7 @@ test('工具失败走异常链路，成功文案只确认服务端受理', async
   await assert.rejects(executeWechatSend(f.ctx, f.media, { message: 'hello' }), /Failed to send.*no message context/);
   await f.inbound();
   f.respond({ ret: -2, errmsg: 'prepare failed' });
-  await assert.rejects(executeWechatSend(f.ctx, f.media, { message: 'hello' }), /Failed to send.*cause is not confirmed/);
+  await assert.rejects(executeWechatSend(f.ctx, f.media, { message: 'hello' }), /Failed to send.*rejected send preparation on both/);
   f.respond({ ret: 0 });
   const result = await executeWechatSend(f.ctx, f.media, { message: 'hello' });
   assert.notEqual(result.isError, true);
@@ -659,7 +690,7 @@ test('只要任一业务返回码非零仍拒绝，缺省 ret 不吞 errcode 错
     await f.inbound();
     f.respond(response);
     await assert.rejects(executeWechatSend(f.ctx, f.media, { message: 'hello' }), /Failed to send WeChat message/);
-    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls.length, response.ret === -2 && response.errmsg === 'prepare failed' ? 2 : 1);
     const [row] = await f.media.observations.list();
     assert.equal(row.outcome, 'business_rejected');
     assert.equal(row.ret, response.ret);

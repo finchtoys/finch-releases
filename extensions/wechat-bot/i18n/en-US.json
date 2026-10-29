@@ -29,7 +29,7 @@
     "send": {
       "notLoggedIn": "WeChat is not logged in. Scan the QR code first.",
       "noContext": "Cannot send: no message context for the recipient under the current login. Ask the recipient to message the currently connected Finch Bot first, confirm Finch received it, then retry.",
-      "prepareFailed": "WeChat rejected send preparation; the cause is not confirmed (conversation eligibility, message size or server state may be involved). Do not retry automatically or clear the token. Inspect the diagnostic record.",
+      "prepareFailed": "WeChat rejected send preparation on both the token-bearing attempt and the token-less retry. Conversation eligibility, message size or server state may be involved. Inspect the diagnostic record.",
       "responseUnknown": "WeChat returned an unconfirmed send response. Delivery is unknown; do not retry automatically.",
       "queueFull": "The recipient send queue is full. This request was not sent; wait for existing sends to finish.",
       "cancelled": "The send was cancelled; remaining messages were not sent.",

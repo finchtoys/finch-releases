@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.5.26
+
+### 修复
+
+- context_token 过期（锁屏超约 48h 无入站消息）导致 `sendMessage ret=-2 prepare failed` 推送失败：现在遇到该错误会自动去掉 context_token 重试一次（上游 issue #331 实测该字段按 API 定义可选），长间隔推送不再需要人工重新触发入站消息。
+- 发送失败的错误信息现在携带 ret、errcode 与 errmsg 全文（errmsg 含凭证片段时自动回退固定标签，保持脱敏红线）。
+
 ## 0.5.25
 
 ### 优化

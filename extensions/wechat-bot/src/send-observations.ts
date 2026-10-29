@@ -28,6 +28,7 @@ export interface SendObservation {
   reason: SendReason;
   ret?: number;
   errcode?: number;
+  staleTokenFallback?: boolean;
 }
 
 function project(value: unknown): SendObservation | undefined {
@@ -47,6 +48,7 @@ function project(value: unknown): SendObservation | undefined {
     ...(typeof v.contextRevision === 'string' && /^[0-9a-f-]{36}$/.test(v.contextRevision) ? { contextRevision: v.contextRevision } : {}),
     ...(typeof v.ret === 'number' && Number.isFinite(v.ret) ? { ret: v.ret } : {}),
     ...(typeof v.errcode === 'number' && Number.isFinite(v.errcode) ? { errcode: v.errcode } : {}),
+    ...(v.staleTokenFallback === true ? { staleTokenFallback: true } : {}),
   } as SendObservation;
 }
 

@@ -87,22 +87,51 @@ export class MediaManager {
     await this.prepareSend(toUserId);
   }
 
+  /**
+   * ret=-2 + "prepare failed"：context_token 过期或发送资格问题。
+   * 上游 Tencent/openclaw-weixin issue #331 实测：context_token 按 API 定义可选，
+   * 不带该字段也能发送，因此该错误允许去 token 重试一次（TTL ≈48h，见 issue #225）。
+   */
+  private static isStaleTokenError(resp: SendMessageResponse): boolean {
+    return resp.ret === -2 && typeof resp.errmsg === 'string' && /^prepare\s*failed$/i.test(resp.errmsg.trim());
+  }
+
+  /**
+   * errmsg 全文只在不含已知敏感值（botToken/context_token/收件人/消息正文）任意 ≥8 字符片段时透传，
+   * 否则回退固定标签：服务端文本可能回显凭证（含部分回显），不可直接入日志/错误。
+   */
+  private static errmsgSafe(raw: string, sensitive: string[]): boolean {
+    if (!raw || raw.length > 120) return false;
+    if (!/^[\x20-\x7e\u4e00-\u9fff]*$/.test(raw)) return false;
+    for (const secret of sensitive) {
+      const s = secret?.trim();
+      // 短文本（如单词 caption）与通用错误文案易巧合碰撞；只对足够长的敏感值做片段检查。
+      if (!s || s.length < 12) continue;
+      const window = 8;
+      for (let i = 0; i + window <= s.length; i++) {
+        if (raw.includes(s.slice(i, i + window))) return false;
+      }
+    }
+    return true;
+  }
+
   private checkSendResponse(
-    resp: SendMessageResponse, diagnosticId: string,
+    resp: SendMessageResponse, diagnosticId: string, sensitive: string[] = [],
   ): void {
     const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
     if (!failed) return;
-    // Server text may echo partial credentials/content: expose fixed known tags only.
-    const raw = typeof resp.errmsg === 'string' ? resp.errmsg.trim().toLowerCase() : '';
-    const errmsg = /^prepare\s*failed$/.test(raw) ? 'prepare failed'
-      : ['rate limited', 'frequency limit', 'expired', 'denied', 'caption rejected'].includes(raw) ? raw : 'server rejected request';
+    // Server text may echo partial credentials/content: full text only when proven free of sensitive fragments.
+    const raw = typeof resp.errmsg === 'string'
+      ? resp.errmsg.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120)
+      : '';
+    const errmsg = MediaManager.errmsgSafe(raw, sensitive) ? raw : 'server rejected request';
     const ret = typeof resp.ret === 'number' ? resp.ret : '-';
     const errcode = typeof resp.errcode === 'number' ? resp.errcode : '-';
-    const detail = `sendMessage ret=${ret} errcode=${errcode} ${errmsg} diagnostic=${diagnosticId}`.trim();
+    const detail = `sendMessage ret=${ret} errcode=${errcode} errmsg=${errmsg} diagnostic=${diagnosticId}`.trim();
     if (resp.ret === -14 || resp.errcode === -14) {
       throw new Error(`${this.sendError('loginExpired').message} (${detail})`);
     }
-    if (resp.ret === -2 && /^prepare\s*failed$/i.test(errmsg.trim())) {
+    if (MediaManager.isStaleTokenError(resp)) {
       throw new Error(`${this.sendError('prepareFailed').message} (${detail})`);
     }
     throw new Error(detail);
@@ -114,14 +143,16 @@ export class MediaManager {
   ): Promise<void> {
     this.checkCancelled(signal);
     const { account, context } = await this.prepareSend(toUserId, expected);
-    const body = {
+    const buildBody = (contextToken: string | undefined) => ({
       msg: {
         from_user_id: '', to_user_id: toUserId, client_id: `openclaw-weixin:${Date.now()}-${randomHex(4)}`,
         message_type: 2, message_state: 2,
-        item_list: [item], context_token: context.token,
+        item_list: [item],
+        ...(contextToken !== undefined ? { context_token: contextToken } : {}),
       },
       base_info: this.ilink.buildBaseInfo(),
-    };
+    });
+    let body = buildBody(context.token);
     const id = this.observations.newId();
     const at = Date.now();
     const key = `${contextScope(account)}:${toUserId}`;
@@ -135,20 +166,30 @@ export class MediaManager {
     let outcome: SendOutcome = 'transport_unknown';
     let reason: SendReason = 'other';
     let resp: SendMessageResponse | undefined;
+    let staleTokenFallback = false;
     try {
-      resp = await this.ilink.post<SendMessageResponse>(account.baseUrl, 'ilink/bot/sendmessage', body, account.botToken, 45_000, signal);
-      if (!resp || typeof resp !== 'object' || Array.isArray(resp)
-        || (resp.ret !== undefined && (typeof resp.ret !== 'number' || !Number.isFinite(resp.ret)))
-        || (resp.errcode !== undefined && (typeof resp.errcode !== 'number' || !Number.isFinite(resp.errcode)))) {
-        outcome = 'response_unknown';
-        throw new Error(`${this.sendError('responseUnknown').message} diagnostic=${id}`);
-      }
-      const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
-      if (failed) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        resp = undefined;
+        resp = await this.ilink.post<SendMessageResponse>(account.baseUrl, 'ilink/bot/sendmessage', body, account.botToken, 45_000, signal);
+        if (!resp || typeof resp !== 'object' || Array.isArray(resp)
+          || (resp.ret !== undefined && (typeof resp.ret !== 'number' || !Number.isFinite(resp.ret)))
+          || (resp.errcode !== undefined && (typeof resp.errcode !== 'number' || !Number.isFinite(resp.errcode)))) {
+          outcome = 'response_unknown';
+          throw new Error(`${this.sendError('responseUnknown').message} diagnostic=${id}`);
+        }
+        const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
+        if (!failed) break;
+        if (MediaManager.isStaleTokenError(resp) && attempt === 1) {
+          // context_token 过期兜底：去掉 context_token 重试一次（issue #331 实测可行）。
+          staleTokenFallback = true;
+          try { this.ctx.logger.warn('wechat send rejected with stale context_token; retrying once without token', { diagnostic: id }); } catch { /* logging must never affect the retry */ }
+          body = buildBody(undefined);
+          continue;
+        }
         outcome = 'business_rejected';
         reason = resp.ret === -14 || resp.errcode === -14 ? 'login_expired'
-          : resp.ret === -2 && typeof resp.errmsg === 'string' && /^prepare\s*failed$/i.test(resp.errmsg.trim()) ? 'prepare_failed' : 'other';
-        this.checkSendResponse(resp, id);
+          : MediaManager.isStaleTokenError(resp) ? 'prepare_failed' : 'other';
+        this.checkSendResponse(resp, id, [account.botToken, context.token, toUserId, item.text_item?.text ?? '']);
       }
       // The official sender permits omitted ret on successful JSON responses.
       // HTTP succeeded, JSON is an object, and any provided business codes are zero.
@@ -164,6 +205,7 @@ export class MediaManager {
         contextRevision: context.revision, outcome, reason,
         ret: typeof resp?.ret === 'number' ? resp.ret : undefined,
         errcode: typeof resp?.errcode === 'number' ? resp.errcode : undefined,
+        ...(staleTokenFallback ? { staleTokenFallback: true } : {}),
       };
       await this.observations.record(observation);
       // Never persist/log arbitrary server errmsg, request content or credentials.
