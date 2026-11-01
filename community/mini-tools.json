@@ -205,6 +205,20 @@
     ]
   },
   {
+    "id": "finch-remote-host",
+    "version": "1.0.0",
+    "name": "Remote Host",
+    "author": "chensuiyi",
+    "description": "Manage remote Linux hosts in Finch and let the Agent run commands over SSH. Dangerous operations require explicit confirmation, and every action is kept in an audit log.",
+    "repo": "npm:finch-remote-host",
+    "npm": "finch-remote-host",
+    "extensionType": "community",
+    "categories": [
+      "developer"
+    ],
+    "featured": false
+  },
+  {
     "id": "finch-workbuddy-bridge",
     "version": "0.1.5",
     "name": "WorkBuddy Bridge",
