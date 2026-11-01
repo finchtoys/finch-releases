@@ -150,6 +150,20 @@
     "featured": true
   },
   {
+    "id": "finch-ego-go",
+    "version": "1.0.0",
+    "name": "Ego Go",
+    "author": "chensuiyi",
+    "description": "Drive web pages inside Ego Lite task spaces from Finch. Every page the Agent opens stays visible to you, and you can take over at any time.",
+    "repo": "npm:finch-ego-go",
+    "npm": "finch-ego-go",
+    "extensionType": "community",
+    "categories": [
+      "developer"
+    ],
+    "featured": false
+  },
+  {
     "id": "finch-file-browser",
     "version": "0.4.0",
     "name": "File Browser",
