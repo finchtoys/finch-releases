@@ -15,11 +15,6 @@
     "description": "通过 Brave Search API 搜索互联网，获取最新网页结果。"
   },
   {
-    "id": "browser-tools",
-    "name": "Browser Tools",
-    "description": "浏览器自动化工具，支持导航、点击、填表、截图、调试等操作，基于 Chrome DevTools MCP。"
-  },
-  {
     "id": "chrome-devtools",
     "name": "Chrome DevTools",
     "description": "通过 MCP 连接 Chrome DevTools，支持浏览器自动化、页面调试、Lighthouse 审计、性能追踪等操作。"
@@ -83,11 +78,6 @@
     "id": "finch-remote-host",
     "name": "远程主机",
     "description": "在 Finch 里管理远程主机，让 Agent 通过 SSH 执行命令，危险操作先经用户确认，全部动作留审计。"
-  },
-  {
-    "id": "finch-workbuddy-bridge",
-    "name": "WorkBuddy 桥接",
-    "description": "将 WorkBuddy 桌面应用模型暴露为本地 OpenAI 兼容端点，供 Finch 自定义提供商使用。"
   },
   {
     "id": "finch-worktree-coordinator",

@@ -42,19 +42,6 @@
     ]
   },
   {
-    "id": "browser-tools",
-    "version": "1.0.1",
-    "name": "Browser Tools",
-    "author": "JoeHe",
-    "description": "Browser automation tools for Finch — navigate, click, fill forms, take screenshots, debug, and more. Powered by Chrome DevTools MCP (Google).",
-    "repo": "joehe71/browser-tools",
-    "npm": "@joehe71/browser-tools",
-    "extensionType": "community",
-    "categories": [
-      "developer"
-    ]
-  },
-  {
     "id": "chrome-devtools",
     "version": "1.5.2",
     "name": "Chrome DevTools",
@@ -231,19 +218,6 @@
       "developer"
     ],
     "featured": false
-  },
-  {
-    "id": "finch-workbuddy-bridge",
-    "version": "0.1.5",
-    "name": "WorkBuddy Bridge",
-    "author": "EMUIO",
-    "description": "Expose WorkBuddy desktop app models as a local OpenAI-compatible endpoint for Finch custom providers.",
-    "repo": "npm:finch-workbuddy-bridge",
-    "npm": "finch-workbuddy-bridge",
-    "extensionType": "community",
-    "categories": [
-      "developer"
-    ]
   },
   {
     "id": "finch-worktree-coordinator",
