@@ -390,6 +390,8 @@ test('扫码重新登录成功前清理旧上下文', async () => {
   await f.inbound();
   const state = createBotState();
   state.loginAttempt = 1;
+  // 重新登录某个已有账号时会带上目标 id（对应菜单里的「重新登录」）。
+  state.loginTargetAccountId = primaryId;
   let started = false;
   const qrClient = {
     async get(): Promise<StatusResponse> {
@@ -904,6 +906,8 @@ test('登出清空凭证但保留 botId，重新登录原地认领不新增条�
   assert.equal(loggedOut!.botId, account.botId, '登出保留 botId 以便重新登录认领');
   assert.equal(await f.accounts.defaultSender(), undefined);
 
+  // 从已登出的账号条目重新登录（对应菜单里的「登录」）。
+  state.loginTargetAccountId = primaryId;
   await (auth as unknown as {
     runLoginPolling(qr: { qrcode: string; qrcode_img_content: string }, attempt: number): Promise<void>;
   }).runLoginPolling({ qrcode: 'test', qrcode_img_content: 'test' }, 1);
@@ -950,4 +954,50 @@ test('全部账号登出后不再有可发送身份', async () => {
   assert.equal(await f.accounts.defaultSender(), undefined);
   assert.equal((await f.accounts.list()).length, 1);
   await assert.rejects(executeWechatSend(f.ctx, f.raw, f.accounts, { message: 'hello' }), /No WeChat account is logged in/);
+});
+
+test('同一个微信重复添加子账号会被拒绝，不产生同名重复账号', async () => {
+  const f = fixture();
+  const state = createBotState();
+  state.loginAttempt = 1;
+  let readyId = '';
+  const qrClient = {
+    async get(): Promise<StatusResponse> {
+      // 同一个微信（peer）扫出了另一个 bot。
+      return { status: 'confirmed', bot_token: 'second-bot-token', ilink_bot_id: 'other-bot-id', ilink_user_id: peer };
+    },
+  } as unknown as IlinkClient;
+  const auth = new AuthManager(f.ctx, qrClient, f.contexts, f.accounts, state, () => {}, (id) => { readyId = id; });
+
+  await (auth as unknown as {
+    runLoginPolling(qr: { qrcode: string; qrcode_img_content: string }, attempt: number): Promise<void>;
+  }).runLoginPolling({ qrcode: 'test', qrcode_img_content: 'test' }, 1);
+
+  assert.equal(readyId, '', '同名微信不应注册新账号');
+  const accounts = await f.accounts.list();
+  assert.equal(accounts.length, 1);
+  assert.equal(accounts[0].botToken, account.botToken, '原主账号凭证未被改动');
+  assert.equal(state.loginPhase, 'failed');
+});
+
+test('明确对某个账号重新登录时不会误判为自己冲突', async () => {
+  const f = fixture();
+  const state = createBotState();
+  state.loginAttempt = 1;
+  state.loginTargetAccountId = primaryId;
+  let readyId = '';
+  const qrClient = {
+    async get(): Promise<StatusResponse> {
+      return { status: 'confirmed', bot_token: 'relogin-token', ilink_bot_id: account.botId, ilink_user_id: peer };
+    },
+  } as unknown as IlinkClient;
+  const auth = new AuthManager(f.ctx, qrClient, f.contexts, f.accounts, state, () => {}, (id) => { readyId = id; });
+
+  await (auth as unknown as {
+    runLoginPolling(qr: { qrcode: string; qrcode_img_content: string }, attempt: number): Promise<void>;
+  }).runLoginPolling({ qrcode: 'test', qrcode_img_content: 'test' }, 1);
+
+  assert.equal(readyId, primaryId);
+  assert.equal((await f.accounts.get(primaryId))!.botToken, 'relogin-token');
+  assert.equal((await f.accounts.list()).length, 1);
 });

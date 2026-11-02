@@ -137,6 +137,17 @@ export class AuthManager {
     }
   }
 
+  /**
+   * 同一个微信已经作为另一个账号登录时返回那个账号。
+   * 用于拒绝「添加子账号」扫到已登录的微信，避免出现同名重复账号。
+   */
+  private async findOwnerConflict(ownerUserId: string | undefined): Promise<WeChatAccount | undefined> {
+    if (!ownerUserId) return undefined;
+    const targetId = this.state.loginTargetAccountId;
+    const accounts = await this.accounts.list();
+    return accounts.find((account) => account.ownerUserId === ownerUserId && account.id !== targetId);
+  }
+
   /** 注册或更新一个账号；返回账号 id。已存在同 botId 的账号时原地更新。 */
   private async registerAccount(credentials: LoginCredentials): Promise<string> {
     const accounts = await this.accounts.list();
@@ -219,6 +230,21 @@ export class AuthManager {
           break;
         case 'confirmed': {
           if (!st.bot_token || !st.ilink_bot_id) throw new Error('Login confirmed but credentials missing');
+          // 同一个微信已经作为另一个账号登录：拒绝新增，避免同名重复账号。
+          const conflict = await this.findOwnerConflict(st.ilink_user_id);
+          if (conflict) {
+            this.state.loginPhase = 'failed';
+            this.state.activeQr = undefined;
+            this.state.lastError = 'This WeChat account is already logged in as another account.';
+            this.toast(
+              '无法重复添加',
+              `这个微信已经是「${conflict.role === 'primary' ? '主账号' : '子账号'} · ${conflict.label}」。请在该账号里选「重新登录」，或换一个微信。`,
+              'warning',
+            );
+            await this.state.activeLoginDialog?.close('failed');
+            this.state.loginCancel = true;
+            break;
+          }
           const baseUrl = (st.baseurl || currentBase).replace(/\/+$/, '');
           const accountId = await this.registerAccount({
             botToken: st.bot_token, botId: st.ilink_bot_id, baseUrl,
