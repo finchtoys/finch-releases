@@ -2,18 +2,26 @@ import type * as finch from 'finch';
 import QRCode from 'qrcode';
 import {
   ILINK_BASE_URL, DEFAULT_BOT_TYPE, QR_POLL_INTERVAL_MS,
-  KEY_TOKEN, KEY_BASE_URL, KEY_BOT_ID, KEY_OWNER_USER,
-  KEY_CURSOR, KEY_ACTIVE_SESSION,
-  type BotState, type QRCodeResponse, type StatusResponse,
+  type BotState, type QRCodeResponse, type StatusResponse, type WeChatAccount,
 } from './types';
-import { IlinkClient } from './ilink-client';
+import { IlinkClient, type IlinkAccount } from './ilink-client';
 import { ContextStore } from './context';
-import { sleep } from './utils';
+import { AccountStore, cursorKey, activeSessionKey } from './accounts';
+import { randomHex, sleep } from './utils';
 
 type ToastFn = (title: string, description?: string, variant?: finch.ToastVariant) => void;
 
+/** 一个登录轮询产生的 iLink 凭证。 */
+interface LoginCredentials {
+  botToken: string;
+  botId: string;
+  baseUrl: string;
+  ownerUserId?: string;
+}
+
 /**
- * 认证管理器：扫码登录、退出、typing 指示器。
+ * 认证管理器：微信扫码登录、退出、typing 指示器。支持主账号 + 多个子账号，
+ * 每个账号独立保存凭证与上下文，登录/退出互不影响。
  */
 export class AuthManager {
   private typingState = new Map<string, { ticket: string; timer: ReturnType<typeof setInterval>; runningTurns: number }>();
@@ -23,25 +31,33 @@ export class AuthManager {
     private ctx: finch.MiniToolContext,
     private ilink: IlinkClient,
     private contexts: ContextStore,
+    private accounts: AccountStore,
     private state: BotState,
     private toast: ToastFn,
-    private onStartMessageLoop: () => void,
+    private onAccountReady: (accountId: string) => void,
   ) {}
 
   // ── 输入状态 (typing) ──────────────────────────────────────────────────────
 
-  private async fetchTypingTicket(peerId: string, contextToken?: string): Promise<string | undefined> {
-    if (this.ticketCache.has(peerId)) return this.ticketCache.get(peerId);
-    const baseUrl = await this.ilink.getBaseUrl();
-    const token = await this.ilink.getToken();
-    if (!baseUrl || !token) return undefined;
+  private typingKey(accountId: string, peerId: string): string {
+    return `${accountId}:${peerId}`;
+  }
+
+  private async accountOf(accountId: string): Promise<IlinkAccount | undefined> {
+    const account = await this.accounts.get(accountId);
+    if (!account) return undefined;
+    return { baseUrl: account.baseUrl, botId: account.botId, botToken: account.botToken };
+  }
+
+  private async fetchTypingTicket(account: IlinkAccount, cacheKey: string, peerId: string, contextToken?: string): Promise<string | undefined> {
+    if (this.ticketCache.has(cacheKey)) return this.ticketCache.get(cacheKey);
     try {
       const resp = await this.ilink.post<{ ret?: number; typing_ticket?: string }>(
-        baseUrl, 'ilink/bot/getconfig',
-        { ilink_user_id: peerId, context_token: contextToken, base_info: this.ilink.buildBaseInfo() }, token,
+        account.baseUrl, 'ilink/bot/getconfig',
+        { ilink_user_id: peerId, context_token: contextToken, base_info: this.ilink.buildBaseInfo() }, account.botToken,
       );
       if (resp.typing_ticket) {
-        this.ticketCache.set(peerId, resp.typing_ticket);
+        this.ticketCache.set(cacheKey, resp.typing_ticket);
         return resp.typing_ticket;
       }
     } catch (error) {
@@ -50,33 +66,45 @@ export class AuthManager {
     return undefined;
   }
 
-  private async sendTyping(peerId: string, ticket: string, status: 1 | 2): Promise<void> {
-    const baseUrl = await this.ilink.getBaseUrl();
-    const token = await this.ilink.getToken();
-    if (!baseUrl || !token) return;
-    await this.ilink.post(baseUrl, 'ilink/bot/sendtyping',
-      { ilink_user_id: peerId, typing_ticket: ticket, status, base_info: this.ilink.buildBaseInfo() }, token,
+  private async sendTyping(account: IlinkAccount, peerId: string, ticket: string, status: 1 | 2): Promise<void> {
+    await this.ilink.post(account.baseUrl, 'ilink/bot/sendtyping',
+      { ilink_user_id: peerId, typing_ticket: ticket, status, base_info: this.ilink.buildBaseInfo() }, account.botToken,
     ).catch((error) => this.ctx.logger.debug('sendTyping failed (ignored)', error));
   }
 
-  async startTyping(peerId: string, contextToken?: string): Promise<void> {
-    const existing = this.typingState.get(peerId);
+  async startTyping(accountId: string, peerId: string, contextToken?: string): Promise<void> {
+    const cacheKey = this.typingKey(accountId, peerId);
+    const existing = this.typingState.get(cacheKey);
     if (existing) { existing.runningTurns += 1; return; }
-    const ticket = await this.fetchTypingTicket(peerId, contextToken);
+    const account = await this.accountOf(accountId);
+    if (!account) return;
+    const ticket = await this.fetchTypingTicket(account, cacheKey, peerId, contextToken);
     if (!ticket) return;
-    await this.sendTyping(peerId, ticket, 1);
-    const timer = setInterval(() => { void this.sendTyping(peerId, ticket, 1); }, 5_000);
-    this.typingState.set(peerId, { ticket, timer, runningTurns: 1 });
+    await this.sendTyping(account, peerId, ticket, 1);
+    const timer = setInterval(() => { void this.sendTyping(account, peerId, ticket, 1); }, 5_000);
+    this.typingState.set(cacheKey, { ticket, timer, runningTurns: 1 });
   }
 
-  async stopTyping(peerId: string): Promise<void> {
-    const st = this.typingState.get(peerId);
+  async stopTyping(accountId: string, peerId: string): Promise<void> {
+    const cacheKey = this.typingKey(accountId, peerId);
+    const st = this.typingState.get(cacheKey);
     if (!st) return;
     st.runningTurns -= 1;
     if (st.runningTurns > 0) return;
     clearInterval(st.timer);
-    this.typingState.delete(peerId);
-    await this.sendTyping(peerId, st.ticket, 2);
+    this.typingState.delete(cacheKey);
+    const account = await this.accountOf(accountId);
+    if (account) await this.sendTyping(account, peerId, st.ticket, 2);
+  }
+
+  /** 清空某个账号的 typing 状态（登出/重新登录时调用）。 */
+  clearTypingFor(accountId: string): void {
+    for (const [key, st] of this.typingState) {
+      if (!key.startsWith(`${accountId}:`)) continue;
+      clearInterval(st.timer);
+      this.typingState.delete(key);
+      this.ticketCache.delete(key);
+    }
   }
 
   clearTypingTimers(): void {
@@ -107,6 +135,39 @@ export class AuthManager {
       this.ctx.logger.warn('pollQrStatus network error, retrying', { error: String(error) });
       return { status: 'wait' };
     }
+  }
+
+  /** 注册或更新一个账号；返回账号 id。已存在同 botId 的账号时原地更新。 */
+  private async registerAccount(credentials: LoginCredentials): Promise<string> {
+    const accounts = await this.accounts.list();
+    const targetId = this.state.loginTargetAccountId;
+    const existing = (targetId ? accounts.find((a) => a.id === targetId) : undefined)
+      ?? accounts.find((a) => a.botId === credentials.botId);
+
+    if (existing) {
+      // 旧登录的上下文不能复用到新凭证。
+      await this.contexts.clearScope({ botId: existing.botId, botToken: existing.botToken });
+      this.clearTypingFor(existing.id);
+    }
+
+    const id = existing?.id ?? `acc_${randomHex(6)}`;
+    const role = existing?.role ?? (accounts.length ? 'sub' : 'primary');
+    const account: WeChatAccount = {
+      id,
+      botId: credentials.botId,
+      botToken: credentials.botToken,
+      baseUrl: credentials.baseUrl,
+      ...(credentials.ownerUserId ? { ownerUserId: credentials.ownerUserId } : {}),
+      label: AccountStore.labelFor(credentials.ownerUserId, String(accounts.length + 1)),
+      role,
+      createdAt: existing?.createdAt ?? Date.now(),
+    };
+    await this.accounts.save(account);
+    // 新登录从头拉取：清掉旧游标与当前会话指针。
+    await this.ctx.storage.delete(cursorKey(id));
+    await this.ctx.storage.delete(activeSessionKey(id));
+    await this.accounts.ensurePrimary();
+    return id;
   }
 
   private async runLoginPolling(qr: QRCodeResponse, attempt: number): Promise<void> {
@@ -159,14 +220,10 @@ export class AuthManager {
         case 'confirmed': {
           if (!st.bot_token || !st.ilink_bot_id) throw new Error('Login confirmed but credentials missing');
           const baseUrl = (st.baseurl || currentBase).replace(/\/+$/, '');
-          await this.contexts.clear();
-          this.clearTypingTimers();
-          await this.ctx.storage.set(KEY_TOKEN, st.bot_token);
-          await this.ctx.storage.set(KEY_BASE_URL, baseUrl);
-          await this.ctx.storage.set(KEY_BOT_ID, st.ilink_bot_id);
-          if (st.ilink_user_id) await this.ctx.storage.set(KEY_OWNER_USER, st.ilink_user_id);
-          await this.ctx.storage.delete(KEY_CURSOR);
-          await this.ctx.storage.delete(KEY_ACTIVE_SESSION);
+          const accountId = await this.registerAccount({
+            botToken: st.bot_token, botId: st.ilink_bot_id, baseUrl,
+            ...(st.ilink_user_id ? { ownerUserId: st.ilink_user_id } : {}),
+          });
           this.state.activeQr = undefined;
           this.state.loginPhase = 'idle';
           this.state.lastError = undefined;
@@ -174,7 +231,7 @@ export class AuthManager {
           this.state.settingsMenu?.notifyUpdate();
           await this.state.activeLoginDialog?.close('connected');
           this.state.loginCancel = true;
-          this.onStartMessageLoop();
+          this.onAccountReady(accountId);
           break;
         }
       }
@@ -201,6 +258,7 @@ export class AuthManager {
       .finally(() => {
         if (attempt !== this.state.loginAttempt) return;
         this.state.loginRunning = false;
+        this.state.loginTargetAccountId = undefined;
         this.state.settingsMenu?.notifyUpdate();
       });
   }
@@ -217,17 +275,24 @@ export class AuthManager {
     return png.toString('base64');
   }
 
-  async showLoginDialog(): Promise<void> {
-    if (await this.ilink.isLoggedIn()) {
-      this.toast('微信已登录', '当前正在接收消息。', 'info');
-      return;
+  /**
+   * 打开扫码弹窗。`targetAccountId` 为空表示新增子账号；有值表示重新登录该账号。
+   */
+  async showLoginDialog(targetAccountId?: string): Promise<void> {
+    // 切换登录目标时放弃进行中的轮询，避免把新二维码归到旧账号。
+    if (this.state.loginRunning && this.state.loginTargetAccountId !== targetAccountId) {
+      this.state.loginAttempt += 1;
+      this.state.loginCancel = true;
+      this.state.activeQr = undefined;
+      this.state.loginRunning = false;
     }
+    this.state.loginTargetAccountId = targetAccountId;
     try {
       const qr = await this.getLoginQr();
       const pngBase64 = await this.renderQrPng(qr.qrcode_img_content);
       await this.state.activeLoginDialog?.close('replaced');
       const dialog = this.ctx.ui.showModalDialog({
-        title: '登录微信',
+        title: targetAccountId ? '重新登录微信' : '添加微信子账号',
         description: '请使用手机微信扫码，并在手机上确认登录。',
         message: `![微信登录二维码](data:image/png;base64,${pngBase64})\n\n> 请尽快扫码；实际有效期以微信端为准。`,
         actions: [{ id: 'close', label: '关闭' }],
@@ -237,7 +302,7 @@ export class AuthManager {
       if (this.state.activeLoginDialog === dialog) this.state.activeLoginDialog = undefined;
 
       if (['connected', 'verify', 'expired', 'failed', 'replaced', 'logged-out', 'disposed'].includes(result.action)) return;
-      if (await this.ilink.isLoggedIn()) return;
+      if (this.state.loginRunning) return;
 
       this.state.loginCancel = true;
       this.state.activeQr = undefined;
@@ -252,26 +317,24 @@ export class AuthManager {
     }
   }
 
-  async logout(): Promise<void> {
-    this.state.loginAttempt += 1;
-    this.state.loginCancel = true;
-    await this.state.activeLoginDialog?.close('logged-out');
-    this.state.activeLoginDialog = undefined;
-    this.state.loginRunning = false;
-    this.state.loginPhase = 'idle';
-    this.state.activeQr = undefined;
-    this.state.stopMessageLoop = true;
-    this.state.messageRunning = false;
+  /** 登出指定账号：取消其进行中的登录、清账号与上下文、必要时顺延主账号。 */
+  async logout(accountId: string): Promise<void> {
+    const account = await this.accounts.get(accountId);
+    if (this.state.loginTargetAccountId === accountId) {
+      this.state.loginAttempt += 1;
+      this.state.loginCancel = true;
+      await this.state.activeLoginDialog?.close('logged-out');
+      this.state.activeLoginDialog = undefined;
+      this.state.loginRunning = false;
+      this.state.loginPhase = 'idle';
+      this.state.activeQr = undefined;
+      this.state.loginTargetAccountId = undefined;
+    }
+    this.clearTypingFor(accountId);
+    await this.accounts.remove(accountId);
+    if (account) await this.contexts.clearScope({ botId: account.botId, botToken: account.botToken });
+    await this.accounts.ensurePrimary();
     this.state.lastError = undefined;
-    await this.ctx.storage.delete(KEY_TOKEN);
-    this.clearTypingTimers();
-    await this.contexts.clear();
-    await this.ctx.storage.delete(KEY_BASE_URL);
-    await this.ctx.storage.delete(KEY_BOT_ID);
-    await this.ctx.storage.delete(KEY_OWNER_USER);
-    await this.ctx.storage.delete(KEY_CURSOR);
-    await this.ctx.storage.delete(KEY_ACTIVE_SESSION);
-    this.toast('已退出微信', '本地登录状态已清除。', 'info');
     this.state.settingsMenu?.notifyUpdate();
   }
 }

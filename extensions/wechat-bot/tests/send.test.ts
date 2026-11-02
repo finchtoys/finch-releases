@@ -4,6 +4,7 @@ import type * as finch from 'finch';
 import en from '../i18n/en-US.json';
 import zh from '../i18n/zh-CN.json';
 import { ContextStore } from '../src/context';
+import { AccountStore, accountKey, cursorKey, activeSessionKey } from '../src/accounts';
 import { IlinkClient, type IlinkAccount } from '../src/ilink-client';
 import { MediaManager } from '../src/media';
 import { AuthManager } from '../src/auth';
@@ -11,18 +12,23 @@ import { splitText, TEXT_CHUNK_UTF8_BYTES } from '../src/text-chunks';
 import { executeWechatSend } from '../src/send-tool';
 import { OBSERVATIONS_KEY, OBSERVATION_RETENTION_MS } from '../src/send-observations';
 import {
-  KEY_TOKEN, KEY_BASE_URL, KEY_BOT_ID, KEY_OWNER_USER,
-  CTOKEN_PREFIX, SESSION_MAP_PREFIX, TURN_MAP_PREFIX, createBotState,
-  type SendMessageResponse, type StatusResponse,
+  KEY_TOKEN, KEY_BASE_URL, KEY_BOT_ID, KEY_OWNER_USER, KEY_CURSOR, KEY_ACTIVE_SESSION,
+  ACCOUNT_INDEX_KEY, CTOKEN_PREFIX, SESSION_MAP_PREFIX, TURN_MAP_PREFIX, createBotState,
+  type SendMessageResponse, type StatusResponse, type WeChatAccount,
 } from '../src/types';
 
 const peer = 'test-peer';
 const account: IlinkAccount = { botId: 'test-bot', botToken: 'test-auth-secret', baseUrl: 'https://test.invalid' };
+const primaryId = 'acc_test';
+const primaryAccount: WeChatAccount = {
+  id: primaryId, botId: account.botId, botToken: account.botToken, baseUrl: account.baseUrl,
+  ownerUserId: peer, label: '微信 test', role: 'primary', createdAt: 1,
+};
 
 function fixture(locale: 'en' | 'zh' = 'en') {
   const values = new Map<string, unknown>([
-    [KEY_TOKEN, account.botToken], [KEY_BASE_URL, account.baseUrl],
-    [KEY_BOT_ID, account.botId], [KEY_OWNER_USER, peer],
+    [ACCOUNT_INDEX_KEY, [primaryId]],
+    [accountKey(primaryId), { ...primaryAccount }],
   ]);
   const secrets = new Map<string, string>();
   const logs: unknown[][] = [];
@@ -56,19 +62,42 @@ function fixture(locale: 'en' | 'zh' = 'en') {
     }
   }
   const ilink = new FakeIlink(ctx, 'test-agent');
-  const contexts = new ContextStore(ctx);
-  const media = new MediaManager(ctx, ilink, contexts);
+  const accounts = new AccountStore(ctx);
+  const contexts = new ContextStore(ctx, accounts);
+  const raw = new MediaManager(ctx, ilink, contexts, accounts);
+  const identityOf = async (): Promise<IlinkAccount> => {
+    const stored = (await accounts.get(primaryId))!;
+    return { baseUrl: stored.baseUrl, botId: stored.botId, botToken: stored.botToken };
+  };
+  // 测试均以主账号为默认发送身份；facade 自动注入 accountId。
+  const media = {
+    sendText: (to: string, text: string, signal?: AbortSignal) => raw.sendText(primaryId, to, text, signal),
+    sendImage: (to: string, data: Buffer, caption?: string, signal?: AbortSignal) => raw.sendImage(primaryId, to, data, caption, signal),
+    sendVideo: (to: string, data: Buffer, caption?: string, signal?: AbortSignal) => raw.sendVideo(primaryId, to, data, caption, signal),
+    sendFile: (to: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal) => raw.sendFile(primaryId, to, data, fileName, caption, signal),
+    sendMediaByMime: (to: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal) => raw.sendMediaByMime(primaryId, to, data, fileName, caption, signal),
+    assertCanSend: (to: string, signal?: AbortSignal) => raw.assertCanSend(primaryId, to, signal),
+    observations: raw.observations,
+  };
   return {
-    ctx, values, secrets, logs, calls, ilink, contexts, media,
+    ctx, values, secrets, logs, calls, ilink, accounts, contexts, raw, media, primaryId, primaryAccount,
     respond(next: SendMessageResponse) { response = next; },
     onPost(hook: () => Promise<unknown>) { postHook = hook; },
-    async inbound(token = 'test-context-secret') { await contexts.capture(peer, token, (await ilink.getAccount())!); },
+    async inbound(token = 'test-context-secret') { await contexts.capture(peer, token, await identityOf()); },
+    /** 模拟账号凭证/身份变化（重新登录或换 bot）。 */
+    patchAccount(patch: Partial<WeChatAccount>) {
+      const current = values.get(accountKey(primaryId)) as WeChatAccount;
+      const next = { ...current, ...patch };
+      values.set(accountKey(primaryId), next);
+      return next;
+    },
+    accountRecord() { return values.get(accountKey(primaryId)) as WeChatAccount | undefined; },
   };
 }
 
 function fakeUpload(f: ReturnType<typeof fixture>, hook?: () => Promise<void>) {
   let count = 0;
-  f.media.uploadMediaToCdn = async () => {
+  f.raw.uploadMediaToCdn = async () => {
     count++;
     await hook?.();
     return { downloadEncryptedQueryParam: 'test-cdn', aeskeyHex: '00'.repeat(16), fileSize: 1, fileSizeCiphertext: 16 };
@@ -94,7 +123,7 @@ test('中文错误提示可用，且不伪称上下文不够新', async () => {
 
 test('未登录与没有消息上下文分别提示', async () => {
   const f = fixture();
-  f.values.delete(KEY_TOKEN);
+  f.values.delete(accountKey(primaryId));
   await assert.rejects(f.media.sendText(peer, 'hello'), /not logged in/);
   assert.equal(f.calls.length, 0);
 });
@@ -145,7 +174,7 @@ test('接收时间只用于诊断，不臆造服务端 TTL', async () => {
 test('同一收件人在另一 bot 下不能沿用上下文', async () => {
   const f = fixture();
   await f.inbound();
-  f.values.set(KEY_BOT_ID, 'another-bot');
+  f.patchAccount({ botId: 'another-bot' });
   await assert.rejects(f.media.sendText(peer, 'hello'), /no message context/);
   assert.equal(f.calls.length, 0);
 });
@@ -153,7 +182,7 @@ test('同一收件人在另一 bot 下不能沿用上下文', async () => {
 test('同一 bot 的新登录也不能沿用旧上下文', async () => {
   const f = fixture();
   await f.inbound();
-  f.values.set(KEY_TOKEN, 'new-auth-secret');
+  f.patchAccount({ botToken: 'new-auth-secret' });
   await assert.rejects(f.media.sendText(peer, 'hello'), /no message context/);
   await f.inbound('new-context');
   await f.media.sendText(peer, 'hello');
@@ -162,7 +191,7 @@ test('同一 bot 的新登录也不能沿用旧上下文', async () => {
 
 test('迟到的旧轮询响应不能缓存到新登录下', async () => {
   const f = fixture();
-  f.values.set(KEY_TOKEN, 'new-auth-secret');
+  f.patchAccount({ botToken: 'new-auth-secret' });
   await f.contexts.capture(peer, 'old-response-token', account);
   assert.equal(f.secrets.size, 0);
 });
@@ -289,7 +318,7 @@ test('媒体上传中切换账号，不把旧账号的媒体投递到新账号',
   const f = fixture();
   await f.inbound();
   fakeUpload(f, async () => {
-    f.values.set(KEY_TOKEN, 'new-auth-secret');
+    f.patchAccount({ botToken: 'new-auth-secret' });
     await f.inbound('new-context');
   });
   await assert.rejects(f.media.sendImage(peer, Buffer.from('x')), /login changed/);
@@ -333,7 +362,7 @@ test('清理上下文不会清空登录凭证或其他业务存储', async () =>
   f.values.set('task:t1', { status: 'completed' });
   await f.contexts.clear();
   assert.equal(f.secrets.size, 0);
-  assert.equal(f.values.get(KEY_TOKEN), account.botToken);
+  assert.equal(f.accountRecord()!.botToken, account.botToken);
   assert.deepEqual(f.values.get('task:t1'), { status: 'completed' });
   await assert.rejects(f.media.sendText(peer, 'hello'), /no message context/);
 });
@@ -342,9 +371,9 @@ test('退出登录清理上下文，保留收件箱历史', async () => {
   const f = fixture();
   await f.inbound();
   f.values.set(`${SESSION_MAP_PREFIX}s1`, { peerId: peer });
-  const auth = new AuthManager(f.ctx, f.ilink, f.contexts, createBotState(), () => {}, () => {});
-  await auth.logout();
-  assert.equal(f.values.has(KEY_TOKEN), false);
+  const auth = new AuthManager(f.ctx, f.ilink, f.contexts, f.accounts, createBotState(), () => {}, () => {});
+  await auth.logout(primaryId);
+  assert.equal(f.values.has(accountKey(primaryId)), false);
   assert.equal(f.secrets.size, 0);
   assert.deepEqual(f.values.get(`${SESSION_MAP_PREFIX}s1`), { peerId: peer });
 });
@@ -360,14 +389,14 @@ test('扫码重新登录成功前清理旧上下文', async () => {
       return { status: 'confirmed', bot_token: 'new-auth-secret', ilink_bot_id: account.botId, ilink_user_id: peer };
     },
   } as unknown as IlinkClient;
-  const auth = new AuthManager(f.ctx, qrClient, f.contexts, state, () => {}, () => { started = true; });
+  const auth = new AuthManager(f.ctx, qrClient, f.contexts, f.accounts, state, () => {}, () => { started = true; });
   // 只验证登录状态迁移，不触发二维码弹窗或真实网络。
   await (auth as unknown as {
     runLoginPolling(qr: { qrcode: string; qrcode_img_content: string }, attempt: number): Promise<void>;
   }).runLoginPolling({ qrcode: 'test', qrcode_img_content: 'test' }, 1);
   assert.equal(started, true);
   assert.equal(f.secrets.size, 0);
-  assert.equal(f.values.get(KEY_TOKEN), 'new-auth-secret');
+  assert.equal(f.accountRecord()!.botToken, 'new-auth-secret');
   await assert.rejects(f.media.sendText(peer, 'hello'), /no message context/);
 });
 
@@ -573,13 +602,13 @@ test('诊断存储或日志失败不改变发送成功/业务失败，stale toke
 
 test('工具失败走异常链路，成功文案只确认服务端受理', async () => {
   const f = fixture();
-  await assert.rejects(executeWechatSend(f.ctx, f.media, {}), /Provide message/);
-  await assert.rejects(executeWechatSend(f.ctx, f.media, { message: 'hello' }), /Failed to send.*no message context/);
+  await assert.rejects(executeWechatSend(f.ctx, f.raw, f.accounts, {}), /Provide message/);
+  await assert.rejects(executeWechatSend(f.ctx, f.raw, f.accounts, { message: 'hello' }), /Failed to send.*no message context/);
   await f.inbound();
   f.respond({ ret: -2, errmsg: 'prepare failed' });
-  await assert.rejects(executeWechatSend(f.ctx, f.media, { message: 'hello' }), /Failed to send.*rejected send preparation on both/);
+  await assert.rejects(executeWechatSend(f.ctx, f.raw, f.accounts, { message: 'hello' }), /Failed to send.*rejected send preparation on both/);
   f.respond({ ret: 0 });
-  const result = await executeWechatSend(f.ctx, f.media, { message: 'hello' });
+  const result = await executeWechatSend(f.ctx, f.raw, f.accounts, { message: 'hello' });
   assert.notEqual(result.isError, true);
   assert.match(JSON.stringify(result), /accepted.*not a device delivery receipt/);
 });
@@ -637,7 +666,7 @@ test('上下文写入中断后不可发送，退出清理仍能枚举并删除�
   assert.equal(f.calls.length, 0);
   await f.contexts.clear();
   assert.equal(f.secrets.size, 0);
-  assert.equal(f.values.get(KEY_TOKEN), account.botToken);
+  assert.equal(f.accountRecord()!.botToken, account.botToken);
 });
 
 test('真实 HTTP 客户端将工具取消传递到 fetch，无实际网络访问', async (t) => {
@@ -667,7 +696,7 @@ test('省略零值返回码的成功响应正常受理，诊断不编造 ret 或
     const f = fixture();
     await f.inbound();
     f.respond(response);
-    const result = await executeWechatSend(f.ctx, f.media, { message: 'hello' });
+    const result = await executeWechatSend(f.ctx, f.raw, f.accounts, { message: 'hello' });
     assert.notEqual(result.isError, true);
     assert.match(JSON.stringify(result), /accepted.*not a device delivery receipt/);
     assert.equal(f.calls.length, 1);
@@ -689,7 +718,7 @@ test('只要任一业务返回码非零仍拒绝，缺省 ret 不吞 errcode 错
     const f = fixture();
     await f.inbound();
     f.respond(response);
-    await assert.rejects(executeWechatSend(f.ctx, f.media, { message: 'hello' }), /Failed to send WeChat message/);
+    await assert.rejects(executeWechatSend(f.ctx, f.raw, f.accounts, { message: 'hello' }), /Failed to send WeChat message/);
     assert.equal(f.calls.length, response.ret === -2 && response.errmsg === 'prepare failed' ? 2 : 1);
     const [row] = await f.media.observations.list();
     assert.equal(row.outcome, 'business_rejected');
@@ -723,16 +752,127 @@ test('真实 HTTP 解析链路：200 空对象成功，HTTP 错误或非法 JSON
     const f = fixture();
     await f.inbound();
     const realClient = new IlinkClient(f.ctx, 'test-agent');
-    const media = new MediaManager(f.ctx, realClient, f.contexts);
+    const media = new MediaManager(f.ctx, realClient, f.contexts, f.accounts);
     if (mode === 'empty-object') {
-      await media.sendText(peer, 'hello');
+      await media.sendText(f.primaryId, peer, 'hello');
       const [row] = await media.observations.list();
       assert.equal(row.outcome, 'accepted');
       assert.equal(row.ret, undefined);
     } else {
-      await assert.rejects(media.sendText(peer, 'hello'));
+      await assert.rejects(media.sendText(f.primaryId, peer, 'hello'));
       assert.notEqual((await media.observations.list())[0].outcome, 'accepted');
     }
     assert.equal(requests, 1);
   }
+});
+
+// ── 多账号（主账号 + 子账号）────────────────────────────────────────────────
+
+const subId = 'acc_sub';
+const sub: IlinkAccount = { baseUrl: 'https://sub.invalid', botId: 'sub-bot', botToken: 'sub-auth-secret' };
+
+function seedSubAccount(f: ReturnType<typeof fixture>, role: 'primary' | 'sub' = 'sub'): void {
+  f.values.set(ACCOUNT_INDEX_KEY, [...(f.values.get(ACCOUNT_INDEX_KEY) as string[]), subId]);
+  f.values.set(accountKey(subId), {
+    id: subId, botId: sub.botId, botToken: sub.botToken, baseUrl: sub.baseUrl,
+    ownerUserId: peer, label: '微信 sub', role, createdAt: 2,
+  });
+}
+
+test('账号标签只展示用户 id 尾段', () => {
+  assert.equal(AccountStore.labelFor('abcdef123456', '3'), '微信 123456');
+  assert.equal(AccountStore.labelFor(undefined, '3'), '微信账号 3');
+});
+
+test('缺少主账号时按顺序提升第一个，重复主账号只保留最靠前的', async () => {
+  const f = fixture();
+  f.values.set(ACCOUNT_INDEX_KEY, ['a1', 'a2']);
+  f.values.set('account:a1', { id: 'a1', botId: 'b1', botToken: 't1', baseUrl: 'https://x', label: '微信 a1', role: 'sub', createdAt: 1 });
+  f.values.set('account:a2', { id: 'a2', botId: 'b2', botToken: 't2', baseUrl: 'https://y', label: '微信 a2', role: 'sub', createdAt: 2 });
+  assert.equal(await f.accounts.ensurePrimary(), true);
+  assert.equal((await f.accounts.primary())!.id, 'a1');
+
+  f.values.set('account:a2', { id: 'a2', botId: 'b2', botToken: 't2', baseUrl: 'https://y', label: '微信 a2', role: 'primary', createdAt: 2 });
+  await f.accounts.ensurePrimary();
+  assert.equal((await f.accounts.get('a1'))!.role, 'primary');
+  assert.equal((await f.accounts.get('a2'))!.role, 'sub');
+});
+
+test('登出主账号后剩余账号自动升为主账号', async () => {
+  const f = fixture();
+  seedSubAccount(f);
+  await f.accounts.remove(primaryId);
+  await f.accounts.ensurePrimary();
+  const primary = await f.accounts.primary();
+  assert.equal(primary!.id, subId);
+  assert.equal(primary!.role, 'primary');
+  assert.equal(f.values.has(accountKey(primaryId)), false);
+});
+
+test('不同账号的同一收件人上下文相互隔离，clearScope 只清一个', async () => {
+  const f = fixture();
+  seedSubAccount(f);
+  await f.contexts.capture(peer, 'primary-context', account);
+  await f.contexts.capture(peer, 'sub-context', sub);
+  assert.equal((await f.contexts.get(peer, account))!.token, 'primary-context');
+  assert.equal((await f.contexts.get(peer, sub))!.token, 'sub-context');
+
+  await f.contexts.clearScope(account);
+  assert.equal(await f.contexts.get(peer, account), undefined);
+  assert.equal((await f.contexts.get(peer, sub))!.token, 'sub-context');
+});
+
+test('发送使用所选账号的凭证与上下文，不串到主账号', async () => {
+  const f = fixture();
+  seedSubAccount(f);
+  await f.contexts.capture(peer, 'sub-context', sub);
+  await f.raw.sendText(subId, peer, 'hi from sub');
+  assert.equal(f.calls.at(-1)?.token, sub.botToken);
+  assert.equal(lastToken(f), 'sub-context');
+
+  // 子账号没有上下文时，主账号的上下文不能顶替。
+  await assert.rejects(f.raw.sendText(subId, 'other-peer', 'x'), /no message context/);
+});
+
+test('登出账号清空其上下文，保留其他账号的上下文', async () => {
+  const f = fixture();
+  seedSubAccount(f);
+  await f.contexts.capture(peer, 'primary-context', account);
+  await f.contexts.capture(peer, 'sub-context', sub);
+  const auth = new AuthManager(f.ctx, f.ilink, f.contexts, f.accounts, createBotState(), () => {}, () => {});
+  await auth.logout(subId);
+  assert.equal(await f.contexts.get(peer, sub), undefined);
+  assert.equal((await f.contexts.get(peer, account))!.token, 'primary-context');
+});
+
+test('旧单账号数据迁移为主账号，并保留游标、会话指针与历史映射', async () => {
+  const f = fixture();
+  f.values.delete(ACCOUNT_INDEX_KEY);
+  f.values.delete(accountKey(primaryId));
+  f.values.set(KEY_TOKEN, 'legacy-token');
+  f.values.set(KEY_BASE_URL, 'https://legacy.invalid');
+  f.values.set(KEY_BOT_ID, 'legacy-bot');
+  f.values.set(KEY_OWNER_USER, 'legacy-owner');
+  f.values.set(KEY_CURSOR, 'legacy-cursor');
+  f.values.set(KEY_ACTIVE_SESSION, 'legacy-session');
+  f.values.set(`${SESSION_MAP_PREFIX}s9`, { peerId: 'legacy-owner' });
+
+  const migrated = await f.accounts.migrateLegacy();
+  assert.ok(migrated);
+  assert.equal(migrated!.role, 'primary');
+  assert.equal(migrated!.botToken, 'legacy-token');
+  assert.equal(migrated!.ownerUserId, 'legacy-owner');
+  assert.equal(f.values.get(cursorKey(migrated!.id)), 'legacy-cursor');
+  assert.equal(f.values.get(activeSessionKey(migrated!.id)), 'legacy-session');
+  assert.deepEqual(f.values.get(`${SESSION_MAP_PREFIX}s9`), { peerId: 'legacy-owner', accountId: migrated!.id });
+  for (const key of [KEY_TOKEN, KEY_BASE_URL, KEY_BOT_ID, KEY_OWNER_USER, KEY_CURSOR, KEY_ACTIVE_SESSION]) {
+    assert.equal(f.values.has(key), false);
+  }
+
+  // 迁移后旧凭证仍可正常发送，且已有账号时不再重复迁移。
+  const legacyIdentity: IlinkAccount = { baseUrl: 'https://legacy.invalid', botId: 'legacy-bot', botToken: 'legacy-token' };
+  await f.contexts.capture(peer, 'after-migration', legacyIdentity);
+  await f.raw.sendText(migrated!.id, peer, 'hello');
+  assert.equal(lastToken(f), 'after-migration');
+  assert.equal(await f.accounts.migrateLegacy(), undefined);
 });

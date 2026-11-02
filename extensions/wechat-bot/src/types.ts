@@ -26,7 +26,13 @@ export const UPLOAD_MEDIA_IMAGE = 1;
 export const UPLOAD_MEDIA_VIDEO = 2;
 export const UPLOAD_MEDIA_FILE = 3;
 
-// 存储键
+// 多账号存储键：每个账号一条 account:<id> 记录，索引保存账号 id 顺序。
+export const ACCOUNT_INDEX_KEY = 'accounts:index';
+export const ACCOUNT_PREFIX = 'account:';
+export const ACCOUNT_CURSOR_PREFIX = 'cursor:';
+export const ACCOUNT_ACTIVE_SESSION_PREFIX = 'active-session:';
+
+// 旧单账号存储键：仅用于迁移，迁移后删除。
 export const KEY_TOKEN = 'auth:botToken';
 export const KEY_BASE_URL = 'auth:baseUrl';
 export const KEY_BOT_ID = 'auth:botId';
@@ -44,6 +50,37 @@ export const WAIT_INDEX_PREFIX = 'wait-index:';
 
 export const RECONNECT_BACKOFF_MS = [1_000, 3_000, 6_000, 10_000, 15_000];
 export const QR_POLL_INTERVAL_MS = 1_500;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 账号模型
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 账号角色：主账号显示在 Finch 上并作为默认发送身份，其余为子账号。 */
+export type AccountRole = 'primary' | 'sub';
+
+/** 一个已登录微信账号的完整记录（含凭证，仅存本地 KV）。 */
+export interface WeChatAccount {
+  /** 本地稳定 id，用作存储作用域；与 iLink 返回的 bot id 解耦。 */
+  id: string;
+  botId: string;
+  botToken: string;
+  baseUrl: string;
+  /** 完成扫码登录的微信用户 id（消息归属校验用）。 */
+  ownerUserId?: string;
+  /** 展示用标签，可读，不用于路由。 */
+  label: string;
+  role: AccountRole;
+  createdAt: number;
+}
+
+/** 供设置菜单显示的账号快照，不含凭证。 */
+export interface AccountView {
+  id: string;
+  label: string;
+  role: AccountRole;
+  ownerUserId?: string;
+  connected: boolean;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // iLink 协议类型
@@ -148,10 +185,12 @@ export interface UploadedMediaInfo {
   fileSizeCiphertext: number;
 }
 
-/** Bot 派发到某个 Space 的任务会话记录。 */
+/** 一个待人工处理的中继卡片（权限/问答/表单）。 */
 export interface PendingWaitRecord {
   code: string;
   peerId: string;
+  /** 收到该消息的账号 id，回复也必须经同一账号发出。 */
+  accountId: string;
   sessionId: string;
   requestId: string;
   kind: 'permission' | 'question' | 'form';
@@ -159,11 +198,14 @@ export interface PendingWaitRecord {
   formFields?: { key: string; type: string }[];
 }
 
+/** Bot 派发到某个 Space 的任务会话记录。 */
 export interface TaskRecord {
   sessionId: string;
   spaceId: string;
   title?: string;
   notifyPeerId?: string;
+  /** 结果通知走哪个账号发出；缺省回退到主账号。 */
+  notifyAccountId?: string;
   status: 'running' | 'waiting' | 'completed' | 'failed';
   lastTurnId?: string;
   lastOutput?: string;
@@ -172,9 +214,23 @@ export interface TaskRecord {
   updatedAt: number;
 }
 
+/** 会话/轮次到微信来源的映射，用于把结果回复到正确的账号与联系人。 */
+export interface PeerTarget {
+  peerId: string;
+  accountId: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 共享运行时状态
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** 单个账号的消息轮询状态。 */
+export interface AccountLoopState {
+  running: boolean;
+  stop: boolean;
+  backoffIndex: number;
+  lastError: string | undefined;
+}
 
 /** 可变状态对象，由 activate() 创建并传给各模块。 */
 export interface BotState {
@@ -184,11 +240,12 @@ export interface BotState {
   loginPhase: LoginPhase;
   activeQr: QRCodeResponse | undefined;
   activeLoginDialog: finch.ModalDialogHandle | undefined;
-  messageRunning: boolean;
-  stopMessageLoop: boolean;
-  backoffIndex: number;
-  lastError: string | undefined;
+  /** 当前扫码登录是为哪个账号（undefined = 新增子账号）。 */
+  loginTargetAccountId: string | undefined;
+  /** 每个账号独立的消息轮询状态。 */
+  loops: Map<string, AccountLoopState>;
   deliveredCount: number;
+  lastError: string | undefined;
   settingsMenu: (finch.Disposable & { notifyUpdate(): void }) | undefined;
 }
 
@@ -200,11 +257,10 @@ export function createBotState(): BotState {
     loginPhase: 'idle',
     activeQr: undefined,
     activeLoginDialog: undefined,
-    messageRunning: false,
-    stopMessageLoop: false,
-    backoffIndex: 0,
-    lastError: undefined,
+    loginTargetAccountId: undefined,
+    loops: new Map(),
     deliveredCount: 0,
+    lastError: undefined,
     settingsMenu: undefined,
   };
 }

@@ -4,6 +4,7 @@ import {
   type TaskRecord,
 } from './types';
 import { MediaManager } from './media';
+import type { AccountStore } from './accounts';
 import { randomHex } from './utils';
 
 /**
@@ -13,6 +14,7 @@ export class TaskManager {
   constructor(
     private ctx: finch.MiniToolContext,
     private media: MediaManager,
+    private accounts: AccountStore,
   ) {}
 
   get(sessionId: string): Promise<TaskRecord | undefined> {
@@ -50,12 +52,18 @@ export class TaskManager {
   /** 把任务执行状态回馈到微信联系人。 */
   private async notifyResult(task: TaskRecord): Promise<void> {
     if (!task.notifyPeerId) return;
+    // 结果通知优先走任务发起账号，回退到主账号。
+    const accountId = task.notifyAccountId ?? (await this.accounts.primary())?.id;
+    if (!accountId) {
+      this.ctx.logger.warn('task result not pushed: no account available', { sessionId: task.sessionId });
+      return;
+    }
     const label = task.title ? `「${task.title}」` : '任务';
     const body = task.status === 'completed'
       ? `✅ ${label}已完成：\n${(task.lastOutput ?? '').trim() || '（无文本输出）'}`
       : `❌ ${label}执行失败：${task.lastError ?? '未知错误'}`;
     try {
-      await this.media.sendText(task.notifyPeerId, body);
+      await this.media.sendText(accountId, task.notifyPeerId, body);
       this.ctx.logger.info('task result pushed to wechat', { sessionId: task.sessionId, status: task.status });
     } catch (error) {
       this.ctx.logger.error('notify task result failed', error);

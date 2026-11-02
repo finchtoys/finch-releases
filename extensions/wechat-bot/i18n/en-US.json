@@ -1,6 +1,6 @@
 {
   "name": "WeChat Bot",
-  "description": "Connect one WeChat account to Finch through iLink, with a switchable active Session and retained inbox history.",
+  "description": "Connect WeChat to Finch through iLink: one primary account plus multiple sub-accounts, each with its own active Session and retained inbox history.",
   "sessionContainers": {
     "wechat": {
       "title": "WeChat Inbox",

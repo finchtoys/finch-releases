@@ -1,12 +1,12 @@
 import type * as finch from 'finch';
 import {
   ILINK_APP_ID, ILINK_APP_CLIENT_VERSION, ILINK_CHANNEL_VERSION,
-  KEY_TOKEN, KEY_BASE_URL, KEY_BOT_ID,
 } from './types';
 import { randomWechatUin } from './utils';
 
 export type BotConfig = { autoReply: boolean };
 
+/** 一个账号的 iLink 连接凭证；由 AccountStore 解析得到。 */
 export interface IlinkAccount {
   baseUrl: string;
   botId: string;
@@ -14,36 +14,14 @@ export interface IlinkAccount {
 }
 
 /**
- * iLink HTTP 客户端：封装了鉴权 header、base_info 和通用 POST/GET。
- * 所有 iLink API 调用通过此对象进行。
+ * iLink HTTP 客户端：封装鉴权 header、base_info 和通用 POST/GET。
+ * 无状态——每次调用都显式传入目标账号的 baseUrl/token，便于多账号并发轮询。
  */
 export class IlinkClient {
   constructor(
     private ctx: finch.MiniToolContext,
     private appUserAgent: string,
   ) {}
-
-  async getToken(): Promise<string | undefined> {
-    return this.ctx.storage.get<string>(KEY_TOKEN);
-  }
-
-  async getBaseUrl(): Promise<string | undefined> {
-    return this.ctx.storage.get<string>(KEY_BASE_URL);
-  }
-
-  async getAccount(): Promise<IlinkAccount | undefined> {
-    const [baseUrl, botId, botToken] = await Promise.all([
-      this.getBaseUrl(),
-      this.ctx.storage.get<string>(KEY_BOT_ID),
-      this.getToken(),
-    ]);
-    if (!baseUrl || !botId || !botToken) return undefined;
-    return { baseUrl, botId, botToken };
-  }
-
-  async isLoggedIn(): Promise<boolean> {
-    return Boolean(await this.getToken());
-  }
 
   /** 每个消息类请求都要带的 base_info（bot_agent 在此，不是 header）。 */
   buildBaseInfo() {

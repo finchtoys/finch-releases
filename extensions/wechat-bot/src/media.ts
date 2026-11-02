@@ -8,6 +8,7 @@ import {
 } from './types';
 import { IlinkClient, type IlinkAccount } from './ilink-client';
 import { ContextStore, contextScope, type MessageContext } from './context';
+import type { AccountStore } from './accounts';
 import { SendObservations, type SendOutcome, type SendReason } from './send-observations';
 import { splitText } from './text-chunks';
 import {
@@ -27,19 +28,20 @@ export class MediaManager {
     private ctx: finch.MiniToolContext,
     private ilink: IlinkClient,
     private contexts: ContextStore,
+    private accounts: AccountStore,
   ) { this.observations = new SendObservations(ctx); }
 
-  /** Serialize complete logical deliveries to a peer, including captions and media. */
-  private async withSendQueue(toUserId: string, operation: (account: IlinkAccount) => Promise<void>, signal?: AbortSignal): Promise<void> {
+  /** Serialize complete logical deliveries to a peer within one account, including captions and media. */
+  private async withSendQueue(accountId: string, toUserId: string, operation: (account: IlinkAccount) => Promise<void>, signal?: AbortSignal): Promise<void> {
     this.checkCancelled(signal);
-    const account = await this.requireAccount();
-    const key = `${contextScope(account)}:${toUserId}`;
+    const account = await this.requireAccount(accountId);
+    const key = `${accountId}:${toUserId}`;
     const queue = this.sendQueues.get(key) ?? { tail: Promise.resolve(), pending: 0 };
     if (queue.pending >= 20) throw this.sendError('queueFull');
     queue.pending++;
     const current = queue.tail.catch(() => {}).then(async () => {
       this.checkCancelled(signal);
-      await this.requireAccount(account);
+      await this.requireAccount(accountId, account);
       await operation(account);
     });
     const tail = current.then(() => {}, () => {});
@@ -60,9 +62,10 @@ export class MediaManager {
     return new Error(this.ctx.i18n.t(`runtime.send.${key}`));
   }
 
-  private async requireAccount(expected?: IlinkAccount): Promise<IlinkAccount> {
-    const account = await this.ilink.getAccount();
-    if (!account) throw this.sendError('notLoggedIn');
+  private async requireAccount(accountId: string, expected?: IlinkAccount): Promise<IlinkAccount> {
+    const stored = await this.accounts.get(accountId);
+    if (!stored) throw this.sendError('notLoggedIn');
+    const account: IlinkAccount = { baseUrl: stored.baseUrl, botId: stored.botId, botToken: stored.botToken };
     if (expected && (contextScope(account) !== contextScope(expected) || account.baseUrl !== expected.baseUrl)) {
       throw this.sendError('accountChanged');
     }
@@ -70,21 +73,21 @@ export class MediaManager {
   }
 
   /** 每次发送都取当前登录的最新上下文，不使用历史 Session/turn 的 token 回退。 */
-  private async prepareSend(toUserId: string, expected?: IlinkAccount): Promise<{ account: IlinkAccount; context: MessageContext }> {
-    const account = await this.requireAccount(expected);
+  private async prepareSend(accountId: string, toUserId: string, expected?: IlinkAccount): Promise<{ account: IlinkAccount; context: MessageContext }> {
+    const account = await this.requireAccount(accountId, expected);
     const context = await this.contexts.get(toUserId, account);
     if (!context) {
       this.ctx.logger.warn('wechat send blocked: no message context', { hasContextToken: false });
       throw this.sendError('noContext');
     }
-    await this.requireAccount(account);
+    await this.requireAccount(accountId, account);
     return { account, context };
   }
 
   /** 工具入口在读取本地媒体/下载远程媒体之前也可执行预检。 */
-  async assertCanSend(toUserId: string, signal?: AbortSignal): Promise<void> {
+  async assertCanSend(accountId: string, toUserId: string, signal?: AbortSignal): Promise<void> {
     this.checkCancelled(signal);
-    await this.prepareSend(toUserId);
+    await this.prepareSend(accountId, toUserId);
   }
 
   /**
@@ -139,10 +142,10 @@ export class MediaManager {
 
   /** 文本、caption 和媒体共用响应校验；业务失败不自动重试，避免重复投递。 */
   private async sendItem(
-    toUserId: string, item: WeixinMessageItem, expected?: IlinkAccount, part = 1, parts = 1, signal?: AbortSignal,
+    accountId: string, toUserId: string, item: WeixinMessageItem, expected?: IlinkAccount, part = 1, parts = 1, signal?: AbortSignal,
   ): Promise<void> {
     this.checkCancelled(signal);
-    const { account, context } = await this.prepareSend(toUserId, expected);
+    const { account, context } = await this.prepareSend(accountId, toUserId, expected);
     const buildBody = (contextToken: string | undefined) => ({
       msg: {
         from_user_id: '', to_user_id: toUserId, client_id: `openclaw-weixin:${Date.now()}-${randomHex(4)}`,
@@ -155,7 +158,7 @@ export class MediaManager {
     let body = buildBody(context.token);
     const id = this.observations.newId();
     const at = Date.now();
-    const key = `${contextScope(account)}:${toUserId}`;
+    const key = `${accountId}:${toUserId}`;
     // A rolling attempt count is diagnostic only, not a guessed server quota.
     for (const [k, times] of this.recentSends) {
       const recent = times.filter((t) => at - t < 60_000);
@@ -232,11 +235,11 @@ export class MediaManager {
 
   /** 调用 getuploadurl 获取 CDN 上传参数。 */
   private async getUploadUrl(
-    toUserId: string, filekey: string, mediaType: number,
+    accountId: string, toUserId: string, filekey: string, mediaType: number,
     rawsize: number, rawfilemd5: string, filesize: number, aeskeyHex: string,
     expected: IlinkAccount,
   ): Promise<GetUploadUrlResponse> {
-    const account = await this.requireAccount(expected);
+    const account = await this.requireAccount(accountId, expected);
     return this.ilink.post<GetUploadUrlResponse>(account.baseUrl, 'ilink/bot/getuploadurl', {
       filekey, media_type: mediaType, to_user_id: toUserId,
       rawsize, rawfilemd5, filesize, no_need_thumb: true, aeskey: aeskeyHex,
@@ -296,7 +299,7 @@ export class MediaManager {
   /**
    * 完整的媒体上传管线：读取 Buffer → 生成 AES key → getUploadUrl → CDN upload。
    */
-  async uploadMediaToCdn(data: Buffer, toUserId: string, mediaType: number, label: string, account: IlinkAccount): Promise<UploadedMediaInfo> {
+  async uploadMediaToCdn(accountId: string, data: Buffer, toUserId: string, mediaType: number, label: string, account: IlinkAccount): Promise<UploadedMediaInfo> {
     const rawsize = data.length;
     const rawfilemd5 = createHash('md5').update(data).digest('hex');
     const filesize = aesEcbPaddedSize(rawsize);
@@ -305,7 +308,7 @@ export class MediaManager {
     const aeskeyHex = aeskey.toString('hex');
 
     this.ctx.logger.debug(`${label}: uploading rawsize=${rawsize} filesize=${filesize} mediaType=${mediaType}`);
-    const uploadResp = await this.getUploadUrl(toUserId, filekey, mediaType, rawsize, rawfilemd5, filesize, aeskeyHex, account);
+    const uploadResp = await this.getUploadUrl(accountId, toUserId, filekey, mediaType, rawsize, rawfilemd5, filesize, aeskeyHex, account);
     const downloadParam = await this.uploadBufferToCdn(
       data, aeskey,
       uploadResp.upload_full_url?.trim() || undefined,
@@ -320,12 +323,12 @@ export class MediaManager {
   // ── 发送消息 ────────────────────────────────────────────────────────────────
 
   /** All TEXT paths share lossless bounds and stop on the first failure. */
-  private async sendTextChunks(toUserId: string, text: string, account: IlinkAccount, signal?: AbortSignal): Promise<void> {
+  private async sendTextChunks(accountId: string, toUserId: string, text: string, account: IlinkAccount, signal?: AbortSignal): Promise<void> {
     const chunks = splitText(text);
     if (!chunks.length) throw this.sendError('emptyText');
     for (let i = 0; i < chunks.length; i++) {
       try {
-        await this.sendItem(toUserId, { type: 1, text_item: { text: chunks[i] } }, account, i + 1, chunks.length, signal);
+        await this.sendItem(accountId, toUserId, { type: 1, text_item: { text: chunks[i] } }, account, i + 1, chunks.length, signal);
       } catch (error) {
         if (i === 0) throw error;
         const detail = error instanceof Error ? error.message : String(error);
@@ -334,19 +337,19 @@ export class MediaManager {
     }
   }
 
-  async sendText(toUserId: string, text: string, signal?: AbortSignal): Promise<void> {
-    await this.withSendQueue(toUserId, (account) => this.sendTextChunks(toUserId, text, account, signal), signal);
+  async sendText(accountId: string, toUserId: string, text: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(accountId, toUserId, (account) => this.sendTextChunks(accountId, toUserId, text, account, signal), signal);
   }
 
   /** caption 作为独立 TEXT 先发，失败立即停止，不假报整个媒体发送成功。 */
   private async sendMediaItem(
-    toUserId: string, item: WeixinMessageItem, account: IlinkAccount, caption?: string, signal?: AbortSignal,
+    accountId: string, toUserId: string, item: WeixinMessageItem, account: IlinkAccount, caption?: string, signal?: AbortSignal,
   ): Promise<void> {
     if (caption?.trim()) {
-      await this.sendTextChunks(toUserId, caption, account, signal);
+      await this.sendTextChunks(accountId, toUserId, caption, account, signal);
     }
     try {
-      await this.sendItem(toUserId, item, account, 1, 1, signal);
+      await this.sendItem(accountId, toUserId, item, account, 1, 1, signal);
     } catch (error) {
       if (caption?.trim()) {
         const detail = error instanceof Error ? error.message : String(error);
@@ -356,11 +359,11 @@ export class MediaManager {
     }
   }
 
-  async sendImage(toUserId: string, data: Buffer, caption?: string, signal?: AbortSignal): Promise<void> {
-    await this.withSendQueue(toUserId, async (account) => {
-      await this.prepareSend(toUserId, account);
-      const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_IMAGE, 'sendImage', account);
-      await this.sendMediaItem(toUserId, {
+  async sendImage(accountId: string, toUserId: string, data: Buffer, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(accountId, toUserId, async (account) => {
+      await this.prepareSend(accountId, toUserId, account);
+      const uploaded = await this.uploadMediaToCdn(accountId, data, toUserId, UPLOAD_MEDIA_IMAGE, 'sendImage', account);
+      await this.sendMediaItem(accountId, toUserId, {
         type: 2,
         image_item: {
           media: {
@@ -375,11 +378,11 @@ export class MediaManager {
     }, signal);
   }
 
-  async sendVideo(toUserId: string, data: Buffer, caption?: string, signal?: AbortSignal): Promise<void> {
-    await this.withSendQueue(toUserId, async (account) => {
-      await this.prepareSend(toUserId, account);
-      const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_VIDEO, 'sendVideo', account);
-      await this.sendMediaItem(toUserId, {
+  async sendVideo(accountId: string, toUserId: string, data: Buffer, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(accountId, toUserId, async (account) => {
+      await this.prepareSend(accountId, toUserId, account);
+      const uploaded = await this.uploadMediaToCdn(accountId, data, toUserId, UPLOAD_MEDIA_VIDEO, 'sendVideo', account);
+      await this.sendMediaItem(accountId, toUserId, {
         type: 5,
         video_item: {
           media: {
@@ -393,11 +396,11 @@ export class MediaManager {
     }, signal);
   }
 
-  async sendFile(toUserId: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal): Promise<void> {
-    await this.withSendQueue(toUserId, async (account) => {
-      await this.prepareSend(toUserId, account);
-      const uploaded = await this.uploadMediaToCdn(data, toUserId, UPLOAD_MEDIA_FILE, 'sendFile', account);
-      await this.sendMediaItem(toUserId, {
+  async sendFile(accountId: string, toUserId: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.withSendQueue(accountId, toUserId, async (account) => {
+      await this.prepareSend(accountId, toUserId, account);
+      const uploaded = await this.uploadMediaToCdn(accountId, data, toUserId, UPLOAD_MEDIA_FILE, 'sendFile', account);
+      await this.sendMediaItem(accountId, toUserId, {
         type: 4,
         file_item: {
           media: {
@@ -413,14 +416,14 @@ export class MediaManager {
   }
 
   /** 根据 MIME 类型自动路由到图片/视频/文件发送。 */
-  async sendMediaByMime(toUserId: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal): Promise<void> {
+  async sendMediaByMime(accountId: string, toUserId: string, data: Buffer, fileName: string, caption?: string, signal?: AbortSignal): Promise<void> {
     const mime = guessMime(fileName);
     if (mime.startsWith('image/')) {
-      await this.sendImage(toUserId, data, caption, signal);
+      await this.sendImage(accountId, toUserId, data, caption, signal);
     } else if (mime.startsWith('video/')) {
-      await this.sendVideo(toUserId, data, caption, signal);
+      await this.sendVideo(accountId, toUserId, data, caption, signal);
     } else {
-      await this.sendFile(toUserId, data, fileName, caption, signal);
+      await this.sendFile(accountId, toUserId, data, fileName, caption, signal);
     }
   }
 

@@ -2,14 +2,15 @@ import type * as finch from 'finch';
 import { readFile } from 'node:fs/promises';
 import {
   CONTAINER_ID, wechatIcon,
-  KEY_TOKEN, KEY_BASE_URL, KEY_OWNER_USER, KEY_CURSOR, KEY_ACTIVE_SESSION,
-  LEGACY_PEER_MAP_PREFIX, SESSION_MAP_PREFIX, TURN_MAP_PREFIX,
+  SESSION_MAP_PREFIX, TURN_MAP_PREFIX,
   WAIT_PREFIX, WAIT_INDEX_PREFIX, RECONNECT_BACKOFF_MS,
-  type BotState, type TaskRecord, type PendingWaitRecord, type WeixinInboundMessage, type GetUpdatesResponse,
+  type AccountLoopState, type BotState, type PeerTarget, type TaskRecord, type PendingWaitRecord,
+  type WeChatAccount, type WeixinInboundMessage, type GetUpdatesResponse,
 } from './types';
 import { createBotState } from './types';
 import { formatChinaDateTime, sleep, randomHex } from './utils';
 import { IlinkClient, type BotConfig, type IlinkAccount } from './ilink-client';
+import { AccountStore, activeSessionKey, cursorKey } from './accounts';
 import { ContextStore } from './context';
 import { MediaManager } from './media';
 import { executeWechatSend } from './send-tool';
@@ -39,60 +40,63 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
   // ── 组装模块 ────────────────────────────────────────────────────────────────
 
+  const accounts = new AccountStore(ctx);
   const ilink = new IlinkClient(ctx, appInfo.userAgent);
-  const contexts = new ContextStore(ctx);
+  const contexts = new ContextStore(ctx, accounts);
+  // 旧单账号数据迁移成主账号记录，再清理历史无主上下文。
+  const migrated = await accounts.migrateLegacy();
   await contexts.discardLegacy();
-  const media = new MediaManager(ctx, ilink, contexts);
+  if (migrated) await contexts.adoptLegacyScope({ botId: migrated.botId, botToken: migrated.botToken });
+  await accounts.ensurePrimary();
+  const media = new MediaManager(ctx, ilink, contexts, accounts);
 
   // 前向声明：消息循环启动函数（auth 和 menu 都要调）
-  let startMessageLoop: () => void;
+  let startMessageLoop: (accountId: string) => void;
 
-  const auth = new AuthManager(ctx, ilink, contexts, state, toast, () => startMessageLoop());
+  const auth = new AuthManager(ctx, ilink, contexts, accounts, state, toast, (accountId) => startMessageLoop(accountId));
 
-  const tasks = new TaskManager(ctx, media);
+  const tasks = new TaskManager(ctx, media, accounts);
 
   // ── Session 管理 ────────────────────────────────────────────────────────────
 
-  const formatWechatSessionTitle = (label?: string): string => {
+  const formatWechatSessionTitle = (accountLabel: string, label?: string): string => {
     const createdAt = formatChinaDateTime();
-    return label ? `微信 · ${createdAt} · ${label}` : `微信 · ${createdAt}`;
+    const suffix = label ? ` · ${label}` : '';
+    return `微信 · ${accountLabel} · ${createdAt}${suffix}`;
   };
 
   const createWechatSession = async (
-    ownerUserId: string, label?: string,
+    account: WeChatAccount, ownerUserId: string, label?: string,
   ): Promise<string> => {
     const created = await ctx.sessions.create({
       containerId: CONTAINER_ID,
-      title: formatWechatSessionTitle(label),
+      title: formatWechatSessionTitle(account.label, label),
       activity: 'background',
       permissionMode: 'acceptCalls',
     });
-    await ctx.storage.set(KEY_ACTIVE_SESSION, created.sessionId);
-    await ctx.storage.set(`${SESSION_MAP_PREFIX}${created.sessionId}`, { peerId: ownerUserId });
+    await ctx.storage.set(activeSessionKey(account.id), created.sessionId);
+    const target: PeerTarget = { peerId: ownerUserId, accountId: account.id };
+    await ctx.storage.set(`${SESSION_MAP_PREFIX}${created.sessionId}`, target);
     return created.sessionId;
   };
 
   const ensureActiveWechatSession = async (
-    ownerUserId: string, nickname: string | undefined,
+    account: WeChatAccount, ownerUserId: string, nickname: string | undefined,
   ): Promise<string> => {
-    const active = await ctx.storage.get<string>(KEY_ACTIVE_SESSION);
+    const key = activeSessionKey(account.id);
+    const active = await ctx.storage.get<string>(key);
     if (active && (await ctx.sessions.get(active))) return active;
-    const legacy = await ctx.storage.get<string>(`${LEGACY_PEER_MAP_PREFIX}${ownerUserId}`);
-    if (legacy && (await ctx.sessions.get(legacy))) {
-      await ctx.storage.set(KEY_ACTIVE_SESSION, legacy);
-      return legacy;
-    }
-    return createWechatSession(ownerUserId, nickname);
+    return createWechatSession(account, ownerUserId, nickname);
   };
 
   // ── 等待状态中继 ────────────────────────────────────────────────────────────
 
-  const waitIndexKey = (peerId: string) => `${WAIT_INDEX_PREFIX}${peerId}`;
+  const waitIndexKey = (accountId: string, peerId: string) => `${WAIT_INDEX_PREFIX}${accountId}:${peerId}`;
 
   const removePendingWait = async (pending: PendingWaitRecord): Promise<void> => {
     await ctx.storage.delete(`${WAIT_PREFIX}${pending.code}`);
-    const codes = (await ctx.storage.get<string[]>(waitIndexKey(pending.peerId))) ?? [];
-    await ctx.storage.set(waitIndexKey(pending.peerId), codes.filter((code) => code !== pending.code));
+    const codes = (await ctx.storage.get<string[]>(waitIndexKey(pending.accountId, pending.peerId))) ?? [];
+    await ctx.storage.set(waitIndexKey(pending.accountId, pending.peerId), codes.filter((code) => code !== pending.code));
   };
 
   /** Safe wrapper: the session backing a pending wait may have been deleted,
@@ -114,12 +118,12 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
    * every future natural-language answer look ambiguous, or worse, crash the
    * inbound handler when listWaits() throws for a gone session.
    */
-  const getLivePendingWaits = async (peerId: string): Promise<{ pending: PendingWaitRecord; wait: finch.SessionWait }[]> => {
-    const codes = (await ctx.storage.get<string[]>(waitIndexKey(peerId))) ?? [];
+  const getLivePendingWaits = async (accountId: string, peerId: string): Promise<{ pending: PendingWaitRecord; wait: finch.SessionWait }[]> => {
+    const codes = (await ctx.storage.get<string[]>(waitIndexKey(accountId, peerId))) ?? [];
     const live: { pending: PendingWaitRecord; wait: finch.SessionWait }[] = [];
     for (const code of codes) {
       const pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${code}`);
-      if (!pending || pending.peerId !== peerId) {
+      if (!pending || pending.peerId !== peerId || pending.accountId !== accountId) {
         await ctx.storage.delete(`${WAIT_PREFIX}${code}`);
         continue;
       }
@@ -131,7 +135,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         await ctx.storage.delete(`${WAIT_PREFIX}${pending.code}`);
       }
     }
-    await ctx.storage.set(waitIndexKey(peerId), live.map((entry) => entry.pending.code));
+    await ctx.storage.set(waitIndexKey(accountId, peerId), live.map((entry) => entry.pending.code));
     return live;
   };
 
@@ -293,14 +297,14 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     return wait.form.title;
   };
 
-  const relayWait = async (peerId: string, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
+  const relayWait = async (accountId: string, peerId: string, event: Extract<finch.SessionBridgeEvent, { type: 'turn.waiting' }>) => {
     if (event.wait.kind === 'form' && event.wait.form.fields.some((field) => field.secret || field.type === 'password')) {
-      await media.sendText(peerId, renderWait(event.wait) ?? waitText('fallback'));
+      await media.sendText(accountId, peerId, renderWait(event.wait) ?? waitText('fallback'));
       return;
     }
     if (event.wait.kind === 'form' && !event.wait.form.fields.some((field) => field.type !== 'link')) return;
 
-    const existingCodes = (await ctx.storage.get<string[]>(waitIndexKey(peerId))) ?? [];
+    const existingCodes = (await ctx.storage.get<string[]>(waitIndexKey(accountId, peerId))) ?? [];
     for (const code of existingCodes) {
       const existing = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${code}`);
       if (existing?.sessionId === event.sessionId && existing.requestId === event.requestId) return;
@@ -308,40 +312,40 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
     const code = randomHex(3);
     const pending: PendingWaitRecord = {
-      code, peerId, sessionId: event.sessionId, requestId: event.requestId, kind: event.wait.kind,
+      code, peerId, accountId, sessionId: event.sessionId, requestId: event.requestId, kind: event.wait.kind,
       ...(event.wait.kind === 'question' ? { questionHeaders: event.wait.questions.map((question) => question.header) } : {}),
       ...(event.wait.kind === 'form' ? { formFields: event.wait.form.fields.filter((field) => field.type !== 'link').map((field) => ({ key: field.key, type: field.type })) } : {}),
     };
     await ctx.storage.set(`${WAIT_PREFIX}${code}`, pending);
-    await ctx.storage.set(waitIndexKey(peerId), [...existingCodes, code]);
-    await media.sendText(peerId, renderWait(event.wait) ?? waitText('fallback'));
+    await ctx.storage.set(waitIndexKey(accountId, peerId), [...existingCodes, code]);
+    await media.sendText(accountId, peerId, renderWait(event.wait) ?? waitText('fallback'));
   };
 
-  const respondToPendingWait = async (peerId: string, text: string): Promise<boolean> => {
+  const respondToPendingWait = async (accountId: string, peerId: string, text: string): Promise<boolean> => {
     const match = text.trim().match(/^#([0-9a-f]{6})\s+([\s\S]+)$/i);
     let pending: PendingWaitRecord | undefined;
     let wait: finch.SessionWait | undefined;
     let value: string;
     if (match) {
       pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${match[1].toLowerCase()}`);
-      if (!pending || pending.peerId !== peerId) return false;
+      if (!pending || pending.peerId !== peerId || pending.accountId !== accountId) return false;
       value = match[2].trim();
       const waits = await listWaitsSafe(pending.sessionId);
       wait = waits?.find((candidate) => candidate.requestId === pending?.requestId);
       if (!wait) {
         await removePendingWait(pending);
-        await media.sendText(peerId, waitText('expired'));
+        await media.sendText(accountId, peerId, waitText('expired'));
         return true;
       }
     } else {
       // Natural-language replies are safe only when exactly one real card is
       // outstanding for this WeChat contact. Stale mappings are pruned first.
-      const candidates = await getLivePendingWaits(peerId);
+      const candidates = await getLivePendingWaits(accountId, peerId);
       if (!candidates.length) return false;
       if (candidates.length > 1) {
         const lines = candidates.map((candidate) =>
           waitText('multiplePendingItem', { code: candidate.pending.code, summary: summarizeWait(candidate.wait) }));
-        await media.sendText(peerId, `${waitText('multiplePending')}\n${lines.join('\n')}`);
+        await media.sendText(accountId, peerId, `${waitText('multiplePending')}\n${lines.join('\n')}`);
         return true;
       }
       pending = candidates[0].pending;
@@ -351,42 +355,47 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     }
     const parsed = responseForWait(wait, value);
     if (!parsed.response) {
-      await media.sendText(peerId, parsed.error ?? waitText('parseFailed'));
+      await media.sendText(accountId, peerId, parsed.error ?? waitText('parseFailed'));
       return true;
     }
 
     const result = await ctx.sessions.respondToWait(pending.sessionId, pending.requestId, parsed.response);
     if (result.state === 'accepted') {
       await removePendingWait(pending);
-      await media.sendText(peerId, waitText('accepted'));
+      await media.sendText(accountId, peerId, waitText('accepted'));
     } else if (result.state === 'stale') {
       // 用户已在桌面端、超时或结束会话时，静默清理旧映射。
       await removePendingWait(pending);
     } else if (result.state === 'forbidden') {
       await removePendingWait(pending);
       ctx.logger.warn('wait response forbidden', { sessionId: pending.sessionId, requestId: pending.requestId, reason: result.reason });
-      await media.sendText(peerId, waitText('forbidden'));
+      await media.sendText(accountId, peerId, waitText('forbidden'));
     } else {
       await removePendingWait(pending);
-      await media.sendText(peerId, waitText('expired'));
+      await media.sendText(accountId, peerId, waitText('expired'));
     }
     return true;
   };
 
   // ── 入站消息处理 ────────────────────────────────────────────────────────────
 
-  const handleInbound = async (msg: WeixinInboundMessage, account: IlinkAccount) => {
+  const handleInbound = async (msg: WeixinInboundMessage, account: WeChatAccount) => {
     const peerId = msg.from_user_id;
-    if (!peerId || !(await contexts.isCurrent(account))) return;
+    if (!peerId) return;
+    const identity: IlinkAccount = { baseUrl: account.baseUrl, botId: account.botId, botToken: account.botToken };
+    if (!(await contexts.isCurrent(identity))) return;
 
     const { autoReply } = readConfig();
-    const owner = await ctx.storage.get<string>(KEY_OWNER_USER);
-    if (owner && peerId !== owner) {
-      ctx.logger.debug('message is not from the logged-in owner, skip', { peerId });
+    if (account.ownerUserId && peerId !== account.ownerUserId) {
+      ctx.logger.debug('message is not from the account owner, skip', { accountId: account.id, peerId });
       return;
     }
-    if (!owner) await ctx.storage.set(KEY_OWNER_USER, peerId);
-    await contexts.capture(peerId, msg.context_token, account);
+    if (!account.ownerUserId) {
+      account.ownerUserId = peerId;
+      account.label = AccountStore.labelFor(peerId, account.label);
+      await accounts.save(account);
+    }
+    await contexts.capture(peerId, msg.context_token, identity);
 
     let text = media.extractText(msg);
     const attachments = await media.extractAttachments(msg);
@@ -396,23 +405,34 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     }
     if (!text && !attachments.length) return;
 
-    if (text && await respondToPendingWait(peerId, text)) return;
+    if (text && await respondToPendingWait(account.id, peerId, text)) return;
 
-    const sessionId = await ensureActiveWechatSession(peerId, msg.from_nickname);
-    const idempotencyKey = `wx:${peerId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const sessionId = await ensureActiveWechatSession(account, peerId, msg.from_nickname);
+    const idempotencyKey = `wx:${account.id}:${peerId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const receipt = await ctx.sessions.send(sessionId, {
       text, idempotencyKey,
       ...(attachments.length ? { attachments } : {}),
     });
 
     if (receipt.state === 'rejected') {
-      ctx.logger.warn('session queue full', { peerId, code: receipt.code });
-      if (autoReply) await media.sendText(peerId, '我现在有点忙，请稍后再试。').catch(() => {});
+      ctx.logger.warn('session queue full', { accountId: account.id, peerId, code: receipt.code });
+      if (autoReply) await media.sendText(account.id, peerId, '我现在有点忙，请稍后再试。').catch(() => {});
       return;
     }
-    await ctx.storage.set(`${TURN_MAP_PREFIX}${receipt.turnId}`, { peerId });
-    if (autoReply) void auth.startTyping(peerId, msg.context_token);
+    const turnTarget: PeerTarget = { peerId, accountId: account.id };
+    await ctx.storage.set(`${TURN_MAP_PREFIX}${receipt.turnId}`, turnTarget);
+    if (autoReply) void auth.startTyping(account.id, peerId, msg.context_token);
     state.deliveredCount += 1;
+  };
+
+  /** 解析一个会话/任务应回复到哪个账号与联系人；任务优先，回退会话映射。 */
+  const resolveTarget = async (sessionId: string, task?: TaskRecord): Promise<PeerTarget | undefined> => {
+    const bySession = await ctx.storage.get<PeerTarget>(`${SESSION_MAP_PREFIX}${sessionId}`);
+    if (task?.notifyPeerId) {
+      const accountId = task.notifyAccountId ?? bySession?.accountId ?? (await accounts.primary())?.id;
+      return accountId ? { peerId: task.notifyPeerId, accountId } : undefined;
+    }
+    return bySession;
   };
 
   // ── Session 事件 → 微信回复 ─────────────────────────────────────────────────
@@ -424,13 +444,14 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         if (task) {
           await tasks.handleEvent(event);
           if (task.notifyPeerId) {
-            await relayWait(task.notifyPeerId, event).catch((error) => ctx.logger.error('relay task wait failed', error));
+            const target = await resolveTarget(event.sessionId, task);
+            if (target) await relayWait(target.accountId, target.peerId, event).catch((error) => ctx.logger.error('relay task wait failed', error));
           }
           return;
         }
-        const target = await ctx.storage.get<{ peerId: string }>(`${SESSION_MAP_PREFIX}${event.sessionId}`);
-        if (target?.peerId) {
-          await relayWait(target.peerId, event).catch((error) => ctx.logger.error('relay session wait failed', error));
+        const target = await ctx.storage.get<PeerTarget>(`${SESSION_MAP_PREFIX}${event.sessionId}`);
+        if (target?.peerId && target.accountId) {
+          await relayWait(target.accountId, target.peerId, event).catch((error) => ctx.logger.error('relay session wait failed', error));
         }
         return;
       }
@@ -438,11 +459,10 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       if (event.type === 'turn.wait_resolved') {
         const task = await tasks.get(event.sessionId);
         await tasks.handleEvent(event);
-        const peerId = task?.notifyPeerId
-          ?? (await ctx.storage.get<{ peerId: string }>(`${SESSION_MAP_PREFIX}${event.sessionId}`))?.peerId;
-        if (peerId) {
+        const target = await resolveTarget(event.sessionId, task?.notifyPeerId ? task : undefined);
+        if (target?.peerId && target.accountId) {
           // 已在其他渠道（桌面端/超时）结算，立即清理映射，避免误判为多个待处理事项。
-          const codes = (await ctx.storage.get<string[]>(waitIndexKey(peerId))) ?? [];
+          const codes = (await ctx.storage.get<string[]>(waitIndexKey(target.accountId, target.peerId))) ?? [];
           for (const code of codes) {
             const pending = await ctx.storage.get<PendingWaitRecord>(`${WAIT_PREFIX}${code}`);
             if (pending?.sessionId === event.sessionId && pending.requestId === event.requestId) {
@@ -460,27 +480,24 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       if (event.type !== 'turn.completed' && event.type !== 'turn.failed') return;
       const { autoReply } = readConfig();
       const turnKey = `${TURN_MAP_PREFIX}${event.turnId}`;
-      let target = await ctx.storage.get<{ peerId: string }>(turnKey);
+      let target = await ctx.storage.get<PeerTarget>(turnKey);
       await ctx.storage.delete(turnKey);
-      if (!target) {
-        const bySession = await ctx.storage.get<{ peerId: string }>(
-          `${SESSION_MAP_PREFIX}${event.sessionId}`,
-        );
-        if (bySession) target = bySession;
-      }
-      if (!target?.peerId) return;
+      if (!target) target = await ctx.storage.get<PeerTarget>(`${SESSION_MAP_PREFIX}${event.sessionId}`);
+      if (!target?.peerId || !target.accountId) return;
+      const accountId = target.accountId;
+      const peerId = target.peerId;
 
-      await auth.stopTyping(target.peerId);
+      await auth.stopTyping(accountId, peerId);
 
       if (event.type === 'turn.failed') {
-        ctx.logger.warn('turn failed', { peerId: target.peerId, code: event.code });
+        ctx.logger.warn('turn failed', { accountId, peerId, code: event.code });
         return;
       }
 
       const reply = event.outputText.trim();
       if (!reply) return;
       if (!autoReply) {
-        ctx.logger.info('autoReply off, not pushing to wechat', { peerId: target.peerId });
+        ctx.logger.info('autoReply off, not pushing to wechat', { accountId, peerId });
         return;
       }
       try {
@@ -493,24 +510,24 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
         }).trim();
 
         if (textWithoutImages) {
-          await media.sendText(target.peerId, textWithoutImages);
+          await media.sendText(accountId, peerId, textWithoutImages);
         }
 
         for (const imgPath of imagePaths) {
           try {
             const data = await readFile(imgPath);
             const fileName = imgPath.split('/').pop() ?? 'image.png';
-            await media.sendMediaByMime(target.peerId, data, fileName);
-            ctx.logger.info('sent image to wechat', { peerId: target.peerId, path: imgPath });
+            await media.sendMediaByMime(accountId, peerId, data, fileName);
+            ctx.logger.info('sent image to wechat', { accountId, peerId, path: imgPath });
           } catch (imgError) {
             ctx.logger.warn('failed to send image to wechat', { path: imgPath, error: String(imgError) });
           }
         }
 
         if (!textWithoutImages && imagePaths.length === 0) {
-          await media.sendText(target.peerId, reply);
+          await media.sendText(accountId, peerId, reply);
         }
-        ctx.logger.info('replied to wechat', { peerId: target.peerId, chars: reply.length, images: imagePaths.length });
+        ctx.logger.info('replied to wechat', { accountId, peerId, chars: reply.length, images: imagePaths.length });
       } catch (error) {
         state.lastError = error instanceof Error ? error.message : String(error);
         ctx.logger.error('reply to wechat failed', error);
@@ -521,134 +538,166 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
   // ── 长轮询收消息 ────────────────────────────────────────────────────────────
 
-  const messageLoop = async () => {
-    if (state.messageRunning) return;
-    state.messageRunning = true;
-    state.stopMessageLoop = false;
-    state.lastError = undefined;
-    ctx.logger.info('wechat message loop started');
+  const messageLoop = async (accountId: string, loop: AccountLoopState) => {
+    ctx.logger.info('wechat message loop started', { accountId });
 
-    while (!state.stopMessageLoop) {
+    while (!loop.stop) {
       try {
-        const account = await ilink.getAccount();
+        const account = await accounts.get(accountId);
         if (!account) {
-          ctx.logger.info('not logged in, stopping message loop');
+          ctx.logger.info('account no longer logged in, stopping message loop', { accountId });
           break;
         }
-        const cursor = (await ctx.storage.get<string>(KEY_CURSOR)) ?? '';
+        const identity: IlinkAccount = { baseUrl: account.baseUrl, botId: account.botId, botToken: account.botToken };
+        const cursor = (await ctx.storage.get<string>(cursorKey(accountId))) ?? '';
         const resp = await ilink.post<GetUpdatesResponse>(account.baseUrl, 'ilink/bot/getupdates', {
           get_updates_buf: cursor, base_info: ilink.buildBaseInfo(),
         }, account.botToken);
-        if (state.stopMessageLoop || !(await contexts.isCurrent(account))) continue;
+        if (loop.stop || !(await contexts.isCurrent(identity))) continue;
 
         const failed = (resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0);
         if (failed) {
           if (resp.errcode === -14 || resp.ret === -14) {
-            ctx.logger.warn('session expired (-14), require re-login');
-            toast('微信登录已失效', '请重新扫码登录。', 'warning');
-            await auth.logout();
+            ctx.logger.warn('session expired (-14), require re-login', { accountId });
+            toast('微信登录已失效', `账号「${account.label}」需要重新扫码登录。`, 'warning');
+            stopMessageLoop(accountId);
+            await auth.logout(accountId);
             break;
           }
           throw new Error(`getUpdates ret=${resp.ret ?? '-'} errcode=${resp.errcode ?? '-'} ${resp.errmsg ?? ''}`);
         }
 
-        if (resp.get_updates_buf !== undefined) await ctx.storage.set(KEY_CURSOR, resp.get_updates_buf);
+        if (resp.get_updates_buf !== undefined) await ctx.storage.set(cursorKey(accountId), resp.get_updates_buf);
         for (const msg of resp.msgs ?? []) {
           try {
             await handleInbound(msg, account);
           } catch (error) {
-            await ctx.storage.delete(KEY_ACTIVE_SESSION);
+            await ctx.storage.delete(activeSessionKey(accountId));
             const detail = error instanceof Error
               ? { name: error.name, message: error.message, stack: error.stack }
               : { value: String(error) };
-            ctx.logger.error('handle inbound failed', { peerId: msg.from_user_id, detail });
+            ctx.logger.error('handle inbound failed', { accountId, peerId: msg.from_user_id, detail });
           }
         }
-        state.backoffIndex = 0;
-        state.lastError = undefined;
+        loop.backoffIndex = 0;
+        loop.lastError = undefined;
       } catch (error) {
-        state.lastError = error instanceof Error ? error.message : String(error);
-        ctx.logger.warn('getUpdates failed, backing off', { error: state.lastError });
-        const delay = RECONNECT_BACKOFF_MS[Math.min(state.backoffIndex, RECONNECT_BACKOFF_MS.length - 1)];
-        state.backoffIndex += 1;
-        await sleep(delay, () => state.stopMessageLoop);
+        loop.lastError = error instanceof Error ? error.message : String(error);
+        ctx.logger.warn('getUpdates failed, backing off', { accountId, error: loop.lastError });
+        const delay = RECONNECT_BACKOFF_MS[Math.min(loop.backoffIndex, RECONNECT_BACKOFF_MS.length - 1)];
+        loop.backoffIndex += 1;
+        await sleep(delay, () => loop.stop);
       }
     }
 
-    state.messageRunning = false;
-    ctx.logger.info('wechat message loop stopped');
+    loop.running = false;
+    ctx.logger.info('wechat message loop stopped', { accountId });
   };
 
-  startMessageLoop = () => {
-    if (state.messageRunning) return;
-    void messageLoop();
+  startMessageLoop = (accountId: string) => {
+    const existing = state.loops.get(accountId);
+    if (existing?.running) return;
+    const loop: AccountLoopState = { running: true, stop: false, backoffIndex: 0, lastError: undefined };
+    state.loops.set(accountId, loop);
+    void messageLoop(accountId, loop);
   };
+
+  function stopMessageLoop(accountId: string): void {
+    const loop = state.loops.get(accountId);
+    if (!loop) return;
+    loop.stop = true;
+    state.loops.delete(accountId);
+  }
 
   // ── 微信 inbox SessionView 菜单 ─────────────────────────────────────────────
 
   state.settingsMenu = ctx.sessionContainers.registerSettingsMenu(CONTAINER_ID, {
     async getMenu() {
-      const loggedIn = await ilink.isLoggedIn();
-      const items: finch.ComposerActionMenuItem[] = [{
+      const list = await accounts.list();
+      const items: finch.ComposerActionMenuItem[] = [];
+      items.push({
         id: 'status',
         label: '连接状态',
-        description: state.loginPhase === 'verify'
-          ? '等待输入配对码'
-          : state.loginRunning
-            ? state.loginPhase === 'scanned' ? '已扫码，等待手机确认' : '等待扫码'
-            : loggedIn && state.messageRunning
-              ? '已连接'
-              : loggedIn
-                ? '已登录，等待重新连接'
-                : state.lastError ? '连接异常，请重新登录' : '未登录',
-        iconName: wechatIcon(loggedIn && state.messageRunning ? 'satellite-dish' : 'unplug'),
-      }];
+        description: state.loginRunning
+          ? state.loginPhase === 'verify' ? '等待输入配对码' : state.loginPhase === 'scanned' ? '已扫码，等待手机确认' : '等待扫码'
+          : !list.length
+            ? (state.lastError ? '连接异常，请重新登录' : '未登录')
+            : `${list.length} 个账号`,
+        iconName: wechatIcon(list.some((account) => state.loops.get(account.id)?.running) ? 'satellite-dish' : 'unplug'),
+      });
 
-      items.push(
-        { id: 'connection-divider', label: '', separator: true },
-        {
-          id: 'login',
-          label: state.loginPhase === 'verify' ? '重新获取二维码' : state.loginRunning ? '再次显示二维码' : loggedIn ? '重新登录' : '登录微信',
-          iconName: wechatIcon('scan-qr-code'),
-          hoverText: '直接打开微信扫码登录弹窗；已登录时会先清除旧连接。',
-        },
-      );
+      items.push({ id: 'divider-top', label: '', separator: true });
 
-      if (loggedIn) {
-        if (!state.messageRunning) {
-          items.push({
-            id: 'reconnect', label: '重新连接',
-            iconName: wechatIcon('scan-qr-code'),
-            hoverText: '使用现有登录状态恢复接收微信消息。',
-          });
-        }
+      if (!list.length) {
         items.push({
-          id: 'logout', label: '退出登录',
-          iconName: wechatIcon('log-out'),
-          hoverText: '清除登录状态并停止接收微信消息。',
+          id: 'login', label: '登录微信',
+          iconName: wechatIcon('scan-qr-code'),
+          hoverText: '扫码登录第一个微信账号，它会成为主账号。',
+        });
+        return items;
+      }
+
+      const accountStatus = (account: WeChatAccount): string => {
+        if (state.loginRunning && state.loginTargetAccountId === account.id) {
+          return state.loginPhase === 'scanned' ? '已扫码，等待手机确认' : '等待扫码';
+        }
+        const loop = state.loops.get(account.id);
+        if (loop?.running) return '已连接';
+        if (loop?.lastError) return '连接异常，可重新连接';
+        return '已登录，未在接收';
+      };
+
+      for (const account of list) {
+        const running = Boolean(state.loops.get(account.id)?.running);
+        const children: finch.ComposerActionMenuItem[] = [
+          { id: `relogin:${account.id}`, label: '重新登录', iconName: wechatIcon('scan-qr-code') },
+        ];
+        if (!running) children.push({ id: `reconnect:${account.id}`, label: '重新连接', iconName: wechatIcon('play') });
+        children.push({ id: `logout:${account.id}`, label: '登出', iconName: wechatIcon('log-out') });
+        items.push({
+          id: `account:${account.id}`,
+          label: `${account.role === 'primary' ? '主账号' : '子账号'} · ${account.label}`,
+          description: accountStatus(account),
+          iconName: wechatIcon('wechat'),
+          children,
         });
       }
+
+      items.push({ id: 'divider-accounts', label: '', separator: true });
+      items.push({
+        id: 'add-account', label: '添加子账号',
+        iconName: wechatIcon('qr-code'),
+        hoverText: '再扫码登录一个微信 Bot 作为子账号；各账号独立收发，互不影响。',
+      });
       return items;
     },
 
     async execute(_menuContext, itemId) {
       try {
-        if (itemId === 'login') {
-          if (await ilink.isLoggedIn()) await auth.logout();
-          return void (await auth.showLoginDialog());
-        }
-        if (itemId === 'logout') return void (await auth.logout());
-        if (itemId === 'reconnect') return startMessageLoop();
         if (itemId === 'status') {
-          const loggedIn = await ilink.isLoggedIn();
-          ctx.ui.notify(
-            state.messageRunning
-              ? `微信已连接，已接收 ${state.deliveredCount} 条消息。`
-              : loggedIn
-                ? '登录状态仍然有效，但当前未在接收消息。'
-                : state.lastError ? '微信连接异常，请重新登录。' : '微信尚未登录。',
-            state.lastError ? 'warning' : 'info',
-          );
+          const list = await accounts.list();
+          if (!list.length) {
+            ctx.ui.notify(state.lastError ? '微信连接异常，请重新登录。' : '微信尚未登录。', state.lastError ? 'warning' : 'info');
+            return;
+          }
+          const lines = list.map((account) => {
+            const running = state.loops.get(account.id)?.running;
+            return `${account.role === 'primary' ? '主账号' : '子账号'} ${account.label}：${running ? '已连接' : state.loops.get(account.id)?.lastError ? '连接异常' : '未在接收'}`;
+          });
+          ctx.ui.notify(`已接收 ${state.deliveredCount} 条消息。\n${lines.join('\n')}`, 'info');
+          return;
+        }
+        if (itemId === 'login' || itemId === 'add-account') return void (await auth.showLoginDialog(undefined));
+
+        const [action, accountId] = itemId.split(':');
+        if (!accountId) return;
+        if (action === 'relogin') return void (await auth.showLoginDialog(accountId));
+        if (action === 'reconnect') return startMessageLoop(accountId);
+        if (action === 'logout') {
+          stopMessageLoop(accountId);
+          const account = await accounts.get(accountId);
+          await auth.logout(accountId);
+          toast('已登出微信账号', account?.label, 'info');
         }
       } catch (error) {
         ctx.logger.error('wechat SessionView menu failed', itemId, error);
@@ -663,30 +712,35 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'wechat_new',
     title: '开启微信新对话',
-    description: 'Start a fresh Finch Session for the logged-in WeChat account. The previous Session remains in the WeChat inbox, while subsequent WeChat messages use the new Session.',
+    description: 'Start a fresh Finch Session for a logged-in WeChat account. The previous Session remains in the WeChat inbox, while subsequent WeChat messages for that account use the new Session. Defaults to the primary account.',
     inputSchema: {
       type: 'object',
       properties: {
         title: { type: 'string', description: 'Optional title for the new Session.' },
+        account: { type: 'string', description: 'Optional account id or label. Defaults to the primary account.' },
       },
     },
     defaultEnabled: true,
     risk: 'medium',
     async execute(rawInput): Promise<finch.ToolResult> {
-      const input = rawInput as { title?: unknown };
+      const input = rawInput as { title?: unknown; account?: unknown };
       const requestedTitle = typeof input.title === 'string' ? input.title.trim() : '';
-      const ownerUserId = await ctx.storage.get<string>(KEY_OWNER_USER);
-      if (!ownerUserId || !(await ilink.isLoggedIn())) {
-        return { content: [{ type: 'text', text: 'WeChat is not logged in.' }], isError: true };
+      const requestedAccount = typeof input.account === 'string' ? input.account.trim() : '';
+      const list = await accounts.list();
+      const account = requestedAccount
+        ? list.find((a) => a.id === requestedAccount || a.label === requestedAccount)
+        : (list.find((a) => a.role === 'primary') ?? list[0]);
+      if (!account || !account.ownerUserId) {
+        return { content: [{ type: 'text', text: 'No logged-in WeChat account is available.' }], isError: true };
       }
       try {
-        const previousSessionId = await ctx.storage.get<string>(KEY_ACTIVE_SESSION);
-        const sessionId = await createWechatSession(ownerUserId, requestedTitle || undefined);
-        ctx.logger.info('created fresh wechat session', { previousSessionId, sessionId });
+        const previousSessionId = await ctx.storage.get<string>(activeSessionKey(account.id));
+        const sessionId = await createWechatSession(account, account.ownerUserId, requestedTitle || undefined);
+        ctx.logger.info('created fresh wechat session', { accountId: account.id, previousSessionId, sessionId });
         return {
           content: [{
             type: 'text',
-            text: `A new WeChat Session is active. New sessionId: ${sessionId}. The previous Session remains in the inbox.`,
+            text: `A new WeChat Session is active for account ${account.label}. New sessionId: ${sessionId}. The previous Session remains in the inbox.`,
           }],
         };
       } catch (error) {
@@ -701,12 +755,13 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   ctx.subscriptions.push(ctx.tools.register({
     name: 'wechat_send',
     title: '发送微信消息',
-    description: 'Send a text message, image, or file to WeChat. Omit recipient to use the account that completed QR login, or provide a known WeChat userId. To send media, provide filePath (local file path) or imageUrl (remote URL to download). The message parameter serves as caption when sending media. The recipient must first message the currently connected bot to establish message context. QR login alone does not establish send readiness.',
+    description: 'Send a text message, image, or file to WeChat. Omit account to use the primary account; omit recipient to use that account the QR login completed with. Provide account as an account id or label to send from a specific account, and a known WeChat userId as recipient. To send media, provide filePath (local file path) or imageUrl (remote URL to download). The message parameter serves as caption when sending media. The recipient must first message that same bot to establish message context. QR login alone does not establish send readiness.',
     inputSchema: {
       type: 'object',
       properties: {
         message: { type: 'string', description: 'Text message to send, or caption when sending media.' },
         recipient: { type: 'string', description: 'Optional WeChat userId. Defaults to the account that completed QR login.' },
+        account: { type: 'string', description: 'Optional account id or label to send from. Defaults to the primary account.' },
         filePath: { type: 'string', description: 'Local file path to send as media (image/video/file). Type is auto-detected from extension.' },
         imageUrl: { type: 'string', description: 'Remote URL to download and send as media. Type is auto-detected from Content-Type or URL.' },
       },
@@ -716,7 +771,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     risk: 'medium',
     callDisplay: { inline: { mode: 'single', fields: [{ path: 'recipient', label: '发送给' }] } },
     async execute(rawInput, exec): Promise<finch.ToolResult> {
-      return executeWechatSend(ctx, media, rawInput, exec.signal);
+      return executeWechatSend(ctx, media, accounts, rawInput, exec.signal);
     },
   }));
 
@@ -739,7 +794,8 @@ action:
         taskId: { type: 'string', description: 'send/status: task id. For status, provide this to get one task\'s full detail instead of the index.' },
         message: { type: 'string', description: 'create/send: message to send.' },
         title: { type: 'string', description: 'create: optional task title.' },
-        notifyPeerId: { type: 'string', description: 'create: optional WeChat userId for result/wait notifications; defaults to the logged-in account.' },
+        notifyPeerId: { type: 'string', description: 'create: optional WeChat userId for result/wait notifications; defaults to the primary account\'s owner.' },
+        account: { type: 'string', description: 'create: optional account id or label whose owner receives notifications; defaults to the primary account.' },
         waitMs: { type: 'number', minimum: 0, maximum: 600000, description: 'status with taskId: optional wait time; returns immediately by default.' },
       },
       required: ['action'],
@@ -747,14 +803,20 @@ action:
     defaultEnabled: true,
     risk: 'medium',
     async execute(rawInput): Promise<finch.ToolResult> {
-      const input = rawInput as { action?: unknown; spaceId?: unknown; taskId?: unknown; message?: unknown; title?: unknown; notifyPeerId?: unknown; waitMs?: unknown };
+      const input = rawInput as { action?: unknown; spaceId?: unknown; taskId?: unknown; message?: unknown; title?: unknown; notifyPeerId?: unknown; account?: unknown; waitMs?: unknown };
       const taskAction = typeof input.action === 'string' ? input.action : '';
       const spaceId = typeof input.spaceId === 'string' ? input.spaceId.trim() : '';
       const taskId = typeof input.taskId === 'string' ? input.taskId.trim() : '';
       const message = typeof input.message === 'string' ? input.message.trim() : '';
       const title = typeof input.title === 'string' ? input.title.trim() : '';
       const requestedNotifyPeerId = typeof input.notifyPeerId === 'string' ? input.notifyPeerId.trim() : '';
-      const notifyPeerId = requestedNotifyPeerId || (await ctx.storage.get<string>(KEY_OWNER_USER)) || '';
+      const requestedAccount = typeof input.account === 'string' ? input.account.trim() : '';
+      const accountList = await accounts.list();
+      const notifier = requestedAccount
+        ? accountList.find((account) => account.id === requestedAccount || account.label === requestedAccount)
+        : (accountList.find((account) => account.role === 'primary') ?? accountList[0]);
+      const notifyPeerId = requestedNotifyPeerId || notifier?.ownerUserId || '';
+      const notifyAccountId = notifier?.id || '';
       const waitMs = typeof input.waitMs === 'number' && Number.isFinite(input.waitMs) ? Math.max(0, input.waitMs) : 0;
 
       if (taskAction === 'send') {
@@ -838,6 +900,7 @@ action:
         const task: TaskRecord = {
           sessionId: session.sessionId, spaceId,
           title: title || undefined, notifyPeerId: notifyPeerId || undefined,
+          notifyAccountId: notifyAccountId || undefined,
           status: 'running', createdAt: now, updatedAt: now,
         };
         await tasks.save(task);
@@ -874,17 +937,19 @@ action:
       state.loginCancel = true;
       void state.activeLoginDialog?.close('disposed');
       state.activeLoginDialog = undefined;
-      state.stopMessageLoop = true;
+      for (const loop of state.loops.values()) loop.stop = true;
+      state.loops.clear();
       auth.clearTypingTimers();
     },
   });
 
-  // 启动时若已登录，自动恢复接收。
-  if (await ilink.isLoggedIn()) startMessageLoop();
+  // 启动时若已有账号，自动恢复每个账号的接收。
+  const startupAccounts = await accounts.list();
+  for (const account of startupAccounts) startMessageLoop(account.id);
 
   ctx.logger.info('WeChat Bot activated', {
     app: appInfo.versionDisplay,
-    loggedIn: await ilink.isLoggedIn(),
+    accounts: startupAccounts.length,
   });
 }
 

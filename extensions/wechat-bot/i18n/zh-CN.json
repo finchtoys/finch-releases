@@ -1,6 +1,6 @@
 {
   "name": "微信 Bot",
-  "description": "用微信扫码登录，在微信里与 Finch 对话。唯一登录账号使用一个可切换的当前 Session，历史会话保留在收件箱。",
+  "description": "用微信扫码登录，在微信里与 Finch 对话。支持一个主账号加多个子账号，每个账号各自维护当前 Session，历史会话保留在收件箱。",
   "sessionContainers": {
     "wechat": {
       "title": "微信收件箱",
