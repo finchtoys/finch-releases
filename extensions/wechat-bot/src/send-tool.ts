@@ -6,7 +6,7 @@ import type { WeChatAccount } from './types';
 
 /** 按 id 或标签解析目标账号；未指定时回退到主账号。 */
 async function resolveAccount(accounts: AccountStore, requested: string): Promise<WeChatAccount | undefined> {
-  if (!requested) return accounts.primary();
+  if (!requested) return accounts.defaultSender();
   const all = await accounts.list();
   return all.find((account) => account.id === requested)
     ?? all.find((account) => account.label === requested);

@@ -9,6 +9,7 @@ import {
 import { IlinkClient, type IlinkAccount } from './ilink-client';
 import { ContextStore, contextScope, type MessageContext } from './context';
 import type { AccountStore } from './accounts';
+import { isAccountLoggedIn } from './accounts';
 import { SendObservations, type SendOutcome, type SendReason } from './send-observations';
 import { splitText } from './text-chunks';
 import {
@@ -64,7 +65,7 @@ export class MediaManager {
 
   private async requireAccount(accountId: string, expected?: IlinkAccount): Promise<IlinkAccount> {
     const stored = await this.accounts.get(accountId);
-    if (!stored) throw this.sendError('notLoggedIn');
+    if (!stored || !isAccountLoggedIn(stored)) throw this.sendError('notLoggedIn');
     const account: IlinkAccount = { baseUrl: stored.baseUrl, botId: stored.botId, botToken: stored.botToken };
     if (expected && (contextScope(account) !== contextScope(expected) || account.baseUrl !== expected.baseUrl)) {
       throw this.sendError('accountChanged');

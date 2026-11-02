@@ -11,6 +11,12 @@ export const accountKey = (id: string): string => `${ACCOUNT_PREFIX}${id}`;
 export const cursorKey = (id: string): string => `${ACCOUNT_CURSOR_PREFIX}${id}`;
 export const activeSessionKey = (id: string): string => `${ACCOUNT_ACTIVE_SESSION_PREFIX}${id}`;
 
+/** 是否持有完整登录凭证；登出后的条目仍保留在列表里。 */
+export const isAccountLoggedIn = (
+  account: Pick<WeChatAccount, 'botToken' | 'baseUrl' | 'botId'>,
+): account is Pick<WeChatAccount, 'botToken' | 'baseUrl' | 'botId'> & { botToken: string; baseUrl: string; botId: string } =>
+  Boolean(account.botToken && account.baseUrl && account.botId);
+
 /**
  * 账号注册表：一个主账号 + 多个子账号。凭证（botToken）只存本地 KV，
  * 不进入会话上下文或日志；账号顺序即索引顺序，用作主账号顺延的优先级。
@@ -47,6 +53,13 @@ export class AccountStore {
     return accounts.find((account) => account.role === 'primary') ?? accounts[0];
   }
 
+  /** 默认发送身份：优先已登录的主账号，否则任意已登录账号。 */
+  async defaultSender(): Promise<WeChatAccount | undefined> {
+    const accounts = await this.list();
+    return accounts.find((account) => account.role === 'primary' && isAccountLoggedIn(account))
+      ?? accounts.find(isAccountLoggedIn);
+  }
+
   async save(account: WeChatAccount): Promise<void> {
     await this.ctx.storage.set(accountKey(account.id), account);
     const index = await this.readIndex();
@@ -60,6 +73,21 @@ export class AccountStore {
   async matches(identity: { botId: string; botToken: string }): Promise<boolean> {
     const accounts = await this.list();
     return accounts.some((a) => a.botId === identity.botId && a.botToken === identity.botToken);
+  }
+
+  /** 清空账号登录凭证但保留条目（含 botId/归属，便于重新登录时原地认领）。 */
+  async clearCredentials(id: string): Promise<WeChatAccount | undefined> {
+    const account = await this.get(id);
+    if (!account) return undefined;
+    const loggedOut: WeChatAccount = {
+      id: account.id, label: account.label, role: account.role, createdAt: account.createdAt,
+      ...(account.ownerUserId ? { ownerUserId: account.ownerUserId } : {}),
+      ...(account.botId ? { botId: account.botId } : {}),
+    };
+    await this.save(loggedOut);
+    await this.ctx.storage.delete(cursorKey(id));
+    await this.ctx.storage.delete(activeSessionKey(id));
+    return loggedOut;
   }
 
   /** 删除账号及其轮询游标、当前会话指针；保留历史会话与任务。 */
@@ -79,21 +107,22 @@ export class AccountStore {
     return `微信账号 ${fallback}`;
   }
 
-  /** 保证恰好一个主账号：缺失时按索引顺序提升第一个，重复时保留最靠前的。 */
+  /** 保证恰好一个主账号：优先在已登录账号里选，登出后自动顺延给下一个已登录账号。 */
   async ensurePrimary(): Promise<boolean> {
     const accounts = await this.list();
     if (!accounts.length) return false;
+    const loggedIn = accounts.filter(isAccountLoggedIn);
+    const pool = loggedIn.length ? loggedIn : accounts;
     const primaries = accounts.filter((account) => account.role === 'primary');
-    if (primaries.length === 1) return false;
+    // 当前主账号仍在候选池里就不动，否则顺延给候选池第一个。
+    if (primaries.length === 1 && pool.some((account) => account.id === primaries[0].id)) return false;
+    const next = pool[0];
     let changed = false;
-    if (!primaries.length) {
-      accounts[0].role = 'primary';
-      await this.save(accounts[0]);
-      changed = true;
-    }
-    for (const extra of primaries.slice(1)) {
-      extra.role = 'sub';
-      await this.save(extra);
+    for (const account of accounts) {
+      const role = account.id === next.id ? 'primary' : 'sub';
+      if (account.role === role) continue;
+      account.role = role;
+      await this.save(account);
       changed = true;
     }
     return changed;

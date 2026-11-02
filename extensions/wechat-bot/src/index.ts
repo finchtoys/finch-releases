@@ -10,7 +10,7 @@ import {
 import { createBotState } from './types';
 import { formatChinaDateTime, sleep, randomHex } from './utils';
 import { IlinkClient, type BotConfig, type IlinkAccount } from './ilink-client';
-import { AccountStore, activeSessionKey, cursorKey } from './accounts';
+import { AccountStore, activeSessionKey, cursorKey, isAccountLoggedIn } from './accounts';
 import { ContextStore } from './context';
 import { MediaManager } from './media';
 import { executeWechatSend } from './send-tool';
@@ -46,7 +46,9 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   // 旧单账号数据迁移成主账号记录，再清理历史无主上下文。
   const migrated = await accounts.migrateLegacy();
   await contexts.discardLegacy();
-  if (migrated) await contexts.adoptLegacyScope({ botId: migrated.botId, botToken: migrated.botToken });
+  if (migrated && isAccountLoggedIn(migrated)) {
+    await contexts.adoptLegacyScope({ botId: migrated.botId, botToken: migrated.botToken });
+  }
   await accounts.ensurePrimary();
   const media = new MediaManager(ctx, ilink, contexts, accounts);
 
@@ -381,7 +383,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
   const handleInbound = async (msg: WeixinInboundMessage, account: WeChatAccount) => {
     const peerId = msg.from_user_id;
-    if (!peerId) return;
+    if (!peerId || !isAccountLoggedIn(account)) return;
     const identity: IlinkAccount = { baseUrl: account.baseUrl, botId: account.botId, botToken: account.botToken };
     if (!(await contexts.isCurrent(identity))) return;
 
@@ -429,7 +431,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
   const resolveTarget = async (sessionId: string, task?: TaskRecord): Promise<PeerTarget | undefined> => {
     const bySession = await ctx.storage.get<PeerTarget>(`${SESSION_MAP_PREFIX}${sessionId}`);
     if (task?.notifyPeerId) {
-      const accountId = task.notifyAccountId ?? bySession?.accountId ?? (await accounts.primary())?.id;
+      const accountId = task.notifyAccountId ?? bySession?.accountId ?? (await accounts.defaultSender())?.id;
       return accountId ? { peerId: task.notifyPeerId, accountId } : undefined;
     }
     return bySession;
@@ -544,7 +546,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     while (!loop.stop) {
       try {
         const account = await accounts.get(accountId);
-        if (!account) {
+        if (!account || !isAccountLoggedIn(account)) {
           ctx.logger.info('account no longer logged in, stopping message loop', { accountId });
           break;
         }
@@ -615,50 +617,65 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
     async getMenu() {
       const list = await accounts.list();
       const items: finch.ComposerActionMenuItem[] = [];
-      items.push({
-        id: 'status',
-        label: '连接状态',
-        description: state.loginRunning
-          ? state.loginPhase === 'verify' ? '等待输入配对码' : state.loginPhase === 'scanned' ? '已扫码，等待手机确认' : '等待扫码'
-          : !list.length
-            ? (state.lastError ? '连接异常，请重新登录' : '未登录')
-            : `${list.length} 个账号`,
-        iconName: wechatIcon(list.some((account) => state.loops.get(account.id)?.running) ? 'satellite-dish' : 'unplug'),
-      });
 
-      items.push({ id: 'divider-top', label: '', separator: true });
+      const loginPhaseText = state.loginRunning
+        ? state.loginPhase === 'verify' ? '等待输入配对码' : state.loginPhase === 'scanned' ? '已扫码，等待手机确认' : '等待扫码'
+        : '';
 
-      if (!list.length) {
-        items.push({
-          id: 'login', label: '登录微信',
-          iconName: wechatIcon('scan-qr-code'),
-          hoverText: '扫码登录第一个微信账号，它会成为主账号。',
-        });
-        return items;
-      }
-
+      /** 单个账号的连接状态文字，账号分组行与其「连接状态」子项共用。 */
       const accountStatus = (account: WeChatAccount): string => {
         if (state.loginRunning && state.loginTargetAccountId === account.id) {
           return state.loginPhase === 'scanned' ? '已扫码，等待手机确认' : '等待扫码';
         }
+        if (!isAccountLoggedIn(account)) return '未登录';
         const loop = state.loops.get(account.id);
         if (loop?.running) return '已连接';
         if (loop?.lastError) return '连接异常，可重新连接';
         return '已登录，未在接收';
       };
 
+      if (!list.length) {
+        items.push({
+          id: 'status', label: '连接状态', disabled: true,
+          description: loginPhaseText || (state.lastError ? '连接异常，请重新登录' : '未登录'),
+          iconName: wechatIcon('unplug'),
+        });
+        items.push({ id: 'divider-top', label: '', separator: true });
+        items.push({
+          id: 'login', label: '登录微信',
+          ...(loginPhaseText ? { description: loginPhaseText } : {}),
+          iconName: wechatIcon('scan-qr-code'),
+          hoverText: '扫码登录第一个微信账号，它会成为主账号。',
+        });
+        return items;
+      }
+
       for (const account of list) {
+        const loggedIn = isAccountLoggedIn(account);
         const running = Boolean(state.loops.get(account.id)?.running);
+        // 每个账号一个子菜单：连接状态 + 登录/登出菜单（子账号另有移除账号）。
         const children: finch.ComposerActionMenuItem[] = [
-          { id: `relogin:${account.id}`, label: '重新登录', iconName: wechatIcon('scan-qr-code') },
+          {
+            id: `status:${account.id}`, label: '连接状态', disabled: true,
+            description: accountStatus(account), iconName: wechatIcon('activity'),
+          },
+          { id: `divider:${account.id}`, label: '', separator: true },
         ];
-        if (!running) children.push({ id: `reconnect:${account.id}`, label: '重新连接', iconName: wechatIcon('play') });
-        children.push({ id: `logout:${account.id}`, label: '登出', iconName: wechatIcon('log-out') });
+        if (!loggedIn) {
+          children.push({ id: `login:${account.id}`, label: '登录', iconName: wechatIcon('scan-qr-code') });
+        } else {
+          children.push({ id: `relogin:${account.id}`, label: '重新登录', iconName: wechatIcon('scan-qr-code') });
+          if (!running) children.push({ id: `reconnect:${account.id}`, label: '重新连接', iconName: wechatIcon('play') });
+          children.push({ id: `logout:${account.id}`, label: '登出', iconName: wechatIcon('log-out') });
+        }
+        if (account.role === 'sub' || !loggedIn) {
+          children.push({ id: `remove:${account.id}`, label: '移除账号', iconName: wechatIcon('unplug') });
+        }
         items.push({
           id: `account:${account.id}`,
           label: `${account.role === 'primary' ? '主账号' : '子账号'} · ${account.label}`,
           description: accountStatus(account),
-          iconName: wechatIcon('wechat'),
+          iconName: wechatIcon(loggedIn && running ? 'satellite-dish' : 'unplug'),
           children,
         });
       }
@@ -666,6 +683,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       items.push({ id: 'divider-accounts', label: '', separator: true });
       items.push({
         id: 'add-account', label: '添加子账号',
+        ...(loginPhaseText ? { description: loginPhaseText } : {}),
         iconName: wechatIcon('qr-code'),
         hoverText: '再扫码登录一个微信 Bot 作为子账号；各账号独立收发，互不影响。',
       });
@@ -674,30 +692,28 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
 
     async execute(_menuContext, itemId) {
       try {
-        if (itemId === 'status') {
-          const list = await accounts.list();
-          if (!list.length) {
-            ctx.ui.notify(state.lastError ? '微信连接异常，请重新登录。' : '微信尚未登录。', state.lastError ? 'warning' : 'info');
-            return;
-          }
-          const lines = list.map((account) => {
-            const running = state.loops.get(account.id)?.running;
-            return `${account.role === 'primary' ? '主账号' : '子账号'} ${account.label}：${running ? '已连接' : state.loops.get(account.id)?.lastError ? '连接异常' : '未在接收'}`;
-          });
-          ctx.ui.notify(`已接收 ${state.deliveredCount} 条消息。\n${lines.join('\n')}`, 'info');
-          return;
-        }
         if (itemId === 'login' || itemId === 'add-account') return void (await auth.showLoginDialog(undefined));
 
         const [action, accountId] = itemId.split(':');
         if (!accountId) return;
-        if (action === 'relogin') return void (await auth.showLoginDialog(accountId));
-        if (action === 'reconnect') return startMessageLoop(accountId);
+        if (action === 'login' || action === 'relogin') return void (await auth.showLoginDialog(accountId));
+        if (action === 'reconnect') {
+          const account = await accounts.get(accountId);
+          if (account && isAccountLoggedIn(account)) startMessageLoop(accountId);
+          return;
+        }
         if (action === 'logout') {
           stopMessageLoop(accountId);
           const account = await accounts.get(accountId);
           await auth.logout(accountId);
-          toast('已登出微信账号', account?.label, 'info');
+          toast('已登出微信账号', account ? `${account.label}（条目保留，可重新登录）` : undefined, 'info');
+          return;
+        }
+        if (action === 'remove') {
+          stopMessageLoop(accountId);
+          const account = await accounts.get(accountId);
+          await auth.removeAccount(accountId);
+          toast('已移除微信账号', account?.label, 'info');
         }
       } catch (error) {
         ctx.logger.error('wechat SessionView menu failed', itemId, error);
@@ -729,7 +745,7 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
       const list = await accounts.list();
       const account = requestedAccount
         ? list.find((a) => a.id === requestedAccount || a.label === requestedAccount)
-        : (list.find((a) => a.role === 'primary') ?? list[0]);
+        : await accounts.defaultSender();
       if (!account || !account.ownerUserId) {
         return { content: [{ type: 'text', text: 'No logged-in WeChat account is available.' }], isError: true };
       }
@@ -814,7 +830,7 @@ action:
       const accountList = await accounts.list();
       const notifier = requestedAccount
         ? accountList.find((account) => account.id === requestedAccount || account.label === requestedAccount)
-        : (accountList.find((account) => account.role === 'primary') ?? accountList[0]);
+        : await accounts.defaultSender();
       const notifyPeerId = requestedNotifyPeerId || notifier?.ownerUserId || '';
       const notifyAccountId = notifier?.id || '';
       const waitMs = typeof input.waitMs === 'number' && Number.isFinite(input.waitMs) ? Math.max(0, input.waitMs) : 0;
@@ -943,13 +959,16 @@ action:
     },
   });
 
-  // 启动时若已有账号，自动恢复每个账号的接收。
+  // 启动时若已有登录账号，自动恢复每个账号的接收。
   const startupAccounts = await accounts.list();
-  for (const account of startupAccounts) startMessageLoop(account.id);
+  for (const account of startupAccounts) {
+    if (isAccountLoggedIn(account)) startMessageLoop(account.id);
+  }
 
   ctx.logger.info('WeChat Bot activated', {
     app: appInfo.versionDisplay,
     accounts: startupAccounts.length,
+    loggedIn: startupAccounts.filter(isAccountLoggedIn).length,
   });
 }
 

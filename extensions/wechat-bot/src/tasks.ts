@@ -52,8 +52,8 @@ export class TaskManager {
   /** 把任务执行状态回馈到微信联系人。 */
   private async notifyResult(task: TaskRecord): Promise<void> {
     if (!task.notifyPeerId) return;
-    // 结果通知优先走任务发起账号，回退到主账号。
-    const accountId = task.notifyAccountId ?? (await this.accounts.primary())?.id;
+    // 结果通知优先走任务发起账号，回退到默认发送账号（已登录的主账号）。
+    const accountId = task.notifyAccountId ?? (await this.accounts.defaultSender())?.id;
     if (!accountId) {
       this.ctx.logger.warn('task result not pushed: no account available', { sessionId: task.sessionId });
       return;

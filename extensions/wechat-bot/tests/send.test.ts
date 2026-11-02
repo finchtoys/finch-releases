@@ -4,7 +4,7 @@ import type * as finch from 'finch';
 import en from '../i18n/en-US.json';
 import zh from '../i18n/zh-CN.json';
 import { ContextStore } from '../src/context';
-import { AccountStore, accountKey, cursorKey, activeSessionKey } from '../src/accounts';
+import { AccountStore, accountKey, cursorKey, activeSessionKey, isAccountLoggedIn } from '../src/accounts';
 import { IlinkClient, type IlinkAccount } from '../src/ilink-client';
 import { MediaManager } from '../src/media';
 import { AuthManager } from '../src/auth';
@@ -66,7 +66,8 @@ function fixture(locale: 'en' | 'zh' = 'en') {
   const contexts = new ContextStore(ctx, accounts);
   const raw = new MediaManager(ctx, ilink, contexts, accounts);
   const identityOf = async (): Promise<IlinkAccount> => {
-    const stored = (await accounts.get(primaryId))!;
+    const stored = await accounts.get(primaryId);
+    if (!stored || !isAccountLoggedIn(stored)) throw new Error('primary account is not logged in');
     return { baseUrl: stored.baseUrl, botId: stored.botId, botToken: stored.botToken };
   };
   // 测试均以主账号为默认发送身份；facade 自动注入 accountId。
@@ -367,15 +368,21 @@ test('清理上下文不会清空登录凭证或其他业务存储', async () =>
   await assert.rejects(f.media.sendText(peer, 'hello'), /no message context/);
 });
 
-test('退出登录清理上下文，保留收件箱历史', async () => {
+test('登出保留账号条目（未登录），清理上下文但保留收件箱历史映射', async () => {
   const f = fixture();
   await f.inbound();
   f.values.set(`${SESSION_MAP_PREFIX}s1`, { peerId: peer });
   const auth = new AuthManager(f.ctx, f.ilink, f.contexts, f.accounts, createBotState(), () => {}, () => {});
   await auth.logout(primaryId);
-  assert.equal(f.values.has(accountKey(primaryId)), false);
+  const record = f.accountRecord();
+  assert.ok(record, '登出后账号条目仍保留');
+  assert.equal(isAccountLoggedIn(record!), false);
+  assert.equal(record!.label, primaryAccount.label);
   assert.equal(f.secrets.size, 0);
   assert.deepEqual(f.values.get(`${SESSION_MAP_PREFIX}s1`), { peerId: peer });
+  // 未登录账号不能再发送。
+  await assert.rejects(f.media.sendText(peer, 'hello'), /not logged in/);
+  assert.equal(f.calls.length, 0);
 });
 
 test('扫码重新登录成功前清理旧上下文', async () => {
@@ -875,4 +882,72 @@ test('旧单账号数据迁移为主账号，并保留游标、会话指针与�
   await f.raw.sendText(migrated!.id, peer, 'hello');
   assert.equal(lastToken(f), 'after-migration');
   assert.equal(await f.accounts.migrateLegacy(), undefined);
+});
+
+// ── 登出 / 移除 的语义区别 ─────────────────────────────────────────────────
+
+test('登出清空凭证但保留 botId，重新登录原地认领不新增条目', async () => {
+  const f = fixture();
+  const state = createBotState();
+  state.loginAttempt = 1;
+  let readyId = '';
+  const qrClient = {
+    async get(): Promise<StatusResponse> {
+      return { status: 'confirmed', bot_token: 'relogin-token', ilink_bot_id: account.botId, ilink_user_id: peer };
+    },
+  } as unknown as IlinkClient;
+  const auth = new AuthManager(f.ctx, qrClient, f.contexts, f.accounts, state, () => {}, (id) => { readyId = id; });
+
+  await auth.logout(primaryId);
+  const loggedOut = await f.accounts.get(primaryId);
+  assert.equal(isAccountLoggedIn(loggedOut!), false);
+  assert.equal(loggedOut!.botId, account.botId, '登出保留 botId 以便重新登录认领');
+  assert.equal(await f.accounts.defaultSender(), undefined);
+
+  await (auth as unknown as {
+    runLoginPolling(qr: { qrcode: string; qrcode_img_content: string }, attempt: number): Promise<void>;
+  }).runLoginPolling({ qrcode: 'test', qrcode_img_content: 'test' }, 1);
+
+  const accounts = await f.accounts.list();
+  assert.equal(accounts.length, 1, '重新登录不新增重复条目');
+  assert.equal(readyId, primaryId);
+  assert.equal(accounts[0].botToken, 'relogin-token');
+  assert.equal(accounts[0].role, 'primary');
+  await f.inbound('after-relogin');
+  await f.media.sendText(peer, 'hello');
+  assert.equal(lastToken(f), 'after-relogin');
+});
+
+test('移除账号彻底删除条目与凭证', async () => {
+  const f = fixture();
+  seedSubAccount(f);
+  await f.contexts.capture(peer, 'sub-context', sub);
+  const auth = new AuthManager(f.ctx, f.ilink, f.contexts, f.accounts, createBotState(), () => {}, () => {});
+  await auth.removeAccount(subId);
+  assert.equal(f.values.has(accountKey(subId)), false);
+  assert.equal((await f.accounts.list()).some((entry) => entry.id === subId), false);
+  assert.equal(await f.contexts.get(peer, sub), undefined);
+});
+
+test('主账号登出后角色顺延给下一个已登录账号', async () => {
+  const f = fixture();
+  seedSubAccount(f);
+  const auth = new AuthManager(f.ctx, f.ilink, f.contexts, f.accounts, createBotState(), () => {}, () => {});
+  await auth.logout(primaryId);
+  const primary = await f.accounts.primary();
+  assert.equal(primary!.id, subId);
+  assert.equal(primary!.role, 'primary');
+  const retired = await f.accounts.get(primaryId);
+  assert.equal(retired!.role, 'sub');
+  // 默认发送身份落到仍在登录的子账号。
+  assert.equal((await f.accounts.defaultSender())!.id, subId);
+});
+
+test('全部账号登出后不再有可发送身份', async () => {
+  const f = fixture();
+  const auth = new AuthManager(f.ctx, f.ilink, f.contexts, f.accounts, createBotState(), () => {}, () => {});
+  await auth.logout(primaryId);
+  assert.equal(await f.accounts.defaultSender(), undefined);
+  assert.equal((await f.accounts.list()).length, 1);
+  await assert.rejects(executeWechatSend(f.ctx, f.raw, f.accounts, { message: 'hello' }), /No WeChat account is logged in/);
 });

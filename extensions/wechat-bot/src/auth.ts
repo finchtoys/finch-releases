@@ -6,7 +6,7 @@ import {
 } from './types';
 import { IlinkClient, type IlinkAccount } from './ilink-client';
 import { ContextStore } from './context';
-import { AccountStore, cursorKey, activeSessionKey } from './accounts';
+import { AccountStore, cursorKey, activeSessionKey, isAccountLoggedIn } from './accounts';
 import { randomHex, sleep } from './utils';
 
 type ToastFn = (title: string, description?: string, variant?: finch.ToastVariant) => void;
@@ -45,7 +45,7 @@ export class AuthManager {
 
   private async accountOf(accountId: string): Promise<IlinkAccount | undefined> {
     const account = await this.accounts.get(accountId);
-    if (!account) return undefined;
+    if (!account || !isAccountLoggedIn(account)) return undefined;
     return { baseUrl: account.baseUrl, botId: account.botId, botToken: account.botToken };
   }
 
@@ -144,11 +144,11 @@ export class AuthManager {
     const existing = (targetId ? accounts.find((a) => a.id === targetId) : undefined)
       ?? accounts.find((a) => a.botId === credentials.botId);
 
-    if (existing) {
+    if (existing && isAccountLoggedIn(existing)) {
       // 旧登录的上下文不能复用到新凭证。
       await this.contexts.clearScope({ botId: existing.botId, botToken: existing.botToken });
-      this.clearTypingFor(existing.id);
     }
+    if (existing) this.clearTypingFor(existing.id);
 
     const id = existing?.id ?? `acc_${randomHex(6)}`;
     const role = existing?.role ?? (accounts.length ? 'sub' : 'primary');
@@ -302,12 +302,16 @@ export class AuthManager {
       if (this.state.activeLoginDialog === dialog) this.state.activeLoginDialog = undefined;
 
       if (['connected', 'verify', 'expired', 'failed', 'replaced', 'logged-out', 'disposed'].includes(result.action)) return;
-      if (this.state.loginRunning) return;
 
+      // 用户主动关闭弹窗且未完成扫码：取消本次轮询，避免状态停留在“等待扫码”。
+      this.state.loginAttempt += 1;
       this.state.loginCancel = true;
       this.state.activeQr = undefined;
+      this.state.loginRunning = false;
       this.state.loginPhase = 'failed';
+      this.state.loginTargetAccountId = undefined;
       this.state.lastError = 'The QR dialog was closed before login completed.';
+      this.state.settingsMenu?.notifyUpdate();
       this.toast('登录未完成', '关闭弹窗前尚未完成微信确认。', 'warning');
     } catch (error) {
       this.state.activeLoginDialog = undefined;
@@ -317,9 +321,10 @@ export class AuthManager {
     }
   }
 
-  /** 登出指定账号：取消其进行中的登录、清账号与上下文、必要时顺延主账号。 */
+  /** 登出指定账号：断开并清除凭证，但保留条目（显示未登录），可重新登录。 */
   async logout(accountId: string): Promise<void> {
     const account = await this.accounts.get(accountId);
+    // 正在为这个账号扫码登录时，一并取消。
     if (this.state.loginTargetAccountId === accountId) {
       this.state.loginAttempt += 1;
       this.state.loginCancel = true;
@@ -331,8 +336,23 @@ export class AuthManager {
       this.state.loginTargetAccountId = undefined;
     }
     this.clearTypingFor(accountId);
+    if (account && isAccountLoggedIn(account)) {
+      await this.contexts.clearScope({ botId: account.botId, botToken: account.botToken });
+    }
+    await this.accounts.clearCredentials(accountId);
+    await this.accounts.ensurePrimary();
+    this.state.lastError = undefined;
+    this.state.settingsMenu?.notifyUpdate();
+  }
+
+  /** 移除账号：从列表彻底删除条目及其本地上下文。 */
+  async removeAccount(accountId: string): Promise<void> {
+    const account = await this.accounts.get(accountId);
+    if (account && isAccountLoggedIn(account)) {
+      await this.contexts.clearScope({ botId: account.botId, botToken: account.botToken });
+    }
+    this.clearTypingFor(accountId);
     await this.accounts.remove(accountId);
-    if (account) await this.contexts.clearScope({ botId: account.botId, botToken: account.botToken });
     await this.accounts.ensurePrimary();
     this.state.lastError = undefined;
     this.state.settingsMenu?.notifyUpdate();

@@ -58,13 +58,14 @@ export const QR_POLL_INTERVAL_MS = 1_500;
 /** 账号角色：主账号显示在 Finch 上并作为默认发送身份，其余为子账号。 */
 export type AccountRole = 'primary' | 'sub';
 
-/** 一个已登录微信账号的完整记录（含凭证，仅存本地 KV）。 */
+/** 一个微信账号记录；登录后带凭证，登出后只保留条目以便重新登录。 */
 export interface WeChatAccount {
   /** 本地稳定 id，用作存储作用域；与 iLink 返回的 bot id 解耦。 */
   id: string;
-  botId: string;
-  botToken: string;
-  baseUrl: string;
+  /** 以下三项为登录凭证；登出后清空（条目保留）。 */
+  botId?: string;
+  botToken?: string;
+  baseUrl?: string;
   /** 完成扫码登录的微信用户 id（消息归属校验用）。 */
   ownerUserId?: string;
   /** 展示用标签，可读，不用于路由。 */
