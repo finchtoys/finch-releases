@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsc -p tests/tsconfig.json --noEmit && node scripts/test.mjs",
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=es2022 --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist/index.js",
+    "pack:fapp": "node scripts/pack-fapp.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {

@@ -93,9 +93,16 @@
 npm run typecheck
 npm test
 npm run build
+npm run pack:fapp   # 打出可分享的 finch-wechat-bot-<version>.fapp
 ```
 
 回归测试使用内存存储和模拟接口，不访问真实微信、CDN 或用户凭证。真实投递仍需在已授权账号上验证。
+
+### 分享给内测同学
+
+`npm run pack:fapp` 会按 `package.json#files` 打出与 `npm publish` 完全相同内容的 `.fapp` 安装包，并立刻按 Finch 的严格 ZIP 规则自校验（不允许 ZIP64、符号链接或危险路径，`package.json` 必须在压缩包根目录）。
+
+内测同学把 `.fapp` 拖进 Finch 窗口（或在工具箱点「安装小程序」选文件）即可；它会装到个人级、默认保持禁用，并在启用时让用户确认权限。因为是本地包，安装弹窗会提示作者信息未经验证。
 
 ## 隐私说明
 

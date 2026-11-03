@@ -30,6 +30,9 @@ coverage/
 # Packed npm packages
 *.tgz
 
+# Locally built mini tool install packages
+*.fapp
+
 # Editor directories
 .idea/
 .vscode/
