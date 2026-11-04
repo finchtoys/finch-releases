@@ -1,6 +1,6 @@
 # Publishing a Mini Tool
 
-This document covers everything from packaging to npm release to community listing.
+This document covers offline `.fapp` installers, npm release, and community listing. `.fapp` is optional: use §3.1 only when the user explicitly requests this format or chooses it as the distribution method. A general request to develop, package, share, or publish a mini tool does not require generating a `.fapp`; directory/CLI and npm workflows remain valid. npm publication is not required for `.fapp` distribution.
 
 ---
 
@@ -89,6 +89,57 @@ tests/
 | `tsconfig.json` | ❌ skip | build config only |
 | `tests/` | ❌ skip | test code |
 | `.env*` | ❌ never | secrets must never be published |
+
+---
+
+### 3.1 Offline installer: `.fapp`
+
+A `.fapp` is a **standard ZIP with a `.fapp` suffix**, not an npm `.tgz`, executable, or new manifest format. Use stored or deflate compression and UTF-8 filenames. Ordinary `.zip` and legacy `.fmp` files are not accepted by this install entry. There is no dedicated CLI `pack` command; do not invent one or pass `.fapp` to CLI `add` as if it were a supported source.
+
+Prepare a clean staging directory containing only runtime files:
+
+```text
+staging/
+├── package.json          # stable npm-style name + finch manifest, or separate finch.json
+├── finch.json            # only if using a standalone manifest
+├── dist/                 # compiled entry and packaged UI
+├── i18n/                 # if used
+├── skills/               # if used
+├── icons/                # if used
+├── icon.png
+└── node_modules/         # only if external runtime dependencies remain
+```
+
+- Put `package.json` **at the ZIP root**, not under `staging/`, `package/`, or another parent folder. `package.json#name` determines the installed identity (§2); it need not be published to npm. Include `package.json#finch` or `finch.json`, and make sure the declared runtime entry exists inside the package.
+- Build first. Include every compiled entry, local HTML/JS/CSS, image/audio/icon, locale file, and bundled Skill referenced at runtime. Do not simply rename a source ZIP or npm tarball.
+- The installer **does not run npm, install scripts, or fetch missing dependencies**. Prefer bundling runtime JS dependencies; otherwise include the complete production dependency tree as real files. Omit dev dependencies and `node_modules/.bin` symlinks; do not copy a pnpm/workspace symlink tree. Native binaries must match the recipient platform/runtime; `.fapp` does not make them cross-platform.
+- Exclude `.git`, `.env*`, credentials, personal data, source/build-only files, and runtime markers (`.enabled`, `.finch-id`, `.bundled`). Symlinks and special files are rejected; resolve dependencies deliberately into the clean staging tree instead of blindly archiving links.
+- Limits: ZIP ≤128 MiB, ≤10,000 entries, each uncompressed file ≤32 MiB, total uncompressed size ≤256 MiB. No encryption, multipart ZIP, or ZIP64. Avoid absolute/parent paths, Windows reserved names, and case-only collisions.
+
+Example with Python 3, run from the directory containing the prepared `staging/` (the output is outside it):
+
+```python
+from pathlib import Path
+from zipfile import ZipFile, ZIP_DEFLATED
+
+root = Path('staging')
+output = Path('my-mini-tool-0.1.0.fapp')
+assert (root / 'package.json').is_file(), 'package.json must be at the root'
+files = sorted(root.rglob('*'))
+for path in files:
+    if path.is_symlink() or not (path.is_file() or path.is_dir()):
+        raise ValueError(f'Unsupported link or special file: {path}')
+with ZipFile(output, 'w', compression=ZIP_DEFLATED, allowZip64=False) as archive:
+    for path in files:
+        if path.is_file():
+            archive.write(path, path.relative_to(root).as_posix())
+```
+
+This example packages an already curated staging tree; it is not a substitute for the content/size checks above or Finch's authoritative validation. Inspect the ZIP listing and verify the manifest, entry, resources, dependencies, and absence of secrets before delivery.
+
+**Install and verify:** the user can double-click the `.fapp` with an installed Finch version that registers the file association, or drag it into Finch's **main window** (including source Dev, which does not register OS associations). It opens an install confirmation; cancellation installs nothing. After confirmation, a new install or replacement goes to the **personal** tier, stays **disabled**, and receives **no permissions**. The user must explicitly review permissions and enable it in Toolcase. A matching global install is shadowed by the personal copy; a development symlink target cannot be overwritten. This is local unsigned code — package names and author fields do not authenticate the publisher.
+
+When the user explicitly requests or chooses `.fapp`, deliver that package with its install instructions. Otherwise, keep the requested delivery method; do not add a mandatory `.fapp` packaging step. Do not auto-confirm installation or enable the package to test it without user authorization. Community listing still follows §6's npm requirements.
 
 ---
 
