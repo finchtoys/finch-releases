@@ -124,7 +124,7 @@
   },
   {
     "id": "finch-delivery",
-    "version": "0.3.5",
+    "version": "0.4.0",
     "name": "Artifacts",
     "author": "puterjam",
     "description": "Track and browse deliverables (Markdown, Word, PPT, PDF, Excel, web pages, images) produced by the AI assistant across all sessions.",
