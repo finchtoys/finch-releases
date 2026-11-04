@@ -220,6 +220,20 @@
     "featured": false
   },
   {
+    "id": "finch-session-board",
+    "version": "0.1.1",
+    "name": "Session Board",
+    "author": "chensuiyi",
+    "description": "An always-on-top floating board that lists every running session and its status, so you can see at a glance who is busy, who is waiting on you, and who is done. Requires Finch 1.6.1 or newer.",
+    "repo": "chenbimo/yicode-tech",
+    "npm": "finch-session-board",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ],
+    "featured": false
+  },
+  {
     "id": "finch-worktree-coordinator",
     "version": "0.11.1",
     "name": "Worktree Coordinator",

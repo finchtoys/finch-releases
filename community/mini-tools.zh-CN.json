@@ -80,6 +80,11 @@
     "description": "在 Finch 里管理远程主机，让 Agent 通过 SSH 执行命令，危险操作先经用户确认，全部动作留审计。"
   },
   {
+    "id": "finch-session-board",
+    "name": "会话看板",
+    "description": "用一块置顶浮窗列出所有正在跑的会话和各自的状态，谁在忙、谁在等你确认、谁已跑完，一眼看清。需 Finch 1.6.1 及以上。"
+  },
+  {
     "id": "finch-worktree-coordinator",
     "name": "Worktree 协调器",
     "description": "在隔离的 Git worktree 与绑定 Space 的持久 Agent Session 中协调并行交付通道，支持交付依赖门禁、turn 级取消、按 lane 选择模型，以及两阶段证据校验的回收流程。"
