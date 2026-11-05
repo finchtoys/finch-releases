@@ -248,21 +248,6 @@
     ]
   },
   {
-    "id": "frontend-design",
-    "version": "0.1.1",
-    "name": "Frontend Design",
-    "author": "Finch Team",
-    "description": "Create distinctive, production-grade frontend interfaces with a bundled design skill.",
-    "repo": "finchtoys/finch-releases",
-    "npm": "@finchtoys/frontend-design",
-    "extensionType": "official",
-    "categories": [
-      "creative",
-      "developer"
-    ],
-    "featured": false
-  },
-  {
     "id": "git-branch",
     "name": "Git Source Control",
     "author": "Finch Team",
