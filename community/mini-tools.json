@@ -193,6 +193,19 @@
     "featured": false
   },
   {
+    "id": "finch-message-alert",
+    "version": "0.5.0",
+    "name": "Finch Message Alerts",
+    "author": "alvinzhang",
+    "description": "Play a sound cue when a task completes, fails, is interrupted or waits for you — pick a macOS system sound, one of 14 original fun sounds, or your own audio file. When a task finishes, a bird with a mail bag pops out of the camera notch; click it to open that conversation. macOS only.",
+    "repo": "alvinzhang/finch-message-alert",
+    "npm": "@alvinzhang/finch-message-alert",
+    "extensionType": "community",
+    "categories": [
+      "productivity"
+    ]
+  },
+  {
     "id": "finch-pet",
     "version": "1.0.10",
     "name": "Finch Pet",

@@ -70,6 +70,11 @@
     "description": "把本地文档、图片与 OCR 文本索引成私有知识库，在对话中检索相关片段。"
   },
   {
+    "id": "finch-message-alert",
+    "name": "Finch 消息提醒",
+    "description": "任务完成、出错、被打断或等你确认时出声提醒，每个事件可分别选 macOS 系统音、14 种原创趣味音效或自定义音频，默认只在你没看那个会话时响。任务完成时还会有一只背邮包的小鸟从刘海钻出来送信，点它就能打开对应会话。仅支持 macOS。"
+  },
+  {
     "id": "finch-pet",
     "name": "Finch 宠物",
     "description": "为 Finch 添加桌面宠物伙伴。"
