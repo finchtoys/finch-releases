@@ -96,7 +96,7 @@
   },
   {
     "id": "ego-browser",
-    "version": "0.2.0",
+    "version": "0.2.3",
     "name": "Ego Browser",
     "author": "puterjam",
     "description": "Let Finch browse the web in isolated Ego Lite task spaces while users follow, inspect, take over, and close the Agent's pages.",
@@ -234,7 +234,7 @@
   },
   {
     "id": "finch-session-board",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "name": "Session Board",
     "author": "chensuiyi",
     "description": "An always-on-top floating board that lists every running session and its status, so you can see at a glance who is busy, who is waiting on you, and who is done. Requires Finch 1.6.1 or newer.",
