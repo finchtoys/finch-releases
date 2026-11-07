@@ -99,11 +99,12 @@ Finch Toolbox
 
 ## Join the community
 
-Finch has a WeChat user group, **Finch 与她的伙伴** — a Chinese-language space for
-questions, mini tool ideas, and bug reports. Scan the code with WeChat to join.
+Finch has a WeChat user group, **Finch 与她的伙伴 2 群** (group 1 is full) — a
+Chinese-language space for questions, mini tool ideas, and bug reports. Scan the
+code with WeChat to join.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="WeChat group QR code for the Finch user group" width="240" />
+  <img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="WeChat group QR code for Finch 与她的伙伴 2 群" width="240" />
 </div>
 
 WeChat group invitations expire after 7 days. If the code above has gone stale,

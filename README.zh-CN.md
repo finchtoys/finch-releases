@@ -96,10 +96,10 @@ Finch Toolbox
 
 ## 加入社区
 
-Finch 有一个微信用户群 **Finch 与她的伙伴**——提问、聊小程序点子、报 bug 都可以来这里。用微信扫码加入。
+Finch 的微信用户群 **Finch 与她的伙伴 2 群**（1 群已满）——提问、聊小程序点子、报 bug 都可以来这里。用微信扫码加入。
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="Finch 微信用户群二维码" width="240" />
+  <img src="https://raw.githubusercontent.com/finchtoys/finch-releases/main/wechat-group.webp" alt="Finch 微信用户群 2 群二维码" width="240" />
 </div>
 
 微信群邀请 7 天过期。如果上面的二维码已经失效，请[开一个 issue](https://github.com/finchtoys/finch-releases/issues)，我们会更新它。
