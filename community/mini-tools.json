@@ -219,6 +219,20 @@
     ]
   },
   {
+    "id": "finch-remote-database",
+    "version": "1.0.2",
+    "name": "Remote Database",
+    "author": "chensuiyi",
+    "description": "Manage remote databases from Finch and let the Agent run SQL directly. Writes wait for your confirmation, destructive statements are blocked outright, and every action is audited locally. Supports MySQL/MariaDB, PostgreSQL and local SQLite files.",
+    "repo": "npm:finch-remote-database",
+    "npm": "finch-remote-database",
+    "extensionType": "community",
+    "categories": [
+      "developer"
+    ],
+    "featured": false
+  },
+  {
     "id": "finch-remote-host",
     "version": "1.1.0",
     "name": "Remote Host",

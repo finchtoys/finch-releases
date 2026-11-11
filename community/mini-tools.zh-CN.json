@@ -80,6 +80,11 @@
     "description": "为 Finch 添加桌面宠物伙伴。"
   },
   {
+    "id": "finch-remote-database",
+    "name": "远程数据库",
+    "description": "在 Finch 里管理远程数据库，让 Agent 直接执行 SQL，写操作先经用户确认，全部动作留审计。支持 MySQL/MariaDB、PostgreSQL 与本机 SQLite 文件。"
+  },
+  {
     "id": "finch-remote-host",
     "name": "远程主机",
     "description": "在 Finch 里管理远程主机，让 Agent 通过 SSH 执行命令，危险操作先经用户确认，全部动作留审计。"
