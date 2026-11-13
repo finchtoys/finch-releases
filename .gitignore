@@ -42,3 +42,6 @@ coverage/
 # OS files
 Thumbs.db
 .finch/skills/community-manager/scripts/__pycache__/
+
+# 本地调研与巡检中间产物，不入库
+.finch/research/
