@@ -57,6 +57,27 @@ npm run build
 
 包结构、npm 发布、社区上架与维护要求见[完整的小工具发布指南](skills/finch-mini-tool-creator/reference/publish.md)。
 
+## 用 Finch UI 写小程序界面
+
+小程序面板本质是一个普通网页，默认长得和 Finch 完全不一样。
+**[finchtoys/finch-ui](https://github.com/finchtoys/finch-ui)** 是从 Finch 主程序里抽出来的组件库，
+用它做出来的面板和 Finch 本身一致，会自动跟随用户的浅色/深色主题和自定义皮肤。
+
+```bash
+npm i @finchtoys/ui react react-dom lucide-react   # React
+npm i vue @finchtoys/ui @finchtoys/ui-vue         # Vue 3
+```
+
+两个框架视觉完全一致：`@finchtoys/ui`（React，44 个组件）和 `@finchtoys/ui-vue`（Vue 3，40 个组件）
+共用同一份预编译样式，**都不需要消费方安装 Tailwind**。
+
+- **先看组件再写代码。** 装 **Finch UI Lab** 预览小程序，在真实 webview 里浏览全部组件状态，
+  可当场切主题、在 React / Vue 之间切换对照：
+  `npx @finchtoys/minitools add @finchtoys/finch-ui-lab`。没有 Node 环境的话，从该仓库的
+  [Releases](https://github.com/finchtoys/finch-ui/releases) 下载 `.fapp`，拖进 Finch 主窗口即可安装。
+- **让 AI 帮你写？** 该仓库自带一个 skill，把组件选型规则和两个框架各自的坑都带着走：
+  `npx @finchtoys/skills add finchtoys/finch-ui --skill finch-ui`。
+
 ## 提交你的小工具
 
 希望自己的扩展能在 Finch 里被发现？先发布，再申请上架——社区索引（`community/mini-tools.json` 与 `community/mini-tools.zh-CN.json`）由 Finch 团队维护，请**不要直接开 Pull Request 修改这两个文件**。

@@ -60,6 +60,28 @@ Then verify that:
 
 See the [complete mini tool publishing guide](skills/finch-mini-tool-creator/reference/publish.md) for package layout, npm release, community listing, and maintenance requirements.
 
+## Build the UI with Finch UI
+
+A mini tool panel is a plain web page, so by default it looks nothing like Finch.
+**[finchtoys/finch-ui](https://github.com/finchtoys/finch-ui)** is the component library extracted from the
+Finch app itself. Panels built with it look like part of Finch and follow the user's light/dark theme and
+custom skins automatically.
+
+```bash
+npm i @finchtoys/ui react react-dom lucide-react   # React
+npm i vue @finchtoys/ui @finchtoys/ui-vue         # Vue 3
+```
+
+Both frameworks ship the same visuals: `@finchtoys/ui` (React, 44 components) and `@finchtoys/ui-vue`
+(Vue 3, 40 components) share one precompiled stylesheet, and neither requires you to install Tailwind.
+
+- **See the components first.** Install the **Finch UI Lab** preview mini tool to browse every component
+  state in a real webview, with live theme switching and a React/Vue toggle:
+  `npx @finchtoys/minitools add @finchtoys/finch-ui-lab`. Without Node, download the `.fapp` from that
+  repository's [Releases](https://github.com/finchtoys/finch-ui/releases) and drag it into the Finch window.
+- **Working with an AI agent?** The repository ships a skill that carries component selection rules and the
+  known pitfalls of both frameworks: `npx @finchtoys/skills add finchtoys/finch-ui --skill finch-ui`.
+
 ## Submit your mini tool
 
 Want to make your extension discoverable in Finch? Publish it, then request a listing — the community registry (`community/mini-tools.json` and `community/mini-tools.zh-CN.json`) is maintained by the Finch team, so please **do not open a Pull Request editing these files directly**.
