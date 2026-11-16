@@ -261,6 +261,20 @@
     "featured": false
   },
   {
+    "id": "finch-shell-go",
+    "version": "0.1.2",
+    "name": "shellGo",
+    "author": "chensuiyi",
+    "description": "Run Agent commands in a real, visible terminal inside Finch: watch each command execute, get output and exit codes back, and keep long-running processes under control. Dangerous commands are blocked outright or need your confirmation. Complements the built-in terminal, which returns no output.",
+    "repo": "npm:finch-shell-go",
+    "npm": "finch-shell-go",
+    "extensionType": "community",
+    "categories": [
+      "developer"
+    ],
+    "featured": false
+  },
+  {
     "id": "finch-worktree-coordinator",
     "version": "0.11.1",
     "name": "Worktree Coordinator",
