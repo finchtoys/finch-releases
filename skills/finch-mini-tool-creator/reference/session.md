@@ -623,7 +623,34 @@ const list = await ctx.sessions.list({ containerId: 'inbox', includeArchived: fa
 const all = await ctx.sessions.list();
 ```
 
-`create()`, `get()`, and `list()` return descriptors with an optional `title` (the current sidebar Session name, read from the Pi session index), plus `placement`, `activity`, `state` (pinned / archived), `profileId`, and timestamps. `title` is absent for unnamed Sessions; it is distinct from `topic`, which groups sibling Sessions in the subtask menu.
+`create()`, `get()`, and `list()` return descriptors with an optional `title` (the current sidebar Session name, read from the Pi session index), plus `placement`, `activity`, `state` (pinned / archived), `profileId`, and timestamps. `title` is absent for unnamed Sessions; it is distinct from `topic`, which groups sibling Sessions in the subtask menu. Descriptors also carry resolved display metadata: `spaceId` (the Space this Session belongs to — `placement.spaceId` for Space placement, otherwise the inherited `contextSpaceId`) and `spaceName` (that Space's display name, so you do not have to map it through `ctx.spaces.list()` yourself), plus `botName` — the display name of the assistant carrying the Session (a mini tool container Bot or a user Bot). `botName` is absent for plain conversations with no bound Bot; it is display data only and grants no Bot capability. `spaceId`/`spaceName`/`botName` are optional and best-effort.
+
+### Cross-Session directory (`permissions.sessionDirectory: 'all'`)
+
+`list()` never leaves your own Sessions — that is the ownership model, not a limitation to work around. To render the user's whole Session list (a board, a launcher, a status panel) declare `permissions.sessionDirectory: 'all'` and use the read-only directory:
+
+```ts
+// All user-facing Sessions, newest first; archived excluded by default.
+const entries = await ctx.sessions.listDirectory({ limit: 50, offset: 0 });
+for (const entry of entries) {
+  // entry = { sessionId, title?, spaceId?, spaceName?, botId?, botName?, state, updatedAt }
+  render(entry.title ?? entry.sessionId.slice(0, 8), entry.spaceName, entry.botName);
+}
+
+// One record by id — e.g. when an Agent event hands you a sessionId.
+const meta = await ctx.sessions.getMeta(event.sessionId);
+```
+
+Both methods degrade instead of throwing when the grant is missing: `listDirectory()` returns only your own Sessions, and `getMeta()` returns `undefined` for a Session you may not see. So the same code runs on a host without the permission, just with a smaller result. Details that matter:
+
+- The directory mirrors what the user sees in the sidebar: A2A transport Sessions (Bot-to-Bot delegations, automation executions) are not included, and neither is anything the app hides from the user.
+- It is display metadata only. There is no conversation content, no `cwd`, and no `send()` / `cancelTurn()` / `respondToWait()` on a Session you do not own.
+- `title` is absent for an unnamed Session — do not substitute a placeholder that looks like a real title.
+- `botId`/`botName` are absent when no Bot carries the Session (plain conversations, Sessions placed into a Space by a mini tool). Do not assume every Session has an assistant.
+- `state.archived` Sessions are excluded unless you pass `includeArchived: true`; `getMeta()` returns them anyway, because you looked one up by id.
+- Prefer `getMeta()` over re-reading the whole directory when you only need to label one event.
+
+Without the grant, Agent events (`ctx.events.onAgentEvent`) carry `sessionId` but no `sessionTitle` / `spaceId`. With it, the same events gain both, so a board can label a quiet Session it has never seen before — resolve them through `getMeta()` when you need Space or assistant names too. Events for non-user-facing (A2A transport) Sessions never carry those fields.
 
 ---
 
@@ -671,4 +698,5 @@ When the queue is full, `send()` returns a `rejected` receipt with `retryAfterMs
 - Treating a `waitForTurn()` timeout as cancellation, or stopping by Session id without retaining the exact `turnId` returned by `send()`.
 - Auto-approving every permission card from code. That defeats the point of the prompt; relay it to a human instead.
 - Retrying the same answer after `stale` or `forbidden`. `stale` means the card is already settled; `forbidden` means that exact response is blocked. A `forbidden` on a destructive approval means this mini tool lacks `permissions.destructiveInteractions` — have the user grant it (re-enable the mini tool) or approve in the desktop app; do not retry in a loop.
-- Trying to read or write the user's normal Composer Sessions. `ctx.sessions` only owns Sessions created by this mini tool.
+- Trying to read or write the user's normal Composer Sessions with `ctx.sessions.get/list`. Those stay owner-scoped; the read-only cross-Session view is `listDirectory()` / `getMeta()` with `permissions.sessionDirectory: 'all'`.
+- Treating a missing `sessionDirectory` grant as an error. The directory degrades to your own Sessions; check the result size instead of catching an exception.

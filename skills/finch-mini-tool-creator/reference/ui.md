@@ -489,6 +489,40 @@ await window.finch.appView.openDiff({
 
 `openBrowser()` and `openApp()` push child levels the same way. `openApp()` still requires the target's `embeddable: true` declaration.
 
+#### Multi-image preview from a page
+
+Pages (App View **and** Panel Apps) can open the shared lightbox over a whole collection, so an image grid is no longer "look once, dismiss":
+
+```ts
+// Everything already in hand: one call, no round trip per image.
+await window.finch.appView.openImagePreview({
+  count: records.length,
+  current: clicked,
+  items: records.map((record) => ({ src: record.filePath, name: record.prompt.slice(0, 40) })),
+});
+
+// Large collection: give the total, answer "give me #n" when the user pages.
+await window.finch.appView.openImagePreview({
+  count: records.length,
+  current: clicked,
+  items: [null],                          // optional pages you already cached
+  title: '生成的图片',
+  onRequest: async (index) => ({ src: await ensureLocalFile(records[index]) }),
+});
+```
+
+Fields: `count` (1–500), `current` (default 0, clamped), `items` (`{ src, name?, mimeType? } | null` per index — `null` means "ask me later"), `title` (heading fallback before any image is known), `onRequest(index)`. `src` is a local absolute path, or an `https:` / `data:` / `finch-file:` URL. Both resolve `{ galleryId }`.
+
+Rules that matter:
+
+- **User gesture required.** It opens UI, exactly like `openPreview()`; call it straight from the click handler and drop the `await` if your framework loses the gesture.
+- `onRequest` runs **in the page**, not the backend: it must be fast (the host gives up after 8 s and shows its own failure state). Throw to show that state for one image; the preview stays open so the user can page past it.
+- One gallery per page — calling again replaces the previous handler.
+- Finch caches each index for the life of the preview: paging back to an image the user already saw shows it immediately and asks you nothing. Reopening the preview starts fresh, and a failed `onRequest` is never cached, so the next visit retries.
+- The preview **never** stands in another image while one is loading or failed, so a slow `onRequest` shows a placeholder, not the previous picture.
+- Closing the preview, navigating, or crashing the page cancels outstanding requests; nothing reopens afterwards.
+- Wire format (internal, don't hand-roll it): the host asks with `finch:image-preview-request` `{ requestId, index }` over `finch-bridge-message`, and the preload answers with the reserved `appview:image-preview-response` request. `openImagePreview()` handles both ends.
+
 A page can also register its **own** in-page routes as breadcrumb levels, so an SPA's 首页 → 详情 reads like the rest of Finch:
 
 ```ts

@@ -255,7 +255,8 @@ declare module 'finch' {
 
     /** Finch 内置 Browser Panel。每次调用在当前 Panel scope 新建一个 Browser Tab。 */
     readonly browser: {
-      open(url: string): Promise<void>;
+      /** `options.fullscreen` 让新 tab 在 Panel 全屏下打开（只在打开时生效）。 */
+      open(url: string, options?: PanelFullscreenOption): Promise<void>;
     };
 
     /**
@@ -279,6 +280,19 @@ declare module 'finch' {
        * 仅传入要比较的路径/ref；右侧 Panel 或弹窗由用户的「改动与文件预览」设置决定。
        */
       openDiff(request: AppViewDiffRequest): Promise<void>;
+      /**
+       * 打开当前 scope 的题外话（侧聊）tab。Finch 按界面按钮同一条路径新建或复用
+       * 侧聊会话，这个调用只请求把它展示出来。`options.fullscreen` 全屏打开。
+       *
+       * 需要真实 Agent Session scope——Home 或容器 scope 上没有可以归属的父会话。
+       */
+      openSideChat(options?: SideChatOpenOptions): Promise<void>;
+      /**
+       * 在当前 Panel scope 打开另一个小程序声明的 Panel App——和用户从启动器点进去
+       * 的是同一个 tab（single 实例复用规则也一致）。与 `window.finch.appView.openApp()`
+       * 不同：这里打开的是右侧 Panel tab，不是目标的应用级整页，也不需要目标声明授权。
+       */
+      openMiniToolPanel(extensionId: string, options?: MiniToolPanelOpenOptions): Promise<void>;
       /**
        * 打开 `contributes.appPanel` 声明的唯一 Panel App。
        * 声明决定页面来源、标题、图标与工具栏；此调用只决定 single/multiple
@@ -568,13 +582,16 @@ declare module 'finch' {
 
   /**
    * 自定义皮肤的最终颜色 token；只设置需要的字段，其余继承自 `base`。
-   * 分组：表面（bgRoot=app/窗口外层背景兼 bgMain 兜底，bgMain=主聊天/页面背景，
-   * bgSidebar=悬浮侧栏专用；停靠态侧栏透明并复用 appShell/main 背景，
-   * bgElevated=卡片/弹层/输入框表面），交互高亮（bgHover=列表/按钮 hover，
-   * bgActive=按下/选中态），文字（textPrimary=正文，textSecondary=次要/元信息，
-   * textTertiary=弱化提示/图标），强调色（accent=品牌/操作色——必须够深/够饱和，
-   * 使其上的白色文字仍清晰可读；accentDim=浅色强调底纹），border=描边。颜色接受
-   * `#hex`/`rgb()`/`hsl()`/`oklch()`/`color-mix()`，但 `bgRoot`/`bgMain`
+   *
+   * 表面颜色分**三条轴**，不要把它们当成一条深浅线：
+   * 1. 层次轴 `bgRoot`（app/窗口外层，兼 `bgMain` 兜底）→ `bgMain`（主聊天/页面）
+   *    → `bgSidebar`（悬浮侧栏专用；停靠态侧栏透明并复用主背景）
+   *    → `bgElevated`（卡片 / 弹层 / 输入框 / 气泡）。
+   * 2. 交互轴 `bgHover` / `bgActive`：叠在当前表面上的薄纱，不是一种表面。
+   * 3. 强调轴 `accent`（品牌/操作色，必须够深/够饱和，使其上的白字仍可读）
+   *    与 `accentDim`（浅色强调底纹）；`border` 是描边，不参与层次。
+   *
+   * 颜色接受 `#hex`/`rgb()`/`hsl()`/`oklch()`/`color-mix()`，但 `bgRoot`/`bgMain`
    * 建议写 `#hex` 或 `rgb()`——它们还会绘制原生 OS 窗口控制按钮，无法解析
    * `oklch()`/`color-mix()` 时会回退到默认浅色/深色。
    */
@@ -582,8 +599,11 @@ declare module 'finch' {
     bgRoot?: string;
     bgMain?: string;
     bgSidebar?: string;
+    /** 卡片 / 弹层 / 气泡的表面色。**必须与 `bgMain` 拉开一档**（浅色更暗、深色更亮），差得太小会被自动推深一档。 */
     bgElevated?: string;
+    /** 悬停态薄纱。**推荐不设置**：省略时由 `bgElevated` 派生一层百分之几的薄纱，强度自动跟主题走，风格最一致。 */
     bgHover?: string;
+    /** 按下态薄纱。**推荐不设置**，同 `bgHover`。 */
     bgActive?: string;
     textPrimary?: string;
     textSecondary?: string;
@@ -616,11 +636,14 @@ declare module 'finch' {
   export type AppearanceBackgroundTone = 'brightest' | 'bright' | 'balanced' | 'dark' | 'darkest';
 
   export interface AppearanceSetHomeBackgroundOptions {
-    /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。首页尚未配置背景时必填。 */
+    /** 改哪一套背景：`home`（默认）或 `chat`（所有非 Space 的聊天窗）。Space 背景跟随单个 Space 自己。 */
+    scope?: 'home' | 'chat';
+    /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。该 scope 尚未配置背景时必填。 */
     imagePath?: string;
     placement?: AppearanceBackgroundPlacement;
+    /** 明暗档位：**只对 `home` 生效**。对话窗（`scope: 'chat'`）的明暗是固定表达，不接受调整，传了也一律忽略。 */
     tone?: AppearanceBackgroundTone;
-    /** 移除首页背景，恢复为纯色主题底。 */
+    /** 移除该 scope 的背景，恢复为纯色主题底。 */
     clear?: boolean;
   }
 
@@ -641,12 +664,34 @@ declare module 'finch' {
    *   placement: 'fill',
    *   tone: 'dark',
    * });
+   * // 聊天窗单独一套背景
+   * await ctx.appearance.setHomeBackground({ scope: 'chat', imagePath: '/Users/alice/Pictures/paper.jpg' });
    */
+  /** `ctx.appearance.getTheme()` 的结果：当前生效的外观偏好（只读）。 */
+  export interface AppearanceThemeSnapshot {
+    themePreference: AppearanceThemePreference;
+    /** 当前自定义皮肤；没用自定义皮肤时为 undefined。 */
+    customTheme?: AppearanceCustomTheme;
+  }
+
   export interface Appearance {
     /** 至少传一项：theme、customTheme、fontSize、uiFontFamily、monoFontFamily、showThinking。 */
     setTheme(options: AppearanceSetThemeOptions): Promise<void>;
-    /** 只支持首页背景；Chat/Space 背景已在内部实现但尚未对外开放。 */
+    /** 设置首页或聊天窗背景（`scope: 'home' | 'chat'`，默认首页）。Space 背景见 `ctx.spaces.setBackground`。`tone` 只影响首页。 */
     setHomeBackground(options: AppearanceSetHomeBackgroundOptions): Promise<void>;
+    /**
+     * 读当前主题偏好与自定义皮肤。做「微调当前皮肤」的小程序先取这份，改一两个
+     * 字段后再 `setTheme({ customTheme })`，不必自己重建整套配色。
+     *
+     * @example
+     * const { customTheme } = await ctx.appearance.getTheme();
+     * if (customTheme) {
+     *   await ctx.appearance.setTheme({
+     *     customTheme: { ...customTheme, colors: { ...customTheme.colors, accent: '#22c55e' } },
+     *   });
+     * }
+     */
+    getTheme(): Promise<AppearanceThemeSnapshot>;
   }
 
   /** 当前 Finch 暴露的小程序 API surface 探针。 */
@@ -723,6 +768,19 @@ declare module 'finch' {
      * 无 Space 上下文的会话为 `undefined`。
      */
     readonly contextSpaceId?: string;
+    /**
+     * 解析后的所属 Space id：`space` placement 取 `placement.spaceId`，容器/普通
+     * 会话继承 Space 上下文时取 `contextSpaceId`。是上述两个字段的便捷投影，
+     * 不必自己判断；会话没有 Space 时为 `undefined`。
+     */
+    readonly spaceId?: string;
+    /** `spaceId` 对应 Space 的展示名；解析不到时不存在。 */
+    readonly spaceName?: string;
+    /**
+     * 承载这个会话的助理（小程序容器 Bot / 用户 Bot）展示名。普通对话没有绑定
+     * 任何 Bot 时为 `undefined`。仅作展示，不授予任何 Bot 能力。
+     */
+    readonly botName?: string;
     /** 回传创建时传入的 `topic`（如有），见 `SessionCreateOptions.topic`。 */
     readonly topic?: string;
     readonly state: { readonly pinned: boolean; readonly archived: boolean };
@@ -765,6 +823,8 @@ declare module 'finch' {
      * 支持 `activity: 'background'`，效果与 `space` 一致：不出现在普通对话
      * 列表里，完成时也不弹通知，只能由本 mini tool 自行跳转打开；仅在等待
      * 用户授权/回答/表单时才会提醒。
+     * 容器会话是小程序自己的长期会话，永远无父会话：不继承调用者 parent，
+     * 同时传入的 parentSessionId 仍校验非空与归属，但忽略并记录诊断日志。
      */
     readonly containerId?: string;
     /**
@@ -791,6 +851,7 @@ declare module 'finch' {
      * 若要继承调用者的运行上下文，请使用 `context: 'caller'`。当本次调用正
      * 处于一个可信的 Agent 调用上下文时，Finch 自动记录该调用者为父节点，
      * 并优先于这里指定的值。传入未知、其它小程序或用户拥有的 Session 会报错。
+     * 指定 containerId 时容器会话永远无 parent；此参数仍校验，但忽略并记录日志。
      */
     readonly parentSessionId?: string;
     /**
@@ -837,6 +898,36 @@ declare module 'finch' {
   }
 
   /**
+   * 只读会话目录里的一条记录。字段全部是展示元数据，不含对话正文、
+   * 工作目录或任何可执行能力。
+   */
+  export interface SessionDirectoryEntry {
+    readonly sessionId: string;
+    /** 当前会话标题；未命名会话不存在（不会用「新会话」之类占位）。 */
+    readonly title?: string;
+    /** 所属 Space id；会话不在任何 Space 内时不存在。 */
+    readonly spaceId?: string;
+    /** 该 Space 的展示名；Space 解析不到时不存在。 */
+    readonly spaceName?: string;
+    /** 承载该会话的助理 id（小程序容器 Bot / 用户 Bot）；无绑定 Bot 时不存在。 */
+    readonly botId?: string;
+    /** 该助理的展示名；无绑定 Bot 时不存在。 */
+    readonly botName?: string;
+    /** 用户可见生命周期状态。 */
+    readonly state: { readonly pinned: boolean; readonly archived: boolean };
+    readonly updatedAt: string;
+  }
+
+  export interface SessionDirectoryListOptions {
+    /** 默认 false：归档会话不进入目录。 */
+    readonly includeArchived?: boolean;
+    /** 返回条数上限；省略表示不截断。 */
+    readonly limit?: number;
+    /** 跳过的条数，默认 0。 */
+    readonly offset?: number;
+  }
+
+  /**
    * 用户已创建的某个 Space 的只读摘要。用于在调用
    * `sessions.create({ space: { spaceId } })` 之前发现可用的 Space id/name，
    * 无需本工具正运行在该 Space 内。
@@ -851,9 +942,26 @@ declare module 'finch' {
     readonly directoryPath?: string;
   }
 
+  export interface SpacesSetBackgroundOptions {
+    /** 目标 Space 的 id（由 `ctx.spaces.list()` 得到）。 */
+    spaceId: string;
+    /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。这个 Space 还没背景时必填。 */
+    imagePath?: string;
+    placement?: AppearanceBackgroundPlacement;
+    /** 移除这个 Space 的背景；之后这个 Space 的会话窗不显示背景（各层互相独立，不回落全局）。 */
+    clear?: boolean;
+  }
+
   export interface Spaces {
     /** 列出用户创建的所有 Space，按最近打开时间排序。 */
     list(): Promise<SpaceSummary[]>;
+    /**
+     * 设置 / 清除某个 Space 会话窗的背景图。需要在 manifest 声明并被授予
+     * `permissions.appearance`。图片复制进这个 Space 自己的
+     * `.finch/skins`（没有目录的独立 Space 落在 Agent Home 的 `spaces/<id>`）。
+     * 四层背景互相独立：这个 Space 没配就是不显示背景，不会拿全局会话背景顶上。
+     */
+    setBackground(options: SpacesSetBackgroundOptions): Promise<void>;
   }
 
   /**
@@ -1192,6 +1300,23 @@ declare module 'finch' {
      * acceptCalls 仍不会自动批准危险操作；不支持 auto。
      */
     setPermissionMode(sessionId: string, permissionMode: 'ask' | 'acceptCalls'): Promise<void>;
+    /**
+     * 只读会话目录：返回 `{ sessionId, title, spaceId, spaceName, botId, botName,
+     * state, updatedAt }`。
+     *
+     * 未声明（或未获准）`permissions.sessionDirectory: "all"` 时，本方法**不报错**，
+     * 只是降级为「只看自己拥有的会话」的目录；不能看到任何其它会话。
+     * 声明并获准后，返回用户全部会话（含其它小程序、Bot 与普通对话创建的），
+     * 默认不含归档会话，按 `updatedAt` 降序。仍然拿不到对话正文、cwd，也不能
+     * 对别人的会话 send/取消/应答。
+     */
+    listDirectory(options?: SessionDirectoryListOptions): Promise<SessionDirectoryEntry[]>;
+    /**
+     * 按 id 查单条会话元数据，与 `listDirectory()` 同一权限、同一字段。
+     * 未获准 `permissions.sessionDirectory: "all"` 时，非自有会话返回
+     * `undefined`（不报错）；会话不存在时同样返回 `undefined`。
+     */
+    getMeta(sessionId: string): Promise<SessionDirectoryEntry | undefined>;
     /** 等待指定 turn 完成或失败，无需 sleep/polling。 */
     waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
@@ -2364,6 +2489,12 @@ declare module 'finch' {
     readonly instanceMode?: 'single' | 'multiple';
     /** 跟随当前 Session Panel Tab 保存的打开上下文。 */
     readonly payload?: JsonValue;
+    /**
+     * 打开后让 Panel 进入全屏（呈现选中的 Panel tab），而不是分栏。只在打开时
+     * 生效：single 实例被重复打开时同样会置全屏，用户之后自己退出算他的选择。
+     * 这不是 `contributes.appView`。
+     */
+    readonly fullscreen?: boolean;
   }
 
   export interface AppPanel {
@@ -2453,8 +2584,8 @@ declare module 'finch' {
 
   /** Host-rendered Diff input. Finch chooses Panel or modal from the user's settings. */
   export type AppViewDiffRequest =
-    | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string }
-    | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string };
+    | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string; readonly fullscreen?: boolean }
+    | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string; readonly fullscreen?: boolean };
 
   /** App View 面包屑中由页面自己拥有的一层（一条内部路由）。 */
   export interface AppViewPageLevel {
@@ -2476,7 +2607,72 @@ declare module 'finch' {
   export interface FilePreviewOptions {
     /** HTML/HTM 默认在浏览器打开；传入 `code` 可查看源码。 */
     readonly htmlPreview?: HtmlPreviewMode;
+    /**
+     * 打开预览时让 Panel 直接进入全屏（Panel 盖住会话区），而不是分栏。
+     * 只在打开那一刻生效、不随 tab 持久化，用户随时可以自己退出全屏。
+     */
+    readonly fullscreen?: boolean;
   }
+
+  /**
+   * 多图预览里的一张图。页面只给地址，字节由 Finch 自己读。
+   *
+   * 没有裸 base64 这一档：本地文件给绝对路径，内存里的图给 `data:` URL。
+   */
+  export interface ImagePreviewItemInput {
+    /** 本地绝对路径，或 `https:` / `data:` / `finch-file:` URL。 */
+    readonly src: string;
+    /** 顶栏标题，也用于判断要不要显示格式胶囊；缺省取文件名。 */
+    readonly name?: string;
+    /** 格式提示（如 `image/png`）；给不出来时 Finch 从扩展名推断。 */
+    readonly mimeType?: string;
+  }
+
+  /** {@link WebviewBridgeApi.appView.openImagePreview} 的参数。 */
+  export interface OpenImagePreviewOptions {
+    /** 图片总数，1–500；超出上限会 reject，让页面自己分批。 */
+    readonly count: number;
+    /** 打开时停在第几张，默认 0；越界自动钳进范围。 */
+    readonly current?: number;
+    /**
+     * 已经拿到的图：`items[n]` 就是第 n 张，`null` 表示「翻到这儿再问我」。
+     * 两种填法都支持——一次给全（全填满）或只给总数（全 `null` 或缺省）。
+     */
+    readonly items?: (ImagePreviewItemInput | null)[];
+    /** 顶栏标题；第一张图还没取回来时先显示它。 */
+    readonly title?: string;
+    /**
+     * 用户翻到没有预取的图时，Finch 回调它取第 `index` 张。
+     * 返回该项即显示；返回 `null` 或抛错则该张显示失败占位（预览不关，
+     * 可以继续往旁边翻）。8 秒内没有应答按失败处理。
+     *
+     * 这个函数留在页面本地、不经过 Bridge，所以必须是快操作：从内存或缓存里
+     * 取地址，不要在这里等一次长 IO。
+     */
+    onRequest?(index: number): ImagePreviewItemInput | null | Promise<ImagePreviewItemInput | null>;
+  }
+
+  /**
+   * 「打开时进入 Panel 全屏」参数。
+   *
+   * `true` 让该 Panel scope 进入全屏（呈现选中的 Panel tab，即会话区被 Panel
+   * 占满）。这**不是** `contributes.appView`：应用级左侧栏整页是另一个界面，
+   * 不会通过这个参数打开。
+   */
+  export interface PanelFullscreenOption {
+    readonly fullscreen?: boolean;
+  }
+
+  /** {@link MiniToolContext.ui.openMiniToolPanel} 的参数。 */
+  export interface MiniToolPanelOpenOptions extends PanelFullscreenOption {
+    /** 本次打开覆盖目标声明的实例策略。 */
+    readonly instanceMode?: 'single' | 'multiple';
+    /** 传给目标 Panel App 的可序列化打开上下文。 */
+    readonly payload?: JsonValue;
+  }
+
+  /** {@link MiniToolContext.ui.openSideChat} 的参数。 */
+  export type SideChatOpenOptions = PanelFullscreenOption;
 
   /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
   export interface WebviewBridgeApi {
@@ -2580,8 +2776,33 @@ declare module 'finch' {
       /**
        * 用 Finch 内置文件预览压入下一层级，返回该层级的句柄 ID。
        * 图片走「看一眼就关」的弹窗，不占层级，此时 `id` 为空串。
+       *
+       * 一次只开一张图。要开一组图、能左右翻页（图片网格的常见需求），
+       * 用 {@link appView.openImagePreview}：同一个弹窗，带 `n/total` 与翻页，
+       * 同样是「看一眼就关」、不占面包屑层级。
        */
       openPreview(path: string, options?: FilePreviewOptions): Promise<{ id: string }>;
+      /**
+       * 用同一个「看一眼就关」的图片弹窗打开一组图，可左右翻页（键盘 ←/→ 也行），
+       * 底部显示 `n/total`。不占面包屑层级，也不需要 `contributes.appView`。
+       *
+       * 两种填法都支持：
+       * - 列表已知：把每张图塞进 `items`，Finch 直接用，零往返；
+       * - 列表很大：只给 `count` 与 `current`，`items` 留空（或 `null` 占位），
+       *   用户翻到哪张 Finch 就回调 `onRequest(index)` 要哪张。
+       *
+       * 引用规则：
+       * - 需要真实用户手势（它打开 UI），和 `openPreview()` 一致；框架里丢了手势
+       *   就把 `await` 去掉，别在 await 之后再调；
+       * - 一个页面同时只有一个图库，再次调用会替换上一个的 `onRequest`；
+       * - 某张取不到（`onRequest` 返回 `null` / 抛错 / 8 秒无应答）时，预览显示
+       *   自己的失败占位并保持可翻——**不会**拿别的图顶替，也不会关掉预览；
+       * - 关掉预览、页面导航或页面崩溃后，尚未回来的请求全部作废，不会再有回调
+       *   落地。
+       *
+       * 返回 `{ galleryId }`：宿主侧的图库标识，用于排查问题，页面不需要持久化它。
+       */
+      openImagePreview(options: OpenImagePreviewOptions): Promise<{ galleryId: string }>;
       /**
        * 用 Finch 内置 Diff 压入下一层级，展示两个本地文件，或 Git repository 中
        * 两个 commit/ref 的多文件差异。允许异步准备本地快照后调用。
@@ -3007,7 +3228,9 @@ declare module 'finch' {
     readonly sdkCode?: string | number;
     readonly requestId?: string;
     readonly retryAfterMs?: number;
-    readonly origin?: 'provider' | 'gateway' | 'unknown';
+    readonly origin?: 'provider' | 'gateway' | 'runtime' | 'unknown';
+    /** Local runtime recovery cause; absent for provider/network failures. */
+    readonly runtimeReason?: 'gateway_unresponsive' | 'configuration_changed' | 'shutdown';
     readonly transport?: 'http' | 'sse' | 'websocket';
     readonly phase?: 'connect' | 'headers' | 'stream' | 'response';
   }
@@ -3086,6 +3309,14 @@ declare module 'finch' {
     readonly assistantMessageId?: string;
     readonly createdAt: string;
     readonly sessionId?: string;
+    /**
+     * 该会话的当前标题（侧栏显示名）。仅当本小程序声明并获准
+     * `permissions.sessionDirectory: "all"` 时才提供；未获准时字段不存在，
+     * 行为与今天完全一致（不静默扩权）。未命名会话也不会用占位标题。
+     */
+    readonly sessionTitle?: string;
+    /** 该会话所属 Space id，与 `sessionTitle` 同一权限、一同提供（不在 Space 内时不存在）。 */
+    readonly spaceId?: string;
     readonly costUsd?: number;
     readonly durationMs?: number;
     readonly usage?: AgentTokenUsage;
