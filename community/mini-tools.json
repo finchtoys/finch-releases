@@ -165,7 +165,7 @@
   },
   {
     "id": "finch-helper",
-    "version": "0.2.5",
+    "version": "0.2.6",
     "name": "Finch Helper",
     "author": "puterjam",
     "description": "A Finch assistant that answers questions about Finch usage, features and mini tool development from the official documentation.",
