@@ -8,6 +8,7 @@ import {
   type WeChatAccount, type WeixinInboundMessage, type GetUpdatesResponse,
 } from './types';
 import { createBotState } from './types';
+import { reportInboundFailure } from './inbound';
 import { formatChinaDateTime, sleep, randomHex } from './utils';
 import { IlinkClient, type BotConfig, type IlinkAccount } from './ilink-client';
 import { AccountStore, activeSessionKey, cursorKey, isAccountLoggedIn } from './accounts';
@@ -574,11 +575,8 @@ export async function activate(ctx: finch.MiniToolContext): Promise<void> {
           try {
             await handleInbound(msg, account);
           } catch (error) {
-            await ctx.storage.delete(activeSessionKey(accountId));
-            const detail = error instanceof Error
-              ? { name: error.name, message: error.message, stack: error.stack }
-              : { value: String(error) };
-            ctx.logger.error('handle inbound failed', { accountId, peerId: msg.from_user_id, detail });
+            // 一次处理失败不能连坐会话：指针留着，下一条来信继续用同一条 Session。
+            reportInboundFailure(ctx.logger, { accountId, peerId: msg.from_user_id, error });
           }
         }
         loop.backoffIndex = 0;
