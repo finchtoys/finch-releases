@@ -55,7 +55,7 @@
   "error.http": "DeepSeek API 返回 HTTP {status}：{message}",
   "error.timeout": "DeepSeek 请求在 {seconds} 秒内没有完成。",
   "status.balanceFailed": "余额查询失败：{message}",
-  "status.noBalanceInfo": "余额接口没有返回余额条目。",
+  "status.noBalanceInfo": "余额接口没有返回余额条目（is_available={available}，返回字段：{keys}）。",
   "search.header": "DeepSeek 搜索 — “{query}” 共 {count} 条结果",
   "search.empty": "DeepSeek 搜索 “{query}” 没有结果。",
   "error.ocrNoInput": "ocr 需要一个本地文件路径（path）或远程文件地址（url）。",

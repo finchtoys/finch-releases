@@ -133,7 +133,14 @@ async function fetchBalance(ctx: finch.MiniToolContext, apiKey: string): Promise
     });
     const data = await parseResponse(ctx, res, 20_000);
     const balances = Array.isArray(data?.balances) ? data.balances : [];
-    if (!balances.length) return t(ctx, 'status.noBalanceInfo');
+    if (!balances.length) {
+      // Surface what the endpoint actually returned — an account with no balance
+      // data and a changed response shape need to be tellable apart.
+      return t(ctx, 'status.noBalanceInfo', {
+        available: typeof data?.is_available === 'boolean' ? String(data.is_available) : 'unknown',
+        keys: Object.keys(data ?? {}).join(', ') || 'none',
+      });
+    }
     return balances
       .map((item: Json) => `${item.type ?? 'balance'}: ${item.total_balance ?? '?'} ${item.currency ?? ''}`.trim())
       .join(' | ');
@@ -154,7 +161,7 @@ function formatSearch(ctx: finch.MiniToolContext, query: string, results: Json[]
     const meta: string[] = [];
     if (item.site_name) meta.push(String(item.site_name));
     if (item.date) meta.push(String(item.date).slice(0, 10));
-    if (typeof item.rerank_score === 'number') meta.push(`rerank ${item.rerank_score}`);
+    if (typeof item.rerank_score === 'number') meta.push(`rerank ${Math.round(item.rerank_score * 100) / 100}`);
     const lines = [`${index + 1}. ${item.title || '(untitled)'}`, `   ${item.url}`];
     if (meta.length) lines.push(`   ${meta.join(' · ')}`);
     const summary = typeof item.summary === 'string' ? item.summary.trim() : '';

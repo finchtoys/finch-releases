@@ -55,7 +55,7 @@
   "error.http": "DeepSeek API returned HTTP {status}: {message}",
   "error.timeout": "The DeepSeek request did not finish within {seconds} seconds.",
   "status.balanceFailed": "Balance check failed: {message}",
-  "status.noBalanceInfo": "Balance endpoint returned no balance entries.",
+  "status.noBalanceInfo": "Balance endpoint returned no balance entries (is_available={available}, fields: {keys}).",
   "search.header": "DeepSeek search — {count} results for “{query}”",
   "search.empty": "DeepSeek search returned no results for “{query}”.",
   "error.ocrNoInput": "ocr needs a local file path (path) or a remote file URL (url).",
