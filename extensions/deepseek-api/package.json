@@ -1,0 +1,91 @@
+{
+  "name": "finch-deepseek-api",
+  "version": "0.1.0",
+  "description": "DeepSeek tool APIs for Finch: web search, page reading, and document/image OCR from a single API key.",
+  "author": {
+    "name": "Finch Team",
+    "url": "https://finchwork.app"
+  },
+  "homepage": "https://api-docs.deepseek.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finchtoys/finch-releases.git",
+    "directory": "extensions/deepseek-api"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "finch": {
+    "manifestVersion": 1,
+    "minVersion": "1.6.1",
+    "id": "deepseek-api",
+    "name": "DeepSeek API",
+    "description": "One DeepSeek API key gives Finch web search, page reading as Markdown, and PDF/Office/image OCR.",
+    "toolMeta": {
+      "name": "DeepSeek API"
+    },
+    "systemPrompt": "When the user needs web search with sources, a specific URL read as Markdown, or OCR of a PDF/Word/PowerPoint file or image, use the deepseek_api tool; if it reports that no API key is configured, call setup_deepseek_api to collect one securely.",
+    "promptGuides": [
+      {
+        "id": "setup-deepseek",
+        "title": "Set up DeepSeek API",
+        "description": "Connect your DeepSeek API key.",
+        "prompt": "Set up the DeepSeek API tools for Finch."
+      },
+      {
+        "id": "read-a-link",
+        "title": "Read a link",
+        "description": "Turn a web page into Markdown.",
+        "prompt": "Read https://api-docs.deepseek.com/zh-cn/guides/search and summarize it."
+      },
+      {
+        "id": "ocr-a-file",
+        "title": "OCR a file",
+        "description": "Extract text from a PDF or image.",
+        "prompt": "OCR this file and give me the text: "
+      }
+    ],
+    "main": "dist/index.js",
+    "activationEvents": [
+      "onStartup"
+    ],
+    "extensionType": "official",
+    "categories": [
+      "research",
+      "developer"
+    ],
+    "privacyPolicyUrl": "https://platform.deepseek.com/privacy_policy",
+    "termsOfServiceUrl": "https://platform.deepseek.com/terms_of_service",
+    "contributes": {
+      "tools": true,
+      "skills": true,
+      "settingsMenu": {
+        "icon": "settings",
+        "tooltip": "Configure DeepSeek API"
+      }
+    },
+    "permissions": {
+      "filesystem": "read",
+      "network": true,
+      "secrets": [
+        "deepseek.apiKey"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@finchtoys/minitool-api": "0.3.19",
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  },
+  "files": [
+    "dist/",
+    "i18n/",
+    "skills/",
+    "icon.png",
+    "README.md",
+    "README.zh-CN.md"
+  ]
+}
