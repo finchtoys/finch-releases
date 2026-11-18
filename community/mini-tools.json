@@ -95,6 +95,21 @@
     ]
   },
   {
+    "id": "deepseek-api",
+    "version": "0.1.0",
+    "name": "DeepSeek Search & OCR",
+    "author": "Finch Team",
+    "description": "One DeepSeek API key gives Finch web search, page reading as Markdown, and PDF/Office/image OCR.",
+    "repo": "finchtoys/finch-releases",
+    "npm": "finch-deepseek-api",
+    "extensionType": "official",
+    "categories": [
+      "research",
+      "developer"
+    ],
+    "featured": true
+  },
+  {
     "id": "ego-browser",
     "version": "0.2.3",
     "name": "Ego Browser",

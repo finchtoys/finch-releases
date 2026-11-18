@@ -35,6 +35,11 @@
     "description": "把任务委派给其他 Finch Space 中由小工具管理的 Agent Session，执行结果自动返回来源会话。"
   },
   {
+    "id": "deepseek-api",
+    "name": "DeepSeek 搜索与OCR",
+    "description": "一个 DeepSeek API Key，就能让 Finch 用上网页搜索、网页转 Markdown、以及 PDF/Office/图片 OCR。"
+  },
+  {
     "id": "ego-browser",
     "name": "Ego 浏览器",
     "description": "让 Finch 在独立的 Ego Lite 任务空间中浏览网页，你可以随时查看、接管或关闭 Agent 打开的页面。"
