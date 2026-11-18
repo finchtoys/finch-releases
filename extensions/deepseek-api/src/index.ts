@@ -248,6 +248,19 @@ async function runOcr(ctx: finch.MiniToolContext, apiKey: string, input: DeepSee
   return `${t(ctx, 'ocr.header', { filename, pages: data.page_count ?? pages.length, purpose })}\n\n${body}${tail}`;
 }
 
+/**
+ * Finch's built-in icon table has no trash / remove glyph, and an unregistered
+ * bare id renders as literal text — so the delete row ships its own Lucide
+ * `trash-2` through a runtime pack and references it as `ext:remove-key`.
+ */
+function registerIcons(ctx: finch.MiniToolContext): void {
+  ctx.icons.register('deepseek-api-icons', {
+    'remove-key': {
+      svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>',
+    },
+  });
+}
+
 function registerSettingsMenu(ctx: finch.MiniToolContext): void {
   const menu = ctx.settingsMenu.register({
     async getMenu() {
@@ -273,7 +286,7 @@ function registerSettingsMenu(ctx: finch.MiniToolContext): void {
         rows.push({
           id: 'clear',
           label: t(ctx, 'settings.clear'),
-          iconName: 'trash-2',
+          iconName: 'ext:remove-key',
           hoverText: t(ctx, 'settings.clear.hover'),
         } as never);
       }
@@ -454,6 +467,7 @@ If the tool reports no API key, call setup_deepseek_api first.`,
 
 export function activate(ctx: finch.MiniToolContext): void {
   ctx.logger.info('DeepSeek API extension activated');
+  registerIcons(ctx);
   registerSettingsMenu(ctx);
   registerSetupTool(ctx);
   registerApiTool(ctx);

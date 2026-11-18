@@ -62,6 +62,12 @@
     "contributes": {
       "tools": true,
       "skills": true,
+      "iconPacks": [
+        {
+          "id": "deepseek-api-icons",
+          "label": "DeepSeek API Icons"
+        }
+      ],
       "settingsMenu": {
         "icon": "settings",
         "tooltip": "Configure DeepSeek API"
