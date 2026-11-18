@@ -1,8 +1,8 @@
 {
-  "name": "DeepSeek API",
+  "name": "DeepSeek Search & OCR",
   "description": "One DeepSeek API key gives Finch web search, page reading as Markdown, and PDF/Office/image OCR.",
   "systemPrompt": "When the user needs web search with sources, a specific URL read as Markdown, or OCR of a PDF/Word/PowerPoint file or image, use the deepseek_api tool; if it reports that no API key is configured, call setup_deepseek_api to collect one securely.",
-  "toolMeta": { "name": "DeepSeek API" },
+  "toolMeta": { "name": "DeepSeek Search & OCR" },
   "promptGuides": {
     "setup-deepseek": {
       "title": "Set up DeepSeek API",

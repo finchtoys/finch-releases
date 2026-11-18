@@ -1,4 +1,4 @@
-# DeepSeek API
+# DeepSeek Search & OCR
 
 One DeepSeek API key gives Finch three capabilities:
 

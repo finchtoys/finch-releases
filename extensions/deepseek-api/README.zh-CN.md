@@ -1,4 +1,4 @@
-# DeepSeek API
+# DeepSeek 搜索与OCR
 
 一个 DeepSeek API Key，给 Finch 带来三种能力：
 

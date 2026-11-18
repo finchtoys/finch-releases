@@ -1,8 +1,8 @@
 {
-  "name": "DeepSeek API",
+  "name": "DeepSeek 搜索与OCR",
   "description": "一个 DeepSeek API Key，就能让 Finch 用上网页搜索、网页转 Markdown、以及 PDF/Office/图片 OCR。",
   "systemPrompt": "当用户需要带来源的网页搜索、把某个链接读成 Markdown、或对 PDF/Word/PPT/图片做 OCR 时，使用 deepseek_api 工具；如果它提示没有配置 API Key，先调用 setup_deepseek_api 安全收集。",
-  "toolMeta": { "name": "DeepSeek API" },
+  "toolMeta": { "name": "DeepSeek 搜索与OCR" },
   "promptGuides": {
     "setup-deepseek": {
       "title": "连接 DeepSeek API",
