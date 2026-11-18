@@ -49,7 +49,8 @@ Collects the key through a secure form and verifies it against the balance endpo
 Set by DeepSeek, not by this mini tool:
 
 - Search and Fetch are billed per 1,000 successful requests (¥5); failed requests and empty results are not billed.
-- OCR files are capped at 100 MiB and 1,000 pages, and must finish within 180 s. The tool declares a matching timeout, so a large document waits instead of failing early.
+- OCR is billed ¥1.5 per 1,000 successfully recognized pages (`page_count`); failed or timed-out recognitions are not billed. Disconnecting after the file is received does not cancel a recognition.
+- OCR files are capped at 100 MiB and 1,000 pages, and must finish within 180 s. Each account runs at most 15 recognitions concurrently (429 above that). The tool declares a matching timeout, so a large document waits instead of failing early.
 - OCR keeps the per-page `<ref>` / `<box>` coordinate markers in `rich_layout_recognition` output; a page whose `finish_reason` is `length` is reported as incomplete.
 
 ## Privacy
