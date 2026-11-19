@@ -36,7 +36,39 @@ let homePlanningEnabled = false;
 // 当 home 发出计划态消息后，下一个全新 session 应继承计划态。
 // getBadge 遇到首次出现的 sessionId 时消费此 flag。
 let pendingNewSessionPlan = false;
-const knownSessions = new Set<string>();
+
+let notifyBadge: (() => void) | undefined;
+
+/**
+ * 取某个 session 的计划态：内存 → storage → 全新 session 才继承 home 的一次性计划态。
+ * 「全新」的判据是 storage 里没这个 key，而不是「内存里没见过」——后者会让 reload
+ * 后所有 session 都被当成新的，把 pending 消费到错误的 session 上。
+ */
+async function resolveEnabled(
+  ctx: finch.ExtensionContext,
+  sessionId: string | undefined,
+): Promise<boolean> {
+  if (!sessionId) return false;
+  if (sessionState.has(sessionId)) return sessionState.get(sessionId) === true;
+
+  const stored = await ctx.storage.get<boolean>(storageKey(sessionId)).catch(() => undefined);
+  if (stored === true || stored === false) {
+    sessionState.set(sessionId, stored);
+    return stored;
+  }
+
+  const inherited = pendingNewSessionPlan;
+  sessionState.set(sessionId, inherited);
+  if (inherited) {
+    // 一次性计划态在这里落地：home 的高亮要一起灭，否则会留下
+    // 「home 显示计划开、session 却是关」的错觉。
+    pendingNewSessionPlan = false;
+    homePlanningEnabled = false;
+    void ctx.storage.set(storageKey(sessionId), true).catch(() => undefined);
+    queueMicrotask(() => notifyBadge?.());
+  }
+  return inherited;
+}
 
 // Composer 点击可能由嵌套元素重复派发；同一 surface 的短时间重复事件只处理一次。
 let lastClickKey: string | undefined;
@@ -69,17 +101,8 @@ export function activate(ctx: finch.ExtensionContext): void {
       if (surface === 'home') {
         return homePlanningEnabled ? { text: t('badge.active'), active: true } : undefined;
       }
-      // 首次见到这个 sessionId：如果 home 有未消费的计划态，继承给这个新 session
-      if (sessionId && !knownSessions.has(sessionId)) {
-        knownSessions.add(sessionId);
-        if (pendingNewSessionPlan) {
-          pendingNewSessionPlan = false;
-          setEnabled(sessionId, true);
-          void ctx.storage.set(storageKey(sessionId), true).catch(() => undefined);
-          queueMicrotask(() => action.notifyUpdate());
-        }
-      }
-      return isEnabled(sessionId) ? { text: t('badge.active'), active: true } : undefined;
+      // 首次见到这个 sessionId：从 storage 回读，或继承 home 的一次性计划态。
+      return (await resolveEnabled(ctx, sessionId)) ? { text: t('badge.active'), active: true } : undefined;
     },
 
     // ── Icon ──────────────────────────────────────────────────────────────
@@ -87,7 +110,7 @@ export function activate(ctx: finch.ExtensionContext): void {
       if (surface === 'home') {
         return homePlanningEnabled ? ACTIVE_ICON : INACTIVE_ICON;
       }
-      return isEnabled(sessionId) ? ACTIVE_ICON : INACTIVE_ICON;
+      return (await resolveEnabled(ctx, sessionId)) ? ACTIVE_ICON : INACTIVE_ICON;
     },
 
     // ── Click ─────────────────────────────────────────────────────────────
@@ -138,13 +161,13 @@ export function activate(ctx: finch.ExtensionContext): void {
         queueMicrotask(() => action.notifyUpdate());
         return REMINDER;
       }
-      return isEnabled(sessionId) ? REMINDER : undefined;
+      return (await resolveEnabled(ctx, sessionId)) ? REMINDER : undefined;
     },
 
     // ── onTurnEnd ─────────────────────────────────────────────────────────
     async onTurnEnd({ surface, sessionId }, actions) {
       ctx.logger.info('onTurnEnd', { surface, sessionId });
-      if (surface !== 'session' || !isEnabled(sessionId)) return;
+      if (surface !== 'session' || !(await resolveEnabled(ctx, sessionId))) return;
 
       const result = await actions.composer.confirm({
         text: t('confirm.text'),
@@ -162,6 +185,7 @@ export function activate(ctx: finch.ExtensionContext): void {
   });
 
   ctx.subscriptions.push(action);
+  notifyBadge = () => action.notifyUpdate();
   ctx.logger.info('plan-mode activated');
 }
 
