@@ -175,6 +175,11 @@
     "description": "为 Finch 对话开启计划模式，先拆解任务再执行。"
   },
   {
+    "id": "quedou",
+    "name": "雀斗",
+    "description": "在 Finch 侧边栏与两位可独立配置的 AI 对手玩三人斗地主，支持托管和保存牌局。"
+  },
+  {
     "id": "shell",
     "name": "终端",
     "description": "在 Finch 中打开真正的交互式终端，默认从当前工作区启动，支持全屏程序、彩色输出与窗口尺寸同步。"

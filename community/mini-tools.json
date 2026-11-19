@@ -488,6 +488,19 @@
     "featured": true
   },
   {
+    "id": "quedou",
+    "version": "0.2.0",
+    "name": "QueDou",
+    "author": "JoeHe",
+    "description": "Play three-player Dou Dizhu in Finch's sidebar against two independently configurable AI opponents, with auto-play and saved hands.",
+    "repo": "joehe71/QueDou",
+    "npm": "@joehe71/finch-quedou",
+    "extensionType": "community",
+    "categories": [
+      "creative"
+    ]
+  },
+  {
     "id": "shell",
     "version": "0.2.0",
     "name": "Shell",
