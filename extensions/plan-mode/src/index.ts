@@ -40,13 +40,33 @@ let pendingNewSessionPlan = false;
 let notifyBadge: (() => void) | undefined;
 
 /**
+ * `confirmAndSend` / `isNewSession` 是较新主程序才有的能力，对应的 SDK 版本尚未
+ * 发布。这里用结构类型探测而不是直接依赖新字段，否则按 package.json 装旧 SDK
+ * 的人 `npm ci` 后编译不过，旧版 Finch 上也会因为字段不存在而报错。
+ */
+type ConfirmAndSendResult = {
+  choice: 'confirm' | 'cancel' | 'dismissed';
+  sent: boolean;
+  reason?: string;
+};
+type ConfirmAndSendCapable = {
+  confirmAndSend?: (options: Record<string, unknown>) => Promise<ConfirmAndSendResult>;
+};
+
+/** 旧版主程序不会传这个字段，统一从结构类型里取。 */
+function isNewSessionOf(ctxArg: unknown): boolean | undefined {
+  return (ctxArg as { isNewSession?: boolean } | undefined)?.isNewSession;
+}
+
+/**
  * 取某个 session 的计划态：内存 → storage → 全新 session 才继承 home 的一次性计划态。
  * 「全新」的判据是 storage 里没这个 key，而不是「内存里没见过」——后者会让 reload
  * 后所有 session 都被当成新的，把 pending 消费到错误的 session 上。
  */
 async function resolveEnabled(
-  ctx: finch.ExtensionContext,
+  ctx: finch.MiniToolContext,
   sessionId: string | undefined,
+  isNewSession?: boolean,
 ): Promise<boolean> {
   if (!sessionId) return false;
   if (sessionState.has(sessionId)) return sessionState.get(sessionId) === true;
@@ -57,6 +77,15 @@ async function resolveEnabled(
     return stored;
   }
 
+  if (isNewSession === false) {
+    // 已存在的会话（恢复 / 续跑 / 切回）且没有计划态记录：就是关。
+    // 故意不写缓存——乐观 id 可能先以 isNewSession:false 被查一次，
+    // 真正绑定后还要再判一遍，缓存会把交接机会吃掉。
+    return false;
+  }
+
+  // isNewSession === true：主程序明确告诉我们会话刚建出来；
+  // undefined 是旧版主程序，没这个字段，只能按「storage 里没这个 key」猜。
   const inherited = pendingNewSessionPlan;
   sessionState.set(sessionId, inherited);
   if (inherited) {
@@ -85,7 +114,7 @@ function isDuplicateClick(surface: string, sessionId: string | undefined): boole
 }
 
 // ── Activation ────────────────────────────────────────────────────────────────
-export function activate(ctx: finch.ExtensionContext): void {
+export function activate(ctx: finch.MiniToolContext): void {
   // 拉取助手名称，缓存在内存里，fallback 到 'Finch'
   let assistantName = 'Finch';
   void ctx.app.getInfo().then((info) => { assistantName = info.assistantName; }).catch(() => undefined);
@@ -96,21 +125,25 @@ export function activate(ctx: finch.ExtensionContext): void {
   const action = ctx.composerActions.register('plan-mode', {
 
     // ── Badge ─────────────────────────────────────────────────────────────
-    async getBadge({ surface, sessionId, cwd }) {
-      ctx.logger.info('getBadge', { surface, sessionId, cwd });
+    async getBadge(ctxArg) {
+      const { surface, sessionId, cwd } = ctxArg;
+      const isNewSession = isNewSessionOf(ctxArg);
+      ctx.logger.info('getBadge', { surface, sessionId, cwd, isNewSession });
       if (surface === 'home') {
         return homePlanningEnabled ? { text: t('badge.active'), active: true } : undefined;
       }
-      // 首次见到这个 sessionId：从 storage 回读，或继承 home 的一次性计划态。
-      return (await resolveEnabled(ctx, sessionId)) ? { text: t('badge.active'), active: true } : undefined;
+      // 从 storage 回读；新会话由 isNewSession 决定要不要继承 home 的一次性计划态。
+      return (await resolveEnabled(ctx, sessionId, isNewSession)) ? { text: t('badge.active'), active: true } : undefined;
     },
 
     // ── Icon ──────────────────────────────────────────────────────────────
-    async getIcon({ surface, sessionId }) {
+    async getIcon(ctxArg) {
+      const { surface, sessionId } = ctxArg;
+      const isNewSession = isNewSessionOf(ctxArg);
       if (surface === 'home') {
         return homePlanningEnabled ? ACTIVE_ICON : INACTIVE_ICON;
       }
-      return (await resolveEnabled(ctx, sessionId)) ? ACTIVE_ICON : INACTIVE_ICON;
+      return (await resolveEnabled(ctx, sessionId, isNewSession)) ? ACTIVE_ICON : INACTIVE_ICON;
     },
 
     // ── Click ─────────────────────────────────────────────────────────────
@@ -153,7 +186,9 @@ export function activate(ctx: finch.ExtensionContext): void {
     },
 
     // ── Reminder ──────────────────────────────────────────────────────────
-    async getReminder({ surface, sessionId }) {
+    async getReminder(ctxArg) {
+      const { surface, sessionId } = ctxArg;
+      const isNewSession = isNewSessionOf(ctxArg);
       if (surface === 'home') {
         if (!homePlanningEnabled) return undefined;
         homePlanningEnabled = false;
@@ -161,7 +196,7 @@ export function activate(ctx: finch.ExtensionContext): void {
         queueMicrotask(() => action.notifyUpdate());
         return REMINDER;
       }
-      return (await resolveEnabled(ctx, sessionId)) ? REMINDER : undefined;
+      return (await resolveEnabled(ctx, sessionId, isNewSession)) ? REMINDER : undefined;
     },
 
     // ── onTurnEnd ─────────────────────────────────────────────────────────
@@ -169,16 +204,40 @@ export function activate(ctx: finch.ExtensionContext): void {
       ctx.logger.info('onTurnEnd', { surface, sessionId });
       if (surface !== 'session' || !(await resolveEnabled(ctx, sessionId))) return;
 
-      const result = await actions.composer.confirm({
-        text: t('confirm.text'),
-        confirmLabel: t('confirm.label'),
-        cancelLabel: t('confirm.cancel'),
-      });
-
-      if (result === 'confirm') {
+      const turnOff = () => {
         setEnabled(sessionId!, false);
         action.notifyUpdate();
         void ctx.storage.set(storageKey(sessionId!), false).catch(() => undefined);
+      };
+
+      const options = {
+        text: t('confirm.text'),
+        confirmLabel: t('confirm.label'),
+        cancelLabel: t('confirm.cancel'),
+      };
+
+      // 新版主程序：点「执行」直接开跑，不经过输入框、也不清用户已打的草稿。
+      const composer = actions.composer as unknown as ConfirmAndSendCapable;
+      const send = composer.confirmAndSend;
+      if (typeof send === 'function') {
+        const r = await send.call(composer, { ...options, submitText: t('execute.prompt') });
+        if (r.sent) {
+          turnOff();
+          return;
+        }
+        if (r.choice !== 'confirm') return; // 取消或收起：保持计划模式
+        // 用户想执行但宿主拒了（无模型 / 输入被交互卡占用 / 会话不在屏 / 文案非法）。
+        // 主程序已经弹过原因，这里退回旧行为：关掉计划模式并把文案填进输入框。
+        ctx.logger.warn('plan-mode auto send refused, falling back to fill', { reason: r.reason });
+        turnOff();
+        await actions.composer.fill(t('execute.prompt'));
+        return;
+      }
+
+      // 旧版主程序没有 confirmAndSend，只能填进输入框让用户自己按发送。
+      const result = await actions.composer.confirm(options);
+      if (result === 'confirm') {
+        turnOff();
         await actions.composer.fill(t('execute.prompt'));
       }
     },
