@@ -79,11 +79,14 @@ finch-releases/
 
 ### 分类体系
 
+分类的**唯一数据源是 `community/categories.json`**（客户端按它渲染分类 pill 与多语言标签），`validate.py` 也从那里读白名单，不要再在脚本或本文档里各自硬编码一份。
+
 | id | 含义 | 适用场景 |
 |---|---|---|
 | `productivity` | 效率 | 办公文档、日常事务 |
 | `developer` | 开发 | 编码、扩展开发、API 集成 |
 | `creative` | 创意 | 设计、主题、内容创作 |
+| `games` | 游戏 | 棋牌、休闲小游戏等娱乐类扩展 |
 | `research` | 研究 | 数据分析、信息提取、搜索 |
 | `finance` | 金融 | 财务、记账、报表、投资 |
 | `commerce` | 电商 | 在线商店、商品管理、订单处理 |

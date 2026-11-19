@@ -7,11 +7,35 @@ import re
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 community_dir = os.path.join(repo_root, "community")
 
-VALID_CATEGORIES = {"productivity", "developer", "creative", "research", "finance", "commerce", "education"}
+_FALLBACK_CATEGORIES = {"productivity", "developer", "creative", "research", "finance", "commerce", "education"}
 
 errors = []
 warnings = []
 passes = []
+
+
+def load_categories():
+    """分类以 community/categories.json 为准 —— 客户端就是按它渲染分类的。
+    脚本里再硬编码一份必然漂移（加 games 时就出现过：注册表合法、校验报错）。"""
+    path = os.path.join(community_dir, "categories.json")
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError) as exc:
+        warnings.append(f"categories.json: 读取失败（{exc}），退回内置分类列表")
+        return [], set(_FALLBACK_CATEGORIES)
+    entries = data.get("categories", []) if isinstance(data, dict) else data
+    if not isinstance(entries, list):
+        warnings.append("categories.json: categories 不是数组，退回内置分类列表")
+        return [], set(_FALLBACK_CATEGORIES)
+    ids = {c.get("id") for c in entries if isinstance(c, dict) and c.get("id")}
+    if not ids:
+        warnings.append("categories.json: 没有可用分类，退回内置分类列表")
+        return [], set(_FALLBACK_CATEGORIES)
+    return entries, ids
+
+
+category_entries, VALID_CATEGORIES = load_categories()
 
 def validate_json_file(filepath, schema_type):
     """Validate a JSON file."""
@@ -143,7 +167,24 @@ if skill_data:
     check_categories(skill_data, "skills.json")
     check_alphabetical_order(skill_data, "skills.json")
 
-# 3. Validate zh-CN files
+# 3. Validate categories.json（分类的唯一数据源）
+if category_entries:
+    seen = set()
+    for entry in category_entries:
+        cid = entry.get("id", "?") if isinstance(entry, dict) else "?"
+        if cid in seen:
+            errors.append(f"categories.json: 分类 id 重复: {cid}")
+        seen.add(cid)
+        labels = (entry.get("labels") or {}) if isinstance(entry, dict) else {}
+        missing = [loc for loc in ("en-US", "zh-CN") if not labels.get(loc)]
+        if missing:
+            warnings.append(f"categories.json: 分类 `{cid}` 缺少标签: {', '.join(missing)}")
+    if seen:
+        passes.append(f"categories.json: {len(seen)} 个分类，条目字段完整")
+else:
+    errors.append("categories.json: 无法校验（文件缺失或解析失败）")
+
+# 4. Validate zh-CN files
 ext_zh_data = validate_json_file(os.path.join(community_dir, "mini-tools.zh-CN.json"), "mini-tool zh-CN")
 skill_zh_data = validate_json_file(os.path.join(community_dir, "skills.zh-CN.json"), "skill zh-CN")
 
