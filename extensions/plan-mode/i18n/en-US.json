@@ -12,7 +12,7 @@
   "badge.active": "Plan",
 
   "toast.enter.title": "{assistantName} will plan first",
-  "toast.enter.desc": "Plan the task first, then confirm to execute after each reply.",
+  "toast.enter.desc": "I will investigate read-only first, then propose a plan and the points you need to decide. Nothing runs until you confirm.",
   "toast.exit.title": "{assistantName} will execute tasks directly",
 
   "toast.home.enter.desc": "Next message will be sent in planning mode and auto-closes after sending.",

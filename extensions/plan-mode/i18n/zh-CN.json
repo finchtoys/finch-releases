@@ -12,7 +12,7 @@
   "badge.active": "计划优先",
 
   "toast.enter.title": "{assistantName}先计划再行动",
-  "toast.enter.desc": "我会先计划任务，再确认是否执行",
+  "toast.enter.desc": "我会先只读调查代码，再给出方案和要你拍板的点，确认后才执行",
   "toast.exit.title": "{assistantName}会直接执行任务",
 
   "toast.home.enter.desc": "首页下一条消息将以计划模式发送，发送后自动关闭",

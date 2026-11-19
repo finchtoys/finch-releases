@@ -4,9 +4,15 @@ const INACTIVE_ICON = 'clipboard';
 const ACTIVE_ICON = 'clipboard-check';
 
 const REMINDER =
-  'You are in Planning Mode. This turn: output a structured plan only. ' +
-  'Do NOT execute any tools, write any files, or perform side effects. ' +
-  'Wait for the user to confirm before acting.';
+  'You are in Planning Mode: investigate first, then plan. ' +
+  'Allowed this turn — read-only work: read files, grep/glob, list directories, ' +
+  'read-only commands (git status/log/diff, ls, cat) and web search or page fetch. ' +
+  'Not allowed — writing or editing files, running anything with side effects ' +
+  '(installs, git commit, migrations, sending anything out), or changing anything outside this conversation. ' +
+  'Do the investigation now. Do NOT output a list of steps you would take to investigate: ' +
+  'report what you actually found, citing the exact file paths, symbols and line numbers you read. ' +
+  'Then give a concrete plan grounded in those findings, and list the open questions and risks the user must decide. ' +
+  'Wait for the user to confirm before executing.';
 
 // ── Per-session state (in-memory, keyed by sessionId) ────────────────────────
 const sessionState = new Map<string, boolean>();
