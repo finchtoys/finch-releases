@@ -87,13 +87,17 @@ The category list lives in [`categories.json`](categories.json) next to the cata
 {
   "schemaVersion": 1,
   "categories": [
-    { "id": "games", "labels": { "en-US": "Games", "zh-CN": "游戏", "zh-HK": "遊戲" } }
+    { "id": "games", "labels": { "en-US": "Games", "zh-CN": "游戏", "zh-HK": "遊戲" }, "icon": "Gamepad2" }
   ]
 }
 ```
 
 - Array order is display order — the app does not sort.
 - `labels` is optional per category. Supported keys today are `en-US`, `zh-CN`, and `zh-HK`; a client that has no label for the active language falls back to `zh-CN` (for zh-HK), then to `default`/`en-US`, then to the raw id. Categories that shipped with the app also fall back to built-in translations.
+- `icon` (optional) is a Lucide icon name the app resolves from its built-in whitelist. Common ids
+  (`games`, `audio`, `video`, `automation`, …) already have sensible default icons; `icon` is for when
+  a new category wants a different look without an app release. Unknown names fall back to the per-id
+  default and then to a neutral tag icon — the category itself is never dropped over an icon.
 - Ids must match `^[a-z0-9][a-z0-9-]{0,31}$`; duplicates are ignored after the first.
 - A category with no listed items simply shows no filter chip, so declaring one ahead of time is safe.
 
