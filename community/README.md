@@ -29,7 +29,7 @@ Each entry in `extensions.json` is an object with these fields:
 | `npm` | string | — | npm package name — enables `npx @finchtoys/minitools add <npm>` one-click install |
 | `extensionType` | `"official"` \| `"community"` | — | Defaults to `"community"` |
 | `featured` | boolean | — | When `true`, the item appears under Featured. Defaults to `false`. |
-| `categories` | string[] | — | Used for category filters in the Finch marketplace. Use the fixed category ids below. |
+| `categories` | string[] | — | Used for category filters in the Finch marketplace. Use a category id from `categories.json` (see [Categories](#categories)). |
 
 ### Example
 
@@ -81,17 +81,34 @@ Each entry in `extensions.json` is an object with these fields:
 
 ## Categories
 
-Finch only shows a fixed set of category filters in the app. Use these ids in `categories`:
+The category list lives in [`categories.json`](categories.json) next to the catalogs — it is **the** source of truth for which filters exist, their display order, and their labels for every language. Adding or renaming a category is a registry change; app versions pick it up without a new release.
 
-| id | zh-CN | en-US | Scope |
-|---|---|---|---|
-| `productivity` | 效率 | Productivity | 办公文档、日常效率 |
-| `developer` | 开发 | Developer | 编码、扩展开发、API |
-| `creative` | 创意 | Creative | 设计、主题、内容创作 |
-| `research` | 研究 | Research | 数据分析、信息提取 |
-| `finance` | 财务 | Finance | 财务、记账、报表 |
-| `commerce` | 电商 | Commerce | 电商、商品、订单 |
-| `education` | 教育 | Education | 学习、课件、教学辅导 |
+```json
+{
+  "schemaVersion": 1,
+  "categories": [
+    { "id": "games", "labels": { "en-US": "Games", "zh-CN": "游戏", "zh-HK": "遊戲" } }
+  ]
+}
+```
+
+- Array order is display order — the app does not sort.
+- `labels` is optional per category. Supported keys today are `en-US`, `zh-CN`, and `zh-HK`; a client that has no label for the active language falls back to `zh-CN` (for zh-HK), then to `default`/`en-US`, then to the raw id. Categories that shipped with the app also fall back to built-in translations.
+- Ids must match `^[a-z0-9][a-z0-9-]{0,31}$`; duplicates are ignored after the first.
+- A category with no listed items simply shows no filter chip, so declaring one ahead of time is safe.
+
+Current ids (as of this commit):
+
+| id | zh-CN | zh-HK | en-US | Scope |
+|---|---|---|---|---|
+| `productivity` | 效率 | 效率 | Productivity | 办公文档、日常效率 |
+| `developer` | 开发 | 開發 | Developer | 编码、扩展开发、API |
+| `creative` | 创意 | 創意 | Creative | 设计、主题、内容创作 |
+| `games` | 游戏 | 遊戲 | Games | 游戏、娱乐 |
+| `research` | 研究 | 研究 | Research | 数据分析、信息提取 |
+| `finance` | 财务 | 財務 | Finance | 财务、记账、报表 |
+| `commerce` | 电商 | 電商 | Commerce | 电商、商品、订单 |
+| `education` | 教育 | 教育 | Education | 学习、课件、教学辅导 |
 
 ## Locale overrides
 

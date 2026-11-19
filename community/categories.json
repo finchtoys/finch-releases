@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "categories": [
+    {
+      "id": "productivity",
+      "labels": { "en-US": "Productivity", "zh-CN": "效率", "zh-HK": "效率" }
+    },
+    {
+      "id": "developer",
+      "labels": { "en-US": "Developer", "zh-CN": "开发", "zh-HK": "開發" }
+    },
+    {
+      "id": "creative",
+      "labels": { "en-US": "Creative", "zh-CN": "创意", "zh-HK": "創意" }
+    },
+    {
+      "id": "games",
+      "labels": { "en-US": "Games", "zh-CN": "游戏", "zh-HK": "遊戲" }
+    },
+    {
+      "id": "research",
+      "labels": { "en-US": "Research", "zh-CN": "研究", "zh-HK": "研究" }
+    },
+    {
+      "id": "finance",
+      "labels": { "en-US": "Finance", "zh-CN": "财务", "zh-HK": "財務" }
+    },
+    {
+      "id": "commerce",
+      "labels": { "en-US": "Commerce", "zh-CN": "电商", "zh-HK": "電商" }
+    },
+    {
+      "id": "education",
+      "labels": { "en-US": "Education", "zh-CN": "教育", "zh-HK": "教育" }
+    }
+  ]
+}

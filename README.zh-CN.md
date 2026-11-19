@@ -95,7 +95,7 @@ npm i vue @finchtoys/ui @finchtoys/ui-vue         # Vue 3
 
 Finch 团队会审核申请，并代你写入 `mini-tools.json` / `mini-tools.zh-CN.json`。
 
-可用分类：`productivity`（效率）、`developer`（开发）、`creative`（创意）、`research`（研究）、`finance`（金融）、`commerce`（电商）、`education`（教育）。
+可用分类随索引一起发布在 [`community/categories.json`](community/categories.json)：这个文件定义有哪些分类、显示顺序，以及每种语言的标签，从里面挑一个 id 即可。如果都不合适，在 issue 里说明——加分类是改索引，不需要发客户端版本。
 
 ## 社区小工具如何被拉取
 
@@ -105,13 +105,16 @@ Finch 不会把每个社区扩展都打进安装包，而是在运行时拉取�
 finchtoys/finch-releases
   └── community/mini-tools.json
   └── community/mini-tools.zh-CN.json
+  └── community/categories.json
             ↓
 Finch Toolbox
 ```
 
 - `mini-tools.json` 是英文源索引，包含完整的扩展元数据。
 - `mini-tools.zh-CN.json` 按 `id` 提供中文 `name` 与 `description` 覆盖。
+- `categories.json` 声明分类清单与多语言标签，分类变动不必等新客户端版本。
 - 没有对应中文覆盖时，Finch 回退到英文元数据。
+- 两个目录索引保持裸数组、分类元数据单独成文件，所以 `categories.json` 之前发布的客户端仍能照常解析。
 - 索引更新通过 `community.finchwork.app` 发布，由于边缘缓存，最长约一小时后生效。
 - 在 Finch 里选择某个扩展后，安装会走它已发布的 npm 包或公开源码。
 

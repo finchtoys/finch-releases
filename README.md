@@ -99,7 +99,7 @@ Want to make your extension discoverable in Finch? Publish it, then request a li
 
 The Finch team will review the request and add the entry to `mini-tools.json` / `mini-tools.zh-CN.json` on your behalf.
 
-Available categories: `productivity`, `developer`, `creative`, `research`, `finance`, `commerce`, and `education`.
+Available categories are published with the registry in [`community/categories.json`](community/categories.json): that file defines which categories exist, the order they appear in, and their labels for every supported language. Pick an id from it. If none of them fits your extension, say so in the issue — a category is a registry change, not an app release.
 
 ## How community mini tools are pulled
 
@@ -109,13 +109,16 @@ Finch does not bundle every community extension into the app. Instead, it pulls 
 finchtoys/finch-releases
   └── community/mini-tools.json
   └── community/mini-tools.zh-CN.json
+  └── community/categories.json
             ↓
 Finch Toolbox
 ```
 
 - `mini-tools.json` is the English source registry and contains complete extension metadata.
 - `mini-tools.zh-CN.json` provides Chinese `name` and `description` overrides matched by `id`.
+- `categories.json` declares the category list and its multilingual labels, so categories can change without shipping a new app version.
 - When an override is unavailable, Finch falls back to the English metadata.
+- Both catalogs stay plain arrays and category metadata lives in its own file, so app versions released before `categories.json` existed keep parsing them unchanged.
 - Registry updates are published through `community.finchwork.app`; they can take up to about one hour to appear because of edge caching.
 - Selecting an extension in Finch directs installation through its published npm package or public source.
 
