@@ -1,9 +1,9 @@
 ---
-name: deepseek-api
+name: deepseek-search
 description: Use this skill when the user needs web search with ranked sources, a specific URL read as Markdown, or text extracted from a PDF, Word, PowerPoint, or image file (OCR). Trigger for requests like "搜一下最新的 X", "读一下这个链接", "把这个 PDF/截图里的文字取出来", or when the deepseek_api tool reports that no API key is configured.
 ---
 
-# DeepSeek API
+# DeepSeek Search & OCR
 
 `deepseek_api` wraps three DeepSeek tool APIs behind one key: `search`, `fetch`, `ocr`, plus `status`. Use it instead of a generic web search when the user wants ranked sources with summaries, needs one specific page read in full, or needs text out of a document or image.
 

@@ -35,7 +35,7 @@
     "description": "把任务委派给其他 Finch Space 中由小工具管理的 Agent Session，执行结果自动返回来源会话。"
   },
   {
-    "id": "deepseek-api",
+    "id": "deepseek-search",
     "name": "DeepSeek 搜索与OCR",
     "description": "一个 DeepSeek API Key，就能让 Finch 用上网页搜索、网页转 Markdown、以及 PDF/Office/图片 OCR。"
   },

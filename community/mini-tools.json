@@ -95,13 +95,13 @@
     ]
   },
   {
-    "id": "deepseek-api",
+    "id": "deepseek-search",
     "version": "0.1.0",
     "name": "DeepSeek Search & OCR",
     "author": "Finch Team",
     "description": "One DeepSeek API key gives Finch web search, page reading as Markdown, and PDF/Office/image OCR.",
     "repo": "finchtoys/finch-releases",
-    "npm": "finch-deepseek-api",
+    "npm": "finch-deepseek-search",
     "extensionType": "official",
     "categories": [
       "research",

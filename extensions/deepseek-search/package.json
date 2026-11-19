@@ -1,5 +1,5 @@
 {
-  "name": "finch-deepseek-api",
+  "name": "finch-deepseek-search",
   "version": "0.1.0",
   "description": "DeepSeek tool APIs for Finch: web search, page reading, and document/image OCR from a single API key.",
   "author": {
@@ -10,7 +10,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/finchtoys/finch-releases.git",
-    "directory": "extensions/deepseek-api"
+    "directory": "extensions/deepseek-search"
   },
   "license": "MIT",
   "type": "module",
@@ -21,7 +21,7 @@
   "finch": {
     "manifestVersion": 1,
     "minVersion": "1.6.1",
-    "id": "deepseek-api",
+    "id": "deepseek-search",
     "name": "DeepSeek Search & OCR",
     "description": "One DeepSeek API key gives Finch web search, page reading as Markdown, and PDF/Office/image OCR.",
     "toolMeta": {
@@ -64,8 +64,8 @@
       "skills": true,
       "iconPacks": [
         {
-          "id": "deepseek-api-icons",
-          "label": "DeepSeek API Icons"
+          "id": "deepseek-search-icons",
+          "label": "DeepSeek Icons"
         }
       ],
       "settingsMenu": {
