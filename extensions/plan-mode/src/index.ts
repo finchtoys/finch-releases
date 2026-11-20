@@ -12,8 +12,9 @@ const REMINDER =
   'Do the investigation now and ground the plan in what you actually found: cite the exact ' +
   'file paths, symbols and line numbers you read. Do NOT output a list of steps you would ' +
   'take to investigate. ' +
-  'When the plan is complete, call the finish_plan tool, then end your turn. ' +
-  'The confirmation appears after your reply ends, and the user\'s choice starts a new turn. ' +
+  'When the plan is complete, simply end your reply. ' +
+  'A "Continue Planning / Execute" bar appears above the composer once the reply ends, ' +
+  'and that choice starts a new turn. ' +
   'Do not ask "shall I proceed?" in plain text, and never start executing on your own.';
 
 // ── Per-session state (in-memory, keyed by sessionId) ────────────────────────
@@ -40,10 +41,6 @@ let homePlanningEnabled = false;
 let pendingNewSessionPlan = false;
 
 let notifyBadge: (() => void) | undefined;
-
-// finish_plan 记下的「计划就绪」会话→一句话摘要。onTurnEnd 只在被记下的
-// 轮次弹确认条，避免每一轮计划后都弹。
-const planReadyThisTurn = new Map<string, string>();
 
 /**
  * `confirmAndSend` / `isNewSession` 是较新主程序才有的能力，对应的 SDK 版本尚未
@@ -123,63 +120,6 @@ function isDuplicateClick(surface: string, sessionId: string | undefined): boole
   return duplicate;
 }
 
-// ── finish_plan tool ──────────────────────────────────────────────────────
-/**
- * 模型自己判断「计划写完了」，调这个工具请用户确认。
- *
- * 为什么不用 onTurnEnd 当主路径：那个事件只在同一 sessionId 内 runStatus 从
- * running|waiting 跳到 done|error 时才发，本轮结束时如果还卡在权限/提问卡上、
- * 或视图挂载时回复已经跑完，就一次都不会弹；反过来它又会在每一轮计划后都弹，
- * 包括模型只是反问了一句澄清的轮次。用工具把「计划就绪」这个意图显式化。
- *
- * 确认面不在工具里弹：工具里等确认会把本轮挂住（回复一直是 running，用户也没法
- * 接着输入）。工具只把「计划就绪」记下来并让模型收尾，本轮结束后由 onTurnEnd 弹
- * composer 上那条轻的内联确认；用户点「执行」直接发出下一轮，不需要再补草稿。
- */
-function registerFinishPlanTool(
-  ctx: finch.MiniToolContext,
-  t: (key: string, extra?: Record<string, string>) => string,
-): void {
-  ctx.subscriptions.push(
-    ctx.tools.register({
-      name: 'finish_plan',
-      title: t('tool.finishPlan.title'),
-      description: t('tool.finishPlan.description'),
-      inputSchema: {
-        type: 'object',
-        properties: {
-          summary: {
-            type: 'string',
-            description: t('tool.finishPlan.summaryHint'),
-          },
-        },
-      },
-      risk: 'low',
-      exposure: 'startup',
-      defaultEnabled: true,
-      async execute(input, toolCtx) {
-        const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
-        const sessionId = toolCtx.sessionId;
-
-        if (!isEnabled(sessionId)) {
-          return text(t('tool.finishPlan.notActive'));
-        }
-        if (planReadyThisTurn.has(sessionId)) {
-          return text(t('tool.finishPlan.alreadyAsked'));
-        }
-
-        const raw = (input as { summary?: unknown })?.summary;
-        const summary = typeof raw === 'string' ? raw.trim() : '';
-        planReadyThisTurn.set(sessionId, summary);
-        ctx.logger.info('plan ready', { sessionId, summary });
-
-        // 不当场弹任何确认：那会把本轮挂住。只记意图，由本轮结束时的 onTurnEnd 弹。
-        return text(t('tool.finishPlan.willAsk'));
-      },
-    }),
-  );
-}
-
 // ── Activation ────────────────────────────────────────────────────────────────
 export function activate(ctx: finch.MiniToolContext): void {
   // 拉取助手名称，缓存在内存里，fallback 到 'Finch'
@@ -188,8 +128,6 @@ export function activate(ctx: finch.MiniToolContext): void {
 
   const t = (key: string, extra?: Record<string, string>) =>
     ctx.i18n.t(key, { assistantName, ...extra });
-
-  registerFinishPlanTool(ctx, t);
 
   const action = ctx.composerActions.register('plan-mode', {
 
@@ -258,8 +196,6 @@ export function activate(ctx: finch.MiniToolContext): void {
     async getReminder(ctxArg) {
       const { surface, sessionId } = ctxArg;
       const isNewSession = isNewSessionOf(ctxArg);
-      // 新一轮开始：清掉本轮标记，允许这一轮再记一次。
-      if (sessionId) planReadyThisTurn.delete(sessionId);
       // 有会话就只看会话态，不按 surface 分叉：首页发出的第一条消息 surface 是
       // 'home'，而那一刻首页的一次性标记可能已经被新会话的 badge 拉取消费掉了，
       // 按 surface 分叉会把首条消息的提醒整条丢掉。
@@ -287,10 +223,7 @@ export function activate(ctx: finch.MiniToolContext): void {
     async onTurnEnd({ surface, sessionId }, actions) {
       ctx.logger.info('onTurnEnd', { surface, sessionId });
       if (surface !== 'session' || !(await resolveEnabled(ctx, sessionId))) return;
-      // 只有模型自己调过 finish_plan 的轮次才弹：避免每一轮计划后都弹一遍。
       if (!sessionId) return;
-      const summary = planReadyThisTurn.get(sessionId);
-      if (summary === undefined) return;
 
       const turnOff = () => {
         setEnabled(sessionId!, false);
@@ -299,7 +232,7 @@ export function activate(ctx: finch.MiniToolContext): void {
       };
 
       const options = {
-        text: summary ? `${t('confirm.text')}\n${summary}` : t('confirm.text'),
+        text: t('confirm.text'),
         confirmLabel: t('confirm.label'),
         cancelLabel: t('confirm.cancel'),
       };

@@ -2,33 +2,20 @@
   "name": "计划",
   "description": "为 Finch 的对话功能提供计划模式",
   "systemPrompt": "当用户需要先计划、拆解方案、暂不执行时，可使用计划模式扩展。",
-
   "composerActions": {
     "plan-mode": {
       "tooltip": "执行前，先计划"
     }
   },
-
   "badge.active": "计划优先",
-
   "toast.enter.title": "{assistantName}先计划再行动",
   "toast.enter.desc": "我会先只读调查代码，再给出方案和要你拍板的点，确认后才执行",
   "toast.exit.title": "{assistantName}会直接执行任务",
-
   "toast.home.enter.desc": "首页下一条消息将以计划模式发送，发送后自动关闭",
   "toast.home.exit.title": "{assistantName}会直接执行任务",
   "toast.home.exit.desc": "已取消计划模式。",
-
   "confirm.text": "继续计划，还是开始执行？",
   "confirm.label": "执行",
   "confirm.cancel": "继续计划",
-
-  "tool.finishPlan.title": "完成计划",
-  "tool.finishPlan.description": "计划写完、需要用户批准后才能动手时调用本工具，然后结束本轮。确认条会在本轮回复结束后出现在输入框上方：用户点「执行」会直接发出下一轮开始执行，点「继续计划」则继续完善。仅在本会话开启了计划模式时有效；未开启时不要调用。",
-  "tool.finishPlan.summaryHint": "一两行说清接下来要做什么，会显示在确认条上。",
-  "tool.finishPlan.notActive": "本会话没有开启计划模式，没有需要批准的计划。正常回答用户即可。",
-  "tool.finishPlan.alreadyAsked": "本轮已经记过一次计划就绪了。现在结束本轮输出，不要重复调用。",
-  "tool.finishPlan.willAsk": "已记下计划就绪。本轮回复结束后会出现「继续计划 / 执行」确认条，用户的选择会开启新一轮。请现在结束本轮输出，不要自行开始执行。",
-
   "execute.prompt": "方案已确认，请按上面的计划开始执行"
 }

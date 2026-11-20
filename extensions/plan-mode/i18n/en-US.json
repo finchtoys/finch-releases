@@ -2,33 +2,20 @@
   "name": "plan",
   "description": "Planning mode for Finch conversations.",
   "systemPrompt": "When the user wants to plan before acting, or break down a task before execution, suggest using Plan Mode.",
-
   "composerActions": {
     "plan-mode": {
       "tooltip": "Plan before acting"
     }
   },
-
   "badge.active": "Plan",
-
   "toast.enter.title": "{assistantName} will plan first",
   "toast.enter.desc": "I will investigate read-only first, then propose a plan and the points you need to decide. Nothing runs until you confirm.",
   "toast.exit.title": "{assistantName} will execute tasks directly",
-
   "toast.home.enter.desc": "Next message will be sent in planning mode and auto-closes after sending.",
   "toast.home.exit.title": "{assistantName} will execute tasks directly",
   "toast.home.exit.desc": "Planning mode cancelled.",
-
   "confirm.text": "Continue planning, or start executing?",
   "confirm.label": "Execute",
   "confirm.cancel": "Continue Planning",
-
-  "tool.finishPlan.title": "Finish plan",
-  "tool.finishPlan.description": "Call this when the plan is complete and you need the user's approval before acting, then end your turn. The confirmation bar appears above the composer once this reply ends: \"Execute\" starts a new turn that carries the plan out, \"Continue Planning\" means keep refining. Only valid while Plan Mode is on for this session — do not call it otherwise.",
-  "tool.finishPlan.summaryHint": "One or two lines saying what will be done next; shown on the confirmation bar.",
-  "tool.finishPlan.notActive": "Plan Mode is not on for this session, so there is no plan to approve. Just answer the user normally.",
-  "tool.finishPlan.alreadyAsked": "You already recorded the plan as ready this turn. End your reply now instead of calling this again.",
-  "tool.finishPlan.willAsk": "Plan-ready noted. The \"Continue Planning / Execute\" bar will appear once this reply ends, and the user's choice starts a new turn. Finish your reply now; do not start executing on your own.",
-
   "execute.prompt": "Plan confirmed, please start executing according to the plan above."
 }
