@@ -73,6 +73,7 @@ async function resolveEnabled(
   ctx: finch.MiniToolContext,
   sessionId: string | undefined,
   isNewSession?: boolean,
+  surface?: string,
 ): Promise<boolean> {
   if (!sessionId) return false;
   if (sessionState.has(sessionId)) return sessionState.get(sessionId) === true;
@@ -90,8 +91,11 @@ async function resolveEnabled(
     return false;
   }
 
-  // isNewSession === true：主程序明确告诉我们会话刚建出来；
-  // undefined 是旧版主程序，没这个字段，只能按「storage 里没这个 key」猜。
+  // 只有主程序明确说「刚建出来」（isNewSession === true），或者这条就是首页发出的
+  // 第一条消息（surface === 'home'），才交接一次性计划态。
+  // isNewSession 为 undefined 且是会话内查询（getReminder 拿不到该字段）时不猜——
+  // 猜错会把一个已存在的会话莫名打开计划模式。
+  if (!(isNewSession === true || surface === 'home')) return false;
   const inherited = pendingNewSessionPlan;
   sessionState.set(sessionId, inherited);
   if (inherited) {
@@ -256,14 +260,27 @@ export function activate(ctx: finch.MiniToolContext): void {
       const isNewSession = isNewSessionOf(ctxArg);
       // 新一轮开始：清掉本轮标记，允许这一轮再记一次。
       if (sessionId) planReadyThisTurn.delete(sessionId);
-      if (surface === 'home') {
-        if (!homePlanningEnabled) return undefined;
+      // 有会话就只看会话态，不按 surface 分叉：首页发出的第一条消息 surface 是
+      // 'home'，而那一刻首页的一次性标记可能已经被新会话的 badge 拉取消费掉了，
+      // 按 surface 分叉会把首条消息的提醒整条丢掉。
+      if (sessionId) {
+        const on = await resolveEnabled(ctx, sessionId, isNewSession, surface);
+        if (on && surface === 'home') {
+          // 一次性计划态已落到这个会话上，首页高亮一起灭。
+          homePlanningEnabled = false;
+          queueMicrotask(() => action.notifyUpdate());
+        }
+        return on ? REMINDER : undefined;
+      }
+
+      // 首页本身（还没有会话）：只看一次性开关。
+      if (surface === 'home' && homePlanningEnabled) {
         homePlanningEnabled = false;
         // pendingNewSessionPlan 已在 onClick 时提前设好，此处只需清 home 高亮
         queueMicrotask(() => action.notifyUpdate());
         return REMINDER;
       }
-      return (await resolveEnabled(ctx, sessionId, isNewSession)) ? REMINDER : undefined;
+      return undefined;
     },
 
     // ── onTurnEnd ─────────────────────────────────────────────────────────
