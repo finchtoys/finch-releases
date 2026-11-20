@@ -12,9 +12,9 @@ const REMINDER =
   'Do the investigation now and ground the plan in what you actually found: cite the exact ' +
   'file paths, symbols and line numbers you read. Do NOT output a list of steps you would ' +
   'take to investigate. ' +
-  'When the plan is complete, call the finish_plan tool to ask the user to approve it. ' +
-  'Do not ask "shall I proceed?" in plain text, and never start executing on your own — ' +
-  'if the user approves, carry the plan out in this same turn; if not, keep refining it.';
+  'When the plan is complete, call the finish_plan tool, then end your turn. ' +
+  'The confirmation appears after your reply ends, and the user\'s choice starts a new turn. ' +
+  'Do not ask "shall I proceed?" in plain text, and never start executing on your own.';
 
 // ── Per-session state (in-memory, keyed by sessionId) ────────────────────────
 const sessionState = new Map<string, boolean>();
@@ -41,10 +41,9 @@ let pendingNewSessionPlan = false;
 
 let notifyBadge: (() => void) | undefined;
 
-// finish_plan 已把「计划就绪」这个意图记下来的会话（本轮）。
-const planReadyThisTurn = new Set<string>();
-// 本轮已经真正弹过确认的会话，避免工具与 onTurnEnd 重复弹两次。
-const confirmShownThisTurn = new Set<string>();
+// finish_plan 记下的「计划就绪」会话→一句话摘要。onTurnEnd 只在被记下的
+// 轮次弹确认条，避免每一轮计划后都弹。
+const planReadyThisTurn = new Map<string, string>();
 
 /**
  * `confirmAndSend` / `isNewSession` 是较新主程序才有的能力，对应的 SDK 版本尚未
@@ -58,19 +57,6 @@ type ConfirmAndSendResult = {
 };
 type ConfirmAndSendCapable = {
   confirmAndSend?: (options: Record<string, unknown>) => Promise<ConfirmAndSendResult>;
-};
-
-/**
- * 不依赖 composerAction 回调的内联确认（mini-tool 级）。主程序新版本才有；
- * 没有时 finish_plan 退回「本轮结束时由 onTurnEnd 弹」。
- */
-type RequestConfirmCapable = {
-  requestConfirm?: (options: {
-    sessionId?: string;
-    text: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-  }) => Promise<'confirm' | 'cancel' | 'dismissed'>;
 };
 
 /** 旧版主程序不会传这个字段，统一从结构类型里取。 */
@@ -142,9 +128,9 @@ function isDuplicateClick(surface: string, sessionId: string | undefined): boole
  * 或视图挂载时回复已经跑完，就一次都不会弹；反过来它又会在每一轮计划后都弹，
  * 包括模型只是反问了一句澄清的轮次。用工具把「计划就绪」这个意图显式化。
  *
- * 确认面优先用 ctx.composerActions.requestConfirm（composer 上那条轻的内联确认）；
- * 主程序还没这个能力时，不在工具里弹 requestForm（那张卡视觉太重），只记下
- * 计划就绪，由本轮结束时的 onTurnEnd 弹同一条内联确认。
+ * 确认面不在工具里弹：工具里等确认会把本轮挂住（回复一直是 running，用户也没法
+ * 接着输入）。工具只把「计划就绪」记下来并让模型收尾，本轮结束后由 onTurnEnd 弹
+ * composer 上那条轻的内联确认；用户点「执行」直接发出下一轮，不需要再补草稿。
  */
 function registerFinishPlanTool(
   ctx: finch.MiniToolContext,
@@ -177,40 +163,13 @@ function registerFinishPlanTool(
         if (planReadyThisTurn.has(sessionId)) {
           return text(t('tool.finishPlan.alreadyAsked'));
         }
-        planReadyThisTurn.add(sessionId);
 
         const raw = (input as { summary?: unknown })?.summary;
         const summary = typeof raw === 'string' ? raw.trim() : '';
-        const approve = () => {
-          setEnabled(sessionId, false);
-          void ctx.storage.set(storageKey(sessionId), false).catch(() => undefined);
-          queueMicrotask(() => notifyBadge?.());
-        };
+        planReadyThisTurn.set(sessionId, summary);
+        ctx.logger.info('plan ready', { sessionId, summary });
 
-        // 首选：composer 上那条轻的内联确认。模型还在本轮里，拿到 confirm
-        // 就直接执行，不需要再补一条用户消息。
-        const host = ctx.composerActions as unknown as RequestConfirmCapable;
-        const requestConfirm = host.requestConfirm;
-        if (typeof requestConfirm === 'function') {
-          confirmShownThisTurn.add(sessionId);
-          const choice = await requestConfirm.call(host, {
-            sessionId,
-            text: summary ? `${t('confirm.text')}\n${summary}` : t('confirm.text'),
-            confirmLabel: t('confirm.label'),
-            cancelLabel: t('confirm.cancel'),
-          });
-          if (choice === 'confirm') {
-            approve();
-            return text(t('tool.finishPlan.approved'));
-          }
-          planReadyThisTurn.delete(sessionId);
-          if (choice === 'dismissed') {
-            return text(t('tool.finishPlan.noAnswer', { reason: 'dismissed' }));
-          }
-          return text(t('tool.finishPlan.declined'));
-        }
-
-        // 退回：不当场弹重表单，由本轮结束时的 onTurnEnd 弹同一条内联确认。
+        // 不当场弹任何确认：那会把本轮挂住。只记意图，由本轮结束时的 onTurnEnd 弹。
         return text(t('tool.finishPlan.willAsk'));
       },
     }),
@@ -295,11 +254,8 @@ export function activate(ctx: finch.MiniToolContext): void {
     async getReminder(ctxArg) {
       const { surface, sessionId } = ctxArg;
       const isNewSession = isNewSessionOf(ctxArg);
-      // 新一轮开始：清掉本轮标记，允许这一轮再问一次。
-      if (sessionId) {
-        planReadyThisTurn.delete(sessionId);
-        confirmShownThisTurn.delete(sessionId);
-      }
+      // 新一轮开始：清掉本轮标记，允许这一轮再记一次。
+      if (sessionId) planReadyThisTurn.delete(sessionId);
       if (surface === 'home') {
         if (!homePlanningEnabled) return undefined;
         homePlanningEnabled = false;
@@ -314,8 +270,10 @@ export function activate(ctx: finch.MiniToolContext): void {
     async onTurnEnd({ surface, sessionId }, actions) {
       ctx.logger.info('onTurnEnd', { surface, sessionId });
       if (surface !== 'session' || !(await resolveEnabled(ctx, sessionId))) return;
-      // 工具已经当场问过就不再弹一遍。
-      if (sessionId && confirmShownThisTurn.has(sessionId)) return;
+      // 只有模型自己调过 finish_plan 的轮次才弹：避免每一轮计划后都弹一遍。
+      if (!sessionId) return;
+      const summary = planReadyThisTurn.get(sessionId);
+      if (summary === undefined) return;
 
       const turnOff = () => {
         setEnabled(sessionId!, false);
@@ -324,7 +282,7 @@ export function activate(ctx: finch.MiniToolContext): void {
       };
 
       const options = {
-        text: t('confirm.text'),
+        text: summary ? `${t('confirm.text')}\n${summary}` : t('confirm.text'),
         confirmLabel: t('confirm.label'),
         cancelLabel: t('confirm.cancel'),
       };

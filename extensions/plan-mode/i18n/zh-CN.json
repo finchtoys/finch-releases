@@ -24,14 +24,11 @@
   "confirm.cancel": "继续计划",
 
   "tool.finishPlan.title": "完成计划",
-  "tool.finishPlan.description": "计划写完、需要用户批准后才能动手时调用本工具。它会在等候区弹出一个原生确认：用户选「执行」就代表批准，你在同一轮直接开始执行；选「继续计划」则继续完善。仅在本会话开启了计划模式时有效；未开启时不要调用。",
-  "tool.finishPlan.summaryHint": "一两行说清接下来要做什么，会显示在确认卡片上。",
+  "tool.finishPlan.description": "计划写完、需要用户批准后才能动手时调用本工具，然后结束本轮。确认条会在本轮回复结束后出现在输入框上方：用户点「执行」会直接发出下一轮开始执行，点「继续计划」则继续完善。仅在本会话开启了计划模式时有效；未开启时不要调用。",
+  "tool.finishPlan.summaryHint": "一两行说清接下来要做什么，会显示在确认条上。",
   "tool.finishPlan.notActive": "本会话没有开启计划模式，没有需要批准的计划。正常回答用户即可。",
-  "tool.finishPlan.alreadyAsked": "本轮已经请用户批准过计划了。等用户回答，不要重复询问。",
-  "tool.finishPlan.approved": "用户已批准计划，计划模式已关闭。现在就在本轮把计划执行完，不要把计划正文再复一遍。",
-  "tool.finishPlan.declined": "用户选择继续完善计划。不要开始执行；不确定要改哪里就先问用户。",
-  "tool.finishPlan.willAsk": "已记下计划就绪。本轮回复结束后会出现「继续计划 / 执行」确认条。请现在结束本轮输出，不要自行开始执行。",
-  "tool.finishPlan.noAnswer": "用户没有应答（{reason}）。保持计划模式，不要开始执行。",
+  "tool.finishPlan.alreadyAsked": "本轮已经记过一次计划就绪了。现在结束本轮输出，不要重复调用。",
+  "tool.finishPlan.willAsk": "已记下计划就绪。本轮回复结束后会出现「继续计划 / 执行」确认条，用户的选择会开启新一轮。请现在结束本轮输出，不要自行开始执行。",
 
   "execute.prompt": "方案已确认，请按上面的计划开始执行"
 }
