@@ -44,6 +44,7 @@
     "privacyPolicyUrl": "https://finchwork.app/privacy",
     "termsOfServiceUrl": "https://finchwork.app/terms",
     "contributes": {
+      "tools": true,
       "composerActions": [
         {
           "id": "plan-mode",

@@ -4,15 +4,17 @@ const INACTIVE_ICON = 'clipboard';
 const ACTIVE_ICON = 'clipboard-check';
 
 const REMINDER =
-  'You are in Planning Mode: investigate first, then plan. ' +
-  'Allowed this turn — read-only work: read files, grep/glob, list directories, ' +
+  'You are in Planning Mode: this turn is for planning, not for acting. ' +
+  'Allowed — read-only work: read files, grep/glob, list directories, ' +
   'read-only commands (git status/log/diff, ls, cat) and web search or page fetch. ' +
   'Not allowed — writing or editing files, running anything with side effects ' +
-  '(installs, git commit, migrations, sending anything out), or changing anything outside this conversation. ' +
-  'Do the investigation now. Do NOT output a list of steps you would take to investigate: ' +
-  'report what you actually found, citing the exact file paths, symbols and line numbers you read. ' +
-  'Then give a concrete plan grounded in those findings, and list the open questions and risks the user must decide. ' +
-  'Wait for the user to confirm before executing.';
+  '(installs, git commit, migrations, sending anything out). ' +
+  'Do the investigation now and ground the plan in what you actually found: cite the exact ' +
+  'file paths, symbols and line numbers you read. Do NOT output a list of steps you would ' +
+  'take to investigate. ' +
+  'When the plan is complete, call the finish_plan tool to ask the user to approve it. ' +
+  'Do not ask "shall I proceed?" in plain text, and never start executing on your own — ' +
+  'if the user approves, carry the plan out in this same turn; if not, keep refining it.';
 
 // ── Per-session state (in-memory, keyed by sessionId) ────────────────────────
 const sessionState = new Map<string, boolean>();
@@ -38,6 +40,9 @@ let homePlanningEnabled = false;
 let pendingNewSessionPlan = false;
 
 let notifyBadge: (() => void) | undefined;
+
+// 本轮已经弹过「计划可以执行吗」的会话，避免工具与 onTurnEnd 重复弹两次。
+const askedThisTurn = new Set<string>();
 
 /**
  * `confirmAndSend` / `isNewSession` 是较新主程序才有的能力，对应的 SDK 版本尚未
@@ -113,6 +118,84 @@ function isDuplicateClick(surface: string, sessionId: string | undefined): boole
   return duplicate;
 }
 
+// ── finish_plan tool ──────────────────────────────────────────────────────
+/**
+ * 模型自己判断「计划写完了」，调这个工具请用户确认。
+ *
+ * 为什么不用 onTurnEnd：那个事件只在同一 sessionId 内 runStatus 从
+ * running|waiting 跳到 done|error 时才发，本轮结束时如果还卡在权限/提问卡上、
+ * 或视图挂载时回复已经跑完，就一次都不会弹；反过来它又会在每一轮计划后都弹，
+ * 包括模型只是反问了一句澄清的轮次。用工具把「计划就绪」这个意图显式化。
+ *
+ * 用 requestForm 而不是 composer confirm：工具上下文里拿不到 composer 的
+ * confirm 入口（register() 只返回 notifyUpdate），而 requestForm 是现成的原生
+ * 确认面。用户点「执行」后工具直接返回「开始执行」，模型同一轮就动手，不需要
+ * 再补一条消息。
+ */
+function registerFinishPlanTool(
+  ctx: finch.MiniToolContext,
+  t: (key: string, extra?: Record<string, string>) => string,
+): void {
+  ctx.subscriptions.push(
+    ctx.tools.register({
+      name: 'finish_plan',
+      title: t('tool.finishPlan.title'),
+      description: t('tool.finishPlan.description'),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          summary: {
+            type: 'string',
+            description: t('tool.finishPlan.summaryHint'),
+          },
+        },
+      },
+      risk: 'low',
+      exposure: 'startup',
+      defaultEnabled: true,
+      async execute(input, toolCtx) {
+        const text = (s: string) => ({ content: [{ type: 'text' as const, text: s }] });
+        const sessionId = toolCtx.sessionId;
+
+        if (!isEnabled(sessionId)) {
+          return text(t('tool.finishPlan.notActive'));
+        }
+        if (askedThisTurn.has(sessionId)) {
+          return text(t('tool.finishPlan.alreadyAsked'));
+        }
+        askedThisTurn.add(sessionId);
+
+        const raw = (input as { summary?: unknown })?.summary;
+        const summary = typeof raw === 'string' ? raw.trim() : '';
+
+        const form = await toolCtx.ui.requestForm({
+          title: t('confirm.text'),
+          description: summary || undefined,
+          submitLabel: t('confirm.label'),
+          cancelLabel: t('confirm.cancel'),
+          fields: [],
+        });
+
+        if (form.submitted) {
+          setEnabled(sessionId, false);
+          void ctx.storage.set(storageKey(sessionId), false).catch(() => undefined);
+          queueMicrotask(() => notifyBadge?.());
+          return text(t('tool.finishPlan.approved'));
+        }
+
+        askedThisTurn.delete(sessionId);
+        if (form.reason === 'background') {
+          return text(t('tool.finishPlan.noAnswer', { reason: form.reason }));
+        }
+        if (form.reason && form.reason !== 'cancelled') {
+          return text(t('tool.finishPlan.noAnswer', { reason: form.reason }));
+        }
+        return text(t('tool.finishPlan.declined'));
+      },
+    }),
+  );
+}
+
 // ── Activation ────────────────────────────────────────────────────────────────
 export function activate(ctx: finch.MiniToolContext): void {
   // 拉取助手名称，缓存在内存里，fallback 到 'Finch'
@@ -121,6 +204,8 @@ export function activate(ctx: finch.MiniToolContext): void {
 
   const t = (key: string, extra?: Record<string, string>) =>
     ctx.i18n.t(key, { assistantName, ...extra });
+
+  registerFinishPlanTool(ctx, t);
 
   const action = ctx.composerActions.register('plan-mode', {
 
@@ -189,6 +274,8 @@ export function activate(ctx: finch.MiniToolContext): void {
     async getReminder(ctxArg) {
       const { surface, sessionId } = ctxArg;
       const isNewSession = isNewSessionOf(ctxArg);
+      // 新一轮开始：清掉「本轮已问过」标记，允许这一轮再问一次。
+      if (sessionId) askedThisTurn.delete(sessionId);
       if (surface === 'home') {
         if (!homePlanningEnabled) return undefined;
         homePlanningEnabled = false;
@@ -203,6 +290,8 @@ export function activate(ctx: finch.MiniToolContext): void {
     async onTurnEnd({ surface, sessionId }, actions) {
       ctx.logger.info('onTurnEnd', { surface, sessionId });
       if (surface !== 'session' || !(await resolveEnabled(ctx, sessionId))) return;
+      // finish_plan 已经问过了就别再弹一遍。
+      if (sessionId && askedThisTurn.has(sessionId)) return;
 
       const turnOff = () => {
         setEnabled(sessionId!, false);

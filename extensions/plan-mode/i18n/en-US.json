@@ -23,5 +23,14 @@
   "confirm.label": "Execute",
   "confirm.cancel": "Continue Planning",
 
+  "tool.finishPlan.title": "Finish plan",
+  "tool.finishPlan.description": "Call this when the plan is complete and you need the user's approval before acting. It shows a native confirmation in the waiting area: choosing \"Execute\" means approval and you start executing in this same turn; \"Continue Planning\" means keep refining. Only valid while Plan Mode is on for this session — do not call it otherwise.",
+  "tool.finishPlan.summaryHint": "One or two lines saying what will be done next; shown on the confirmation card.",
+  "tool.finishPlan.notActive": "Plan Mode is not on for this session, so there is no plan to approve. Just answer the user normally.",
+  "tool.finishPlan.alreadyAsked": "You already asked the user to approve the plan this turn. Wait for their answer instead of asking again.",
+  "tool.finishPlan.approved": "The user approved the plan and Plan Mode is now off. Carry the plan out in this turn; do not repeat the plan text.",
+  "tool.finishPlan.declined": "The user chose to keep planning. Do not start executing; if it is unclear what to change, ask them.",
+  "tool.finishPlan.noAnswer": "The user did not answer ({reason}). Stay in Plan Mode and do not start executing.",
+
   "execute.prompt": "Plan confirmed, please start executing according to the plan above."
 }
