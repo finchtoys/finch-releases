@@ -30,6 +30,7 @@
   "tool.finishPlan.alreadyAsked": "本轮已经请用户批准过计划了。等用户回答，不要重复询问。",
   "tool.finishPlan.approved": "用户已批准计划，计划模式已关闭。现在就在本轮把计划执行完，不要把计划正文再复一遍。",
   "tool.finishPlan.declined": "用户选择继续完善计划。不要开始执行；不确定要改哪里就先问用户。",
+  "tool.finishPlan.willAsk": "已记下计划就绪。本轮回复结束后会出现「继续计划 / 执行」确认条。请现在结束本轮输出，不要自行开始执行。",
   "tool.finishPlan.noAnswer": "用户没有应答（{reason}）。保持计划模式，不要开始执行。",
 
   "execute.prompt": "方案已确认，请按上面的计划开始执行"

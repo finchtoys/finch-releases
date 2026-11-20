@@ -41,8 +41,10 @@ let pendingNewSessionPlan = false;
 
 let notifyBadge: (() => void) | undefined;
 
-// 本轮已经弹过「计划可以执行吗」的会话，避免工具与 onTurnEnd 重复弹两次。
-const askedThisTurn = new Set<string>();
+// finish_plan 已把「计划就绪」这个意图记下来的会话（本轮）。
+const planReadyThisTurn = new Set<string>();
+// 本轮已经真正弹过确认的会话，避免工具与 onTurnEnd 重复弹两次。
+const confirmShownThisTurn = new Set<string>();
 
 /**
  * `confirmAndSend` / `isNewSession` 是较新主程序才有的能力，对应的 SDK 版本尚未
@@ -56,6 +58,19 @@ type ConfirmAndSendResult = {
 };
 type ConfirmAndSendCapable = {
   confirmAndSend?: (options: Record<string, unknown>) => Promise<ConfirmAndSendResult>;
+};
+
+/**
+ * 不依赖 composerAction 回调的内联确认（mini-tool 级）。主程序新版本才有；
+ * 没有时 finish_plan 退回「本轮结束时由 onTurnEnd 弹」。
+ */
+type RequestConfirmCapable = {
+  requestConfirm?: (options: {
+    sessionId?: string;
+    text: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+  }) => Promise<'confirm' | 'cancel' | 'dismissed'>;
 };
 
 /** 旧版主程序不会传这个字段，统一从结构类型里取。 */
@@ -122,15 +137,14 @@ function isDuplicateClick(surface: string, sessionId: string | undefined): boole
 /**
  * 模型自己判断「计划写完了」，调这个工具请用户确认。
  *
- * 为什么不用 onTurnEnd：那个事件只在同一 sessionId 内 runStatus 从
+ * 为什么不用 onTurnEnd 当主路径：那个事件只在同一 sessionId 内 runStatus 从
  * running|waiting 跳到 done|error 时才发，本轮结束时如果还卡在权限/提问卡上、
  * 或视图挂载时回复已经跑完，就一次都不会弹；反过来它又会在每一轮计划后都弹，
  * 包括模型只是反问了一句澄清的轮次。用工具把「计划就绪」这个意图显式化。
  *
- * 用 requestForm 而不是 composer confirm：工具上下文里拿不到 composer 的
- * confirm 入口（register() 只返回 notifyUpdate），而 requestForm 是现成的原生
- * 确认面。用户点「执行」后工具直接返回「开始执行」，模型同一轮就动手，不需要
- * 再补一条消息。
+ * 确认面优先用 ctx.composerActions.requestConfirm（composer 上那条轻的内联确认）；
+ * 主程序还没这个能力时，不在工具里弹 requestForm（那张卡视觉太重），只记下
+ * 计划就绪，由本轮结束时的 onTurnEnd 弹同一条内联确认。
  */
 function registerFinishPlanTool(
   ctx: finch.MiniToolContext,
@@ -160,37 +174,44 @@ function registerFinishPlanTool(
         if (!isEnabled(sessionId)) {
           return text(t('tool.finishPlan.notActive'));
         }
-        if (askedThisTurn.has(sessionId)) {
+        if (planReadyThisTurn.has(sessionId)) {
           return text(t('tool.finishPlan.alreadyAsked'));
         }
-        askedThisTurn.add(sessionId);
+        planReadyThisTurn.add(sessionId);
 
         const raw = (input as { summary?: unknown })?.summary;
         const summary = typeof raw === 'string' ? raw.trim() : '';
-
-        const form = await toolCtx.ui.requestForm({
-          title: t('confirm.text'),
-          description: summary || undefined,
-          submitLabel: t('confirm.label'),
-          cancelLabel: t('confirm.cancel'),
-          fields: [],
-        });
-
-        if (form.submitted) {
+        const approve = () => {
           setEnabled(sessionId, false);
           void ctx.storage.set(storageKey(sessionId), false).catch(() => undefined);
           queueMicrotask(() => notifyBadge?.());
-          return text(t('tool.finishPlan.approved'));
+        };
+
+        // 首选：composer 上那条轻的内联确认。模型还在本轮里，拿到 confirm
+        // 就直接执行，不需要再补一条用户消息。
+        const host = ctx.composerActions as unknown as RequestConfirmCapable;
+        const requestConfirm = host.requestConfirm;
+        if (typeof requestConfirm === 'function') {
+          confirmShownThisTurn.add(sessionId);
+          const choice = await requestConfirm.call(host, {
+            sessionId,
+            text: summary ? `${t('confirm.text')}\n${summary}` : t('confirm.text'),
+            confirmLabel: t('confirm.label'),
+            cancelLabel: t('confirm.cancel'),
+          });
+          if (choice === 'confirm') {
+            approve();
+            return text(t('tool.finishPlan.approved'));
+          }
+          planReadyThisTurn.delete(sessionId);
+          if (choice === 'dismissed') {
+            return text(t('tool.finishPlan.noAnswer', { reason: 'dismissed' }));
+          }
+          return text(t('tool.finishPlan.declined'));
         }
 
-        askedThisTurn.delete(sessionId);
-        if (form.reason === 'background') {
-          return text(t('tool.finishPlan.noAnswer', { reason: form.reason }));
-        }
-        if (form.reason && form.reason !== 'cancelled') {
-          return text(t('tool.finishPlan.noAnswer', { reason: form.reason }));
-        }
-        return text(t('tool.finishPlan.declined'));
+        // 退回：不当场弹重表单，由本轮结束时的 onTurnEnd 弹同一条内联确认。
+        return text(t('tool.finishPlan.willAsk'));
       },
     }),
   );
@@ -274,8 +295,11 @@ export function activate(ctx: finch.MiniToolContext): void {
     async getReminder(ctxArg) {
       const { surface, sessionId } = ctxArg;
       const isNewSession = isNewSessionOf(ctxArg);
-      // 新一轮开始：清掉「本轮已问过」标记，允许这一轮再问一次。
-      if (sessionId) askedThisTurn.delete(sessionId);
+      // 新一轮开始：清掉本轮标记，允许这一轮再问一次。
+      if (sessionId) {
+        planReadyThisTurn.delete(sessionId);
+        confirmShownThisTurn.delete(sessionId);
+      }
       if (surface === 'home') {
         if (!homePlanningEnabled) return undefined;
         homePlanningEnabled = false;
@@ -290,8 +314,8 @@ export function activate(ctx: finch.MiniToolContext): void {
     async onTurnEnd({ surface, sessionId }, actions) {
       ctx.logger.info('onTurnEnd', { surface, sessionId });
       if (surface !== 'session' || !(await resolveEnabled(ctx, sessionId))) return;
-      // finish_plan 已经问过了就别再弹一遍。
-      if (sessionId && askedThisTurn.has(sessionId)) return;
+      // 工具已经当场问过就不再弹一遍。
+      if (sessionId && confirmShownThisTurn.has(sessionId)) return;
 
       const turnOff = () => {
         setEnabled(sessionId!, false);

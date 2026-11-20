@@ -30,6 +30,7 @@
   "tool.finishPlan.alreadyAsked": "You already asked the user to approve the plan this turn. Wait for their answer instead of asking again.",
   "tool.finishPlan.approved": "The user approved the plan and Plan Mode is now off. Carry the plan out in this turn; do not repeat the plan text.",
   "tool.finishPlan.declined": "The user chose to keep planning. Do not start executing; if it is unclear what to change, ask them.",
+  "tool.finishPlan.willAsk": "Plan-ready noted. The \"Continue Planning / Execute\" confirmation will appear when this reply ends. Finish your turn now; do not start executing on your own.",
   "tool.finishPlan.noAnswer": "The user did not answer ({reason}). Stay in Plan Mode and do not start executing.",
 
   "execute.prompt": "Plan confirmed, please start executing according to the plan above."
