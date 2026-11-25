@@ -194,7 +194,7 @@
   },
   {
     "id": "finch-knowledge",
-    "version": "0.25.3",
+    "version": "0.26.0",
     "name": "Knowledge Base",
     "author": "PuterJam",
     "description": "Build a private local library from your own documents, images and OCR text in LanceDB, then let Finch retrieve the relevant passages during conversation.",
@@ -480,7 +480,7 @@
     "description": "Planning mode for Finch conversations. Break down tasks before execution.",
     "repo": "finchtoys/finch-releases",
     "npm": "finch-plan-mode",
-    "version": "0.1.9",
+    "version": "0.1.10",
     "extensionType": "official",
     "categories": [
       "productivity"
