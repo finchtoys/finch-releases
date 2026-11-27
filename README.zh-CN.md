@@ -115,7 +115,7 @@ Finch Toolbox
 - `categories.json` 声明分类清单与多语言标签，分类变动不必等新客户端版本。
 - 没有对应中文覆盖时，Finch 回退到英文元数据。
 - 两个目录索引保持裸数组、分类元数据单独成文件，所以 `categories.json` 之前发布的客户端仍能照常解析。
-- 索引更新通过 `community.finchwork.app` 发布，由于边缘缓存，最长约一小时后生效。
+- 索引更新通过 `community.finchwork.app` 发布，边缘缓存约 60 秒，合并后约 1 分钟内生效，无需为此部署 Worker。
 - 在 Finch 里选择某个扩展后，安装会走它已发布的 npm 包或公开源码。
 
 ## 加入社区

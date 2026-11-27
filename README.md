@@ -119,7 +119,7 @@ Finch Toolbox
 - `categories.json` declares the category list and its multilingual labels, so categories can change without shipping a new app version.
 - When an override is unavailable, Finch falls back to the English metadata.
 - Both catalogs stay plain arrays and category metadata lives in its own file, so app versions released before `categories.json` existed keep parsing them unchanged.
-- Registry updates are published through `community.finchwork.app`; they can take up to about one hour to appear because of edge caching.
+- Registry updates are published through `community.finchwork.app`; edge caching means they appear within about a minute of being merged, with no Worker redeploy needed.
 - Selecting an extension in Finch directs installation through its published npm package or public source.
 
 ## Join the community

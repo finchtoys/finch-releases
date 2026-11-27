@@ -75,7 +75,7 @@ finch-releases/
 | `community/mini-tools.zh-CN.json` | 小工具中文覆盖 |
 | `community/skills.zh-CN.json` | 技能中文覆盖 |
 
-这些文件通过 Cloudflare Worker 发布到 `community.finchwork.app`，修改后约 1 小时生效。
+这些文件通过 Cloudflare Worker 发布到 `community.finchwork.app`。Worker 实时代理 `main` 分支，边缘缓存约 60 秒，推送后约 1 分钟内生效，**不需要为此部署 Worker**。若线上长时间读不到新内容，先用 `python3 .finch/skills/community-manager/scripts/check_registry.py health` 确认端点是否仍返回 200，再考虑缓存问题。
 
 ### 分类体系
 

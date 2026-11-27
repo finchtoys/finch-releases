@@ -91,7 +91,11 @@ cd ../../..  # finch-releases 仓库根目录
 
 ## 发布与缓存刷新
 
-完成 JSON 修改并通过 `validate.py` 后，按以下流程发布；不要只推送 GitHub 后等待缓存过期。
+> **默认不需要部署 Worker。** Worker 每次都是实时代理 `main` 分支的 `community/` 文件，JSON 响应带 `s-maxage=60`，实测推送后约 60 秒内全量生效（首次 `X-Cache: MISS`，之后 `HIT`）。下面第 2–4 步只在**需要立刻生效**时才做，不是每次提交的必经流程。
+>
+> 如果线上长时间读不到新内容，先别怀疑缓存：用 `check_registry.py health` 确认端点是否还返回 200。历史上出现过索引正常推送、但 Worker 的 `GITHUB_TOKEN` secret 过期导致全站 404 的情况，那种故障靠刷缓存是修不好的。
+
+完成 JSON 修改并通过 `validate.py` 后，若需要立刻生效，按以下流程发布：
 
 1. 提交并推送 `community/*.json` 变更到 `main`。
 2. 编辑 `../finch/scripts/community.finchwork.app/worker.js`，将 `CACHE_VERSION` 递增（例如 `v2` → `v3`）。版本化 cache key 会让所有 PoP 绕过旧的 `caches.default` 条目；`cache.delete()` 只保证当前 PoP 清理，不能作为全局刷新方案。
@@ -152,6 +156,7 @@ cd ../../..  # finch-releases 仓库根目录
 | **弃用** | 「把 xx 标记为不再推荐」「下架 xx」 | `manage_registry.py deprecate` |
 | **恢复** | 「取消弃用 xx」 | `manage_registry.py undeprecate` |
 | **校验** | 「检查一下配置文件有没有问题」 | `validate.py` |
+| **巡检** | 「版本有没有更新」「社区站是不是坏了」 | `check_registry.py` |
 
 > **为什么用脚本而不是直接 Edit JSON？** JSON 数组的 Edit 操作容易破坏格式（尾逗号、缩进不对、字母序错乱）。用 Python 脚本保证写入格式一致，自动排序。查看和展示变更摘要时用 Read 工具即可。
 
@@ -281,6 +286,26 @@ python3 .finch/skills/community-manager/scripts/validate.py
 1. 运行 `validate.py` 找出缺失的 zh-CN 条目
 2. 逐条询问用户对应的中文 name 和 description
 3. 用 `manage_registry.py update` 逐条写入
+
+### 操作 7：巡检（使用脚本）
+
+```bash
+# 两项都跑（推荐）
+python3 .finch/skills/community-manager/scripts/check_registry.py
+
+# 只比对 npm 版本 / 只查线上分发
+python3 .finch/skills/community-manager/scripts/check_registry.py versions
+python3 .finch/skills/community-manager/scripts/check_registry.py health
+```
+
+退出码：`0` 无问题，`1` 需要人工处理，`2` 脚本自身出错。
+
+- **versions** — 并发比对每个带 `npm` 字段的条目与 npm latest，输出「id 旧版本 -> 新版本」待更新清单。查询失败的条目标 `ERR`，**必须跳过，绝不能写进索引**。
+- **health** — 探测 `community.finchwork.app` 的 5 个 JSON 端点。非 200 判 `FAIL`（社区市场对所有用户不可用）；内容与仓库不一致只判 `WARN`，因为边缘缓存约 60 秒，刚推完读到旧内容属正常。
+
+脚本只读不写，写入仍走 `manage_registry.py`（它会校验版本存在性）。
+
+> **必须用这个脚本，不要自己写循环逐个查 npm registry。** 串行 43 个包在弱网下要 2 分钟以上，会把巡检任务拖到 `timed_out`；脚本并发实测 0.5 秒完成版本比对。
 
 ---
 
